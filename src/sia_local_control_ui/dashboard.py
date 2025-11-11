@@ -288,69 +288,6 @@ class DashboardInterface:
             self._server_thread.join(timeout=5)
         log.info("Dashboard stopped")
     
-    def update_pump_data(self, target_rate: float = None, flow_rate: float = None, pump_state: str = None):
-        """Update pump control data."""
-        pump_data = {}
-        if target_rate is not None:
-            pump_data['target_rate'] = target_rate
-        if flow_rate is not None:
-            pump_data['flow_rate'] = flow_rate
-        if pump_state is not None:
-            pump_data['pump_state'] = pump_state
-        
-        if pump_data:
-            self.dashboard.update_data(pump=pump_data)
-    
-    def update_pump2_data(self, target_rate: float = None, flow_rate: float = None, pump_state: str = None):
-        """Update pump 2 control data."""
-        pump2_data = {}
-        if target_rate is not None:
-            pump2_data['target_rate'] = target_rate
-        if flow_rate is not None:
-            pump2_data['flow_rate'] = flow_rate
-        if pump_state is not None:
-            pump2_data['pump_state'] = pump_state
-        
-        if pump2_data:
-            self.dashboard.update_data(pump2=pump2_data)
-    
-    def update_solar_data(self, battery_voltage: float = None, battery_percentage: float = None, array_voltage: float = None, battery_ah: float = None):
-        """Update solar control data."""
-        solar_data = {}
-        if battery_voltage is not None:
-            solar_data['battery_voltage'] = battery_voltage
-        if battery_percentage is not None:
-            solar_data['battery_percentage'] = battery_percentage
-        if array_voltage is not None:
-            solar_data['panel_power'] = array_voltage  # array_voltage parameter now contains panel_power
-        if battery_ah is not None:
-            solar_data['battery_ah'] = battery_ah
-        
-        if solar_data:
-            self.dashboard.update_data(solar=solar_data)
-    
-    def update_tank_data(self, tank_level_mm: float = None, tank_level_percent: float = None):
-        """Update tank control data."""
-        tank_data = {}
-        if tank_level_mm is not None:
-            tank_data['tank_level_mm'] = tank_level_mm
-        if tank_level_percent is not None:
-            tank_data['tank_level_percent'] = tank_level_percent
-        
-        if tank_data:
-            self.dashboard.update_data(tank=tank_data)
-    
-    def update_skid_data(self, skid_flow: float = None, skid_pressure: float = None):
-        """Update skid control data."""
-        skid_data = {}
-        if skid_flow is not None:
-            skid_data['skid_flow'] = skid_flow
-        if skid_pressure is not None:
-            skid_data['skid_pressure'] = skid_pressure
-        
-        if skid_data:
-            self.dashboard.update_data(skid=skid_data)
-    
     def update_system_status(self, status: str):
         """Update system status."""
         self.dashboard.update_data(system={'status': status})
