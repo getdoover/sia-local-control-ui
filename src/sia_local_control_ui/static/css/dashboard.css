@@ -330,6 +330,66 @@ body {
     font-weight: 500;
 }
 
+/* Fault popover */
+.fault-popover {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    min-width: clamp(260px, 32vw, 380px);
+    font-size: 1.4rem;
+    background: rgba(231, 76, 60, 0.95);
+    color: #ffffff;
+    border-radius: clamp(8px, 1.5vw, 14px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    z-index: 1002;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    transform: translate(-50%, -50%);
+}
+
+.fault-popover.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, calc(-50% - 20px));
+}
+
+.fault-popover-content {
+    padding: clamp(16px, 2vw, 24px);
+}
+
+.fault-popover-content h2 {
+    font-size: clamp(1.4rem, 3.5vw, 1.96rem);
+    margin-bottom: clamp(8px, 1.5vh, 12px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fault-popover-content h2::before {
+    content: "\f071";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+}
+
+.fault-popover-content ul {
+    list-style: none;
+    margin-bottom: clamp(10px, 1.5vh, 16px);
+}
+
+.fault-popover-content li {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.fault-popover-content li:last-child {
+    margin-bottom: 0;
+}
+
+.fault-popover-instructions {
+    font-size: clamp(1.12rem, 2.8vw, 1.33rem);
+    opacity: 0.85;
+    font-weight: 500;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .dashboard-header {

@@ -49,6 +49,11 @@ class Dashboard {
         
         // Loading overlay
         this.loadingOverlay = document.getElementById('loading-overlay');
+
+        // Fault popover
+        this.faultPopover = document.getElementById('fault-popover');
+        this.faultMessageList = document.getElementById('fault-message-list');
+        this.faultInstructions = document.querySelector('.fault-popover-instructions');
     }
     
     initializeSocket() {
@@ -155,6 +160,13 @@ class Dashboard {
         // Update system data
         if (data.system) {
             this.updateSystemData(data.system);
+        }
+
+        // Update faults
+        if (data.faults) {
+            this.updateFaults(data.faults);
+        } else {
+            this.updateFaults({});
         }
     }
     
@@ -264,6 +276,38 @@ class Dashboard {
             this.systemStatus.className = `status-value ${status}`;
         }
     }
+
+    updateFaults(faultData = {}) {
+        if (!this.faultPopover || !this.faultMessageList) {
+            return;
+        }
+
+        const messages = [];
+        if (faultData.hh_pressure) {
+            messages.push('High High Pressure Tripped the Pumps!');
+        }
+        if (faultData.ll_tank_level) {
+            messages.push('Low Low Tank Level Tripped the Pumps! - Fill Tank');
+        }
+
+        this.faultMessageList.innerHTML = '';
+
+        if (messages.length > 0) {
+            messages.forEach(message => {
+                const item = document.createElement('li');
+                item.textContent = message;
+                this.faultMessageList.appendChild(item);
+            });
+
+            if (this.faultInstructions) {
+                this.faultInstructions.textContent = 'Press the selector button to clear the faults.';
+            }
+
+            this.faultPopover.classList.remove('hidden');
+        } else {
+            this.faultPopover.classList.add('hidden');
+        }
+    }
     
     animateValueChange(element, newValue) {
         if (element.textContent !== newValue) {
@@ -333,17 +377,18 @@ class Dashboard {
             z-index: 1001;
             max-width: 300px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            cursor: pointer;
         `;
         errorDiv.textContent = message;
+        errorDiv.setAttribute('role', 'alert');
+        errorDiv.setAttribute('aria-live', 'assertive');
         
         document.body.appendChild(errorDiv);
-        
-        // Remove after 5 seconds
-        setTimeout(() => {
+        errorDiv.addEventListener('click', () => {
             if (errorDiv.parentNode) {
                 errorDiv.parentNode.removeChild(errorDiv);
             }
-        }, 5000);
+        });
     }
     
     // Public API methods

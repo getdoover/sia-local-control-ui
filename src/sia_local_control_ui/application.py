@@ -22,7 +22,7 @@ class SiaLocalControlUiApplication(Application):
         self.dashboard_interface = DashboardInterface(self.dashboard)
 
     async def setup(self):
-        self.loop_target_period = 0.2
+        self.loop_target_period = 0.5
         
         # Start dashboard
         self.dashboard_interface.start_dashboard()
@@ -42,16 +42,16 @@ class SiaLocalControlUiApplication(Application):
         update_data = {}
             # Get pump control data from simulators
         update_data["pump"] = {
-            "target_rate": self.get_tag("TargetRate", self.config.pump_controllers.elements[0]) if self.config.pump_controllers else 15.5,
-            "flow_rate": self.get_tag("FlowRate", self.config.pump_controllers.elements[0]) if self.config.pump_controllers else 14.2,
-            "pump_state": self.get_tag("StateString", self.config.pump_controllers.elements[0]) if self.config.pump_controllers else "auto"
+            "target_rate": self.get_tag("TargetRate", self.config.pump_controllers.elements[0].value),
+            "flow_rate": self.get_tag("FlowRate", self.config.pump_controllers.elements[0].value),
+            "pump_state": self.get_tag("StateString", self.config.pump_controllers.elements[0].value)
         }
         
         # Get pump 2 control data from simulators
         if len(self.config.pump_controllers.elements) > 1:
-            pump2_target_rate = self.get_tag("TargetRate", self.config.pump_controllers.elements[1])
-            pump2_flow_rate = self.get_tag("FlowRate", self.config.pump_controllers.elements[1])
-            pump2_pump_state = self.get_tag("StateString", self.config.pump_controllers.elements[1])
+            pump2_target_rate = self.get_tag("TargetRate", self.config.pump_controllers.elements[1].value)
+            pump2_flow_rate = self.get_tag("FlowRate", self.config.pump_controllers.elements[1].value)
+            pump2_pump_state = self.get_tag("StateString", self.config.pump_controllers.elements[1].value)
 
         
         # Update pump 2 data
@@ -62,6 +62,11 @@ class SiaLocalControlUiApplication(Application):
         }
         
         # Get and aggregate solar control data from all simulators
+        battery_voltage = None
+        battery_percentage = None
+        panel_power = None
+        battery_ah = None
+
         if self.config.solar_controllers:
             battery_voltages = []
             battery_percentages = []
@@ -70,55 +75,81 @@ class SiaLocalControlUiApplication(Application):
             
             # Collect data from all solar controllers
             for solar_controller in self.config.solar_controllers.elements:
-                battery_voltages.append(self.get_tag("b_voltage", solar_controller))
-                battery_percentages.append(self.get_tag("b_percent", solar_controller))
-                panel_power_values.append(self.get_tag("panel_power", solar_controller))
-                battery_ah_values.append(self.get_tag("remaining_ah", solar_controller))
+                voltage = self.get_tag("b_voltage", solar_controller)
+                if voltage is not None:
+                    battery_voltages.append(voltage)
+                percentage = self.get_tag("b_percent", solar_controller)
+                if percentage is not None:
+                    battery_percentages.append(percentage)
+                panel_power = self.get_tag("panel_power", solar_controller)
+                if panel_power is not None:
+                    panel_power_values.append(panel_power)
+                battery_ah = self.get_tag("remaining_ah", solar_controller)
+                if battery_ah is not None:
+                    battery_ah_values.append(battery_ah)
             
             # Aggregate data: average voltages/percentages, sum battery_ah
-            battery_voltage = sum(battery_voltages) / len(battery_voltages)
-            battery_percentage = sum(battery_percentages) / len(battery_percentages)
-            panel_power = sum(panel_power_values) / len(panel_power_values)
-            battery_ah = sum(battery_ah_values)
-        else:
-            # Fallback values if no solar controllers configured
-            battery_voltage = 24.5
-            battery_percentage = 78.0
-            panel_power = 150.0
-            battery_ah = 120.0
-        
-        # Update solar data
-        update_data["solar"] = {
-            "battery_voltage": battery_voltage,
-            "battery_percentage": battery_percentage,
-            "panel_power": panel_power,
-            "battery_ah": battery_ah
-        }
+            if len(battery_voltages):
+                battery_voltage = sum(battery_voltages) / len(battery_voltages)
+            if len(battery_percentages):
+                battery_percentage = sum(battery_percentages) / len(battery_percentages)
+
+            if len(panel_power_values):
+                panel_power = sum(panel_power_values) / len(panel_power_values)
+
+            if len(battery_ah_values):
+                battery_ah = sum(battery_ah_values) / len(battery_ah_values)
+
+        solar_data = {}
+        if battery_voltage is not None:
+            solar_data["battery_voltage"] = battery_voltage
+        if battery_percentage is not None:
+            solar_data["battery_percentage"] = battery_percentage
+        if panel_power is not None:
+            solar_data["panel_power"] = panel_power
+        if battery_ah is not None:
+            solar_data["battery_ah"] = battery_ah
+
+        if solar_data:
+            update_data["solar"] = solar_data
         
         # Get tank control data from simulators
-        tank_level_mm = self.get_tag("tank_level_mm", self.config.tank_level_app.value) if self.config.tank_apps else 1250.0
-        tank_level_percent = self.get_tag("tank_level_percent", self.config.tank_level_app.value) if self.config.tank_apps else 62.5
-        
-        # Update tank data
-        update_data["tank"] = {
-            "tank_level_mm": tank_level_mm,
-            "tank_level_percent": tank_level_percent
-        }
+        tank_level_mm = None
+        tank_level_percent = None
+        if self.config.tank_level_app:
+            tank_level_mm = self.get_tag("level_reading", self.config.tank_level_app.value)
+            tank_level_percent = self.get_tag("level_filled_percentage", self.config.tank_level_app.value)
+
+        tank_data = {}
+        if tank_level_mm is not None:
+            tank_data["tank_level_mm"] = tank_level_mm
+        if tank_level_percent is not None:
+            tank_data["tank_level_percent"] = tank_level_percent
+
+        if tank_data:
+            update_data["tank"] = tank_data
 
         
-        skid_flow = self.get_tag("value", self.config.flow_sensor_app.value) if self.config.skid_apps else "-"
-        skid_pressure = self.get_tag("value", self.config.pressure_sensor_app.value) if self.config.skid_apps else "-"
-        
-        #Update Skid Data
-        update_data["skid"] = {
-            "skid_flow": skid_flow,
-            "skid_pressure": skid_pressure
-        }
+        skid_flow = None
+        skid_pressure = None
+        if self.config.flow_sensor_app:
+            skid_flow = self.get_tag("value", self.config.flow_sensor_app.value)
+        if self.config.pressure_sensor_app:
+            skid_pressure = self.get_tag("value", self.config.pressure_sensor_app.value)
+
+        skid_data = {}
+        if skid_flow is not None:
+            skid_data["skid_flow"] = skid_flow
+        if skid_pressure is not None:
+            skid_data["skid_pressure"] = skid_pressure
+
+        if skid_data:
+            update_data["skid"] = skid_data
         
         # pump_state
         # Update system status
-        system_status = "running" if self.state.state == "auto" else "standby"
-        self.dashboard_interface.update_system_status(system_status)
+        # system_status = "running" if self.state.state == "auto" else "standby"
+        # self.dashboard_interface.update_system_status(system_status)
         
         
-        self.dashboard.update_data(update_data)
+        self.dashboard.update_data(**update_data)

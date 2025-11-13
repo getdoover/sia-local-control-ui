@@ -12,7 +12,7 @@ services:
   #   environment:
   #     - APP_KEY=sim_app_key
 
-  sample_application:
+  local_ui_application:
     build: ../
     network_mode: host
     restart: unless-stopped
@@ -20,5 +20,4 @@ services:
     #   - device_agent
     #   - sample_simulator
     environment:
-      - APP_KEY=test_app_key
-      - CONFIG_FP=/app/simulators/app_config.json
+      - APP_KEY=sia_local_control_ui-1

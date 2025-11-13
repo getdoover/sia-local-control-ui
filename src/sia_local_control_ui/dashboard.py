@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
@@ -15,104 +15,133 @@ log = logging.getLogger(__name__)
 
 class DashboardData:
     """Container for dashboard data with validation and default values."""
-    
+
     def __init__(self):
         # Pump Control Data
         self.target_rate: float = 0.0
         self.flow_rate: float = 0.0
         self.pump_state: str = "standby"
-        
+
         # Pump 2 Control Data
         self.pump2_target_rate: float = 0.0
         self.pump2_flow_rate: float = 0.0
         self.pump2_pump_state: str = "standby"
-        
+
         # Solar Control Data
         self.battery_voltage: float = 0.0
         self.battery_percentage: float = 0.0
         self.panel_power: float = 0.0
         self.battery_ah: float = 0.0
-        
+
         # Tank Control Data
         self.tank_level_mm: float = 0.0
         self.tank_level_percent: float = 0.0
-        
+
         # Skid Control Data
         self.skid_flow: float = 0.0
         self.skid_pressure: float = 0.0
-        
+
         # System Data
         self.timestamp: datetime = datetime.now()
         self.system_status: str = "running"
-    
+
+        # Fault Data
+        self.faults = {
+            "hh_pressure": False,
+            "ll_tank_level": False,
+        }
+
+    @staticmethod
+    def _to_bool(value: Any, default: bool = False) -> bool:
+        """Convert a value to boolean with fallback."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes", "on"}
+        return default
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "pump": {
                 "target_rate": self.target_rate,
                 "flow_rate": self.flow_rate,
-                "pump_state": self.pump_state
+                "pump_state": self.pump_state,
             },
             "pump2": {
                 "target_rate": self.pump2_target_rate,
                 "flow_rate": self.pump2_flow_rate,
-                "pump_state": self.pump2_pump_state
+                "pump_state": self.pump2_pump_state,
             },
             "solar": {
                 "battery_voltage": self.battery_voltage,
                 "battery_percentage": self.battery_percentage,
                 "panel_power": self.panel_power,
-                "battery_ah": self.battery_ah
+                "battery_ah": self.battery_ah,
             },
             "tank": {
                 "tank_level_mm": self.tank_level_mm,
-                "tank_level_percent": self.tank_level_percent
+                "tank_level_percent": self.tank_level_percent,
             },
             "skid": {
                 "skid_flow": self.skid_flow,
-                "skid_pressure": self.skid_pressure
+                "skid_pressure": self.skid_pressure,
             },
             "system": {
                 "timestamp": self.timestamp.isoformat(),
-                "status": self.system_status
-            }
+                "status": self.system_status,
+            },
+            "faults": {
+                "hh_pressure": self.faults["hh_pressure"],
+                "ll_tank_level": self.faults["ll_tank_level"],
+            },
         }
-    
+
     def update_from_dict(self, data: Dict[str, Any]):
+        print(f"Updating dashboard data: {data}")
         """Update from dictionary with validation."""
         if "pump" in data:
             pump = data["pump"]
             self.target_rate = float(pump.get("target_rate", self.target_rate))
             self.flow_rate = float(pump.get("flow_rate", self.flow_rate))
             self.pump_state = str(pump.get("pump_state", self.pump_state))
-        
+
         if "pump2" in data:
             pump2 = data["pump2"]
             self.pump2_target_rate = float(pump2.get("target_rate", self.pump2_target_rate))
             self.pump2_flow_rate = float(pump2.get("flow_rate", self.pump2_flow_rate))
             self.pump2_pump_state = str(pump2.get("pump_state", self.pump2_pump_state))
-        
+
         if "solar" in data:
             solar = data["solar"]
             self.battery_voltage = float(solar.get("battery_voltage", self.battery_voltage))
             self.battery_percentage = float(solar.get("battery_percentage", self.battery_percentage))
             self.panel_power = float(solar.get("panel_power", self.panel_power))
             self.battery_ah = float(solar.get("battery_ah", self.battery_ah))
-        
+
         if "tank" in data:
             tank = data["tank"]
             self.tank_level_mm = float(tank.get("tank_level_mm", self.tank_level_mm))
             self.tank_level_percent = float(tank.get("tank_level_percent", self.tank_level_percent))
-        
+
         if "skid" in data:
             skid = data["skid"]
             self.skid_flow = float(skid.get("skid_flow", self.skid_flow))
             self.skid_pressure = float(skid.get("skid_pressure", self.skid_pressure))
-        
+
         if "system" in data:
             system = data["system"]
             self.system_status = str(system.get("status", self.system_status))
-        
+
+        if "faults" in data and isinstance(data["faults"], dict):
+            faults = data["faults"]
+            if "hh_pressure" in faults:
+                self.faults["hh_pressure"] = self._to_bool(faults["hh_pressure"], self.faults["hh_pressure"])
+            if "ll_tank_level" in faults:
+                self.faults["ll_tank_level"] = self._to_bool(faults["ll_tank_level"], self.faults["ll_tank_level"])
+
         self.timestamp = datetime.now()
 
 
@@ -287,7 +316,6 @@ class DashboardInterface:
         if self._server_thread and self._server_thread.is_alive():
             self._server_thread.join(timeout=5)
         log.info("Dashboard stopped")
-    
     def update_system_status(self, status: str):
         """Update system status."""
         self.dashboard.update_data(system={'status': status})
