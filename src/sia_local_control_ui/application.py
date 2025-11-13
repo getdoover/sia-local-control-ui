@@ -75,16 +75,16 @@ class SiaLocalControlUiApplication(Application):
             
             # Collect data from all solar controllers
             for solar_controller in self.config.solar_controllers.elements:
-                voltage = self.get_tag("b_voltage", solar_controller)
+                voltage = self.get_tag("b_voltage", solar_controller.value)
                 if voltage is not None:
                     battery_voltages.append(voltage)
                 percentage = self.get_tag("b_percent", solar_controller)
                 if percentage is not None:
                     battery_percentages.append(percentage)
-                panel_power = self.get_tag("panel_power", solar_controller)
+                panel_power = self.get_tag("panel_power", solar_controller.value)
                 if panel_power is not None:
                     panel_power_values.append(panel_power)
-                battery_ah = self.get_tag("remaining_ah", solar_controller)
+                battery_ah = self.get_tag("remaining_ah", solar_controller.value)
                 if battery_ah is not None:
                     battery_ah_values.append(battery_ah)
             
