@@ -11,6 +11,7 @@ class Dashboard {
         this.maxReconnectAttempts = 10;
         this.reconnectDelay = 2000;
         this.data = {};
+        this.connectionErrorElement = null;
         
         this.initializeElements();
         this.initializeSocket();
@@ -25,6 +26,14 @@ class Dashboard {
         this.targetRate = document.getElementById('target-rate').querySelector('.value');
         this.flowRate = document.getElementById('flow-rate').querySelector('.value');
         this.pumpState = document.getElementById('pump-state').querySelector('.state-value');
+        
+        // Pump 2 controls
+        this.targetRate2 = document.getElementById('target-rate-2').querySelector('.value');
+        this.flowRate2 = document.getElementById('flow-rate-2').querySelector('.value');
+        this.pumpState2 = document.getElementById('pump-state-2').querySelector('.state-value');
+        
+        // Valve control sections for selection
+        this.valveState = document.getElementById('valve-state').querySelector('.state-value');
         
         // Solar controls
         this.batteryVoltage = document.getElementById('battery-voltage').querySelector('.value');
@@ -50,10 +59,17 @@ class Dashboard {
         // Loading overlay
         this.loadingOverlay = document.getElementById('loading-overlay');
 
+        this.pumpControl1 = document.getElementById('pump-control-1');
+        this.pumpControl2 = document.getElementById('pump-control-2');
+        this.valveControl = document.getElementById('valve-control');
+
         // Fault popover
         this.faultPopover = document.getElementById('fault-popover');
         this.faultMessageList = document.getElementById('fault-message-list');
         this.faultInstructions = document.querySelector('.fault-popover-instructions');
+
+        // Valve control popup
+        this.valveControlPopup = document.getElementById('valve-control-popup');
     }
     
     initializeSocket() {
@@ -74,6 +90,7 @@ class Dashboard {
             this.reconnectAttempts = 0;
             this.updateConnectionStatus(true);
             this.hideLoadingOverlay();
+            this.hideConnectionError();
         });
         
         this.socket.on('disconnect', () => {
@@ -106,6 +123,18 @@ class Dashboard {
             console.error('Socket error:', error);
             this.showError(error.message || 'Unknown error occurred');
         });
+
+        this.socket.on('pump_selection_changed', (data) => {
+            console.log('Received pump selection change:', data);
+            if (data.selected_pump) {
+                this.setSelectedPump(data.selected_pump, true); // true = fromWebSocket
+            }
+        });
+
+        this.socket.on('valve_control_popup', (data) => {
+            console.log('Received valve control popup event');
+            this.showValveControlPopup();
+        });
     }
     
     setupEventListeners() {
@@ -135,11 +164,56 @@ class Dashboard {
             this.connectionStatus.className = 'status-disconnected';
         }
     }
+
+    setSelectedPump(pumpNumber, fromWebSocket = false) {
+        if (pumpNumber === 1 || pumpNumber === 2 || pumpNumber === 3){
+            this.selectedPump = pumpNumber;
+            this.updatePumpSelection();
+            console.log(`Selected pump set to: ${this.selectedPump}`);
+            
+            // Only emit WebSocket event if not called from WebSocket (to avoid loops)
+            if (!fromWebSocket && this.isConnected) {
+                this.socket.emit('pump_selection_changed', {
+                    selected_pump: this.selectedPump,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        } else {
+            console.error('Invalid pump number. Must be 0, 1 or 2.');
+        }
+        return this.selectedPump;
+    }
+
+    updatePumpSelection() {
+        // Remove selected class from both pumps
+        this.pumpControl1.classList.remove('selected-pump');
+        this.pumpControl2.classList.remove('selected-pump');
+        this.valveControl.classList.remove('selected-pump');
+        
+        // Add selected class to the currently selected pump
+        if (this.selectedPump === 1) {
+            this.pumpControl1.classList.add('selected-pump');
+        } else if (this.selectedPump === 2) {
+            this.pumpControl2.classList.add('selected-pump');
+        } else if (this.selectedPump === 3) {
+            this.valveControl.classList.add('selected-pump');
+        }
+    }
     
     updateDashboard(data) {
         // Update pump data
         if (data.pump) {
             this.updatePumpData(data.pump);
+        }
+        
+        // Update pump 2 data
+        if (data.pump2) {
+            this.updatePump2Data(data.pump2);
+        }
+
+        // Update valve data
+        if (data.valve) {
+            this.updateValveData(data.valve);
         }
         
         // Update solar data
@@ -160,6 +234,11 @@ class Dashboard {
         // Update system data
         if (data.system) {
             this.updateSystemData(data.system);
+        }
+
+        // Update selected pump/valve state
+        if (data.selector) {
+            this.setSelectedPump(data.selector.state);
         }
 
         // Update faults
@@ -184,6 +263,34 @@ class Dashboard {
         // Update pump state
         if (pumpData.pump_state !== undefined) {
             this.updatePumpState(pumpData.pump_state);
+        }
+    }
+    
+    updatePump2Data(pumpData) {
+        // Update target rate
+        if (pumpData.target_rate !== undefined) {
+            this.animateValueChange(this.targetRate2, pumpData.target_rate.toFixed(1));
+        }
+        
+        // Update flow rate
+        if (pumpData.flow_rate !== undefined) {
+            this.animateValueChange(this.flowRate2, pumpData.flow_rate.toFixed(1));
+        }
+        
+        // Update pump state
+        if (pumpData.pump_state !== undefined) {
+            this.updatePump2State(pumpData.pump_state);
+        }
+    }
+
+    updateValveData(valveData) {
+        // Update valve state
+        if (valveData.state !== undefined) {
+            if (valveData.state) {
+                this.updateValveState("closed");
+            } else {
+                this.updateValveState("opened");
+            }
         }
     }
     
@@ -246,7 +353,9 @@ class Dashboard {
     
     updatePumpState(state) {
         this.pumpState.textContent = state;
-        this.pumpState.className = `state-value ${state}`;
+        // Normalize state to lowercase for CSS class matching
+        const normalizedState = state.toLowerCase();
+        this.pumpState.className = `state-value ${normalizedState}`;
         
         // Update active button
         const buttons = document.querySelectorAll('.state-btn');
@@ -256,6 +365,20 @@ class Dashboard {
                 btn.classList.add('active');
             }
         });
+    }
+    
+    updatePump2State(state) {
+        this.pumpState2.textContent = state;
+        // Normalize state to lowercase for CSS class matching
+        const normalizedState = state.toLowerCase();
+        this.pumpState2.className = `state-value ${normalizedState}`;
+    }
+
+    updateValveState(state) {
+        this.valveState.textContent = state;
+        // Normalize state to lowercase for CSS class matching
+        const normalizedState = state.toLowerCase();
+        this.valveState.className = `state-value ${normalizedState}`;
     }
     
     updateProgressBar(progressBar, percentage) {
@@ -360,7 +483,17 @@ class Dashboard {
     }
     
     showConnectionError() {
-        this.showError('Unable to connect to dashboard server. Please check your connection.');
+        // Remove any existing connection error first
+        this.hideConnectionError();
+        // Store reference to the new error element
+        this.connectionErrorElement = this.showError('Unable to connect to dashboard server. Please check your connection.');
+    }
+    
+    hideConnectionError() {
+        if (this.connectionErrorElement && this.connectionErrorElement.parentNode) {
+            this.connectionErrorElement.parentNode.removeChild(this.connectionErrorElement);
+            this.connectionErrorElement = null;
+        }
     }
     
     showError(message) {
@@ -388,7 +521,13 @@ class Dashboard {
             if (errorDiv.parentNode) {
                 errorDiv.parentNode.removeChild(errorDiv);
             }
+            // Clear reference if this was the connection error
+            if (this.connectionErrorElement === errorDiv) {
+                this.connectionErrorElement = null;
+            }
         });
+        
+        return errorDiv;
     }
     
     // Public API methods
@@ -404,6 +543,22 @@ class Dashboard {
     
     isConnectedToServer() {
         return this.isConnected;
+    }
+    
+    showValveControlPopup() {
+        if (!this.valveControlPopup) {
+            return;
+        }
+        
+        // Show the popup
+        this.valveControlPopup.classList.remove('hidden');
+        
+        // Hide after 5 seconds
+        setTimeout(() => {
+            if (this.valveControlPopup) {
+                this.valveControlPopup.classList.add('hidden');
+            }
+        }, 5000);
     }
 }
 

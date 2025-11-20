@@ -28,8 +28,8 @@
             <div class="pump-skid-row">
                 <!-- Pump Control Section -->
                 <section class="control-section pump-section">
-                <h2><i class="fas fa-water"></i> Pump Control</h2>
-                <div class="controls-grid">
+                <h2><i class="fas fa-pump"></i> Pump Control</h2>
+                <div class="controls-grid" id="pump-control-1">
                     <div class="control-card">
                         <h3></h3>
                         <div class="value-display" id="pump-control-label">
@@ -58,31 +58,31 @@
                         </div>
                     </div>
                 </div>
-                <div class="controls-grid">
+                <div class="controls-grid" id="pump-control-2">
                     <div class="control-card">
                         <h3></h3>
-                        <div class="value-display" id="pump-control-label">
+                        <div class="value-display" id="pump-control-label-2">
                             <span class="value">Pump 2</span>
                             <span class="unit"></span>
                         </div>
                     </div>
                     <div class="control-card">
                         <h3>Target Rate 2</h3>
-                        <div class="value-display" id="target-rate">
+                        <div class="value-display" id="target-rate-2">
                             <span class="value">0.0</span>
                             <span class="unit">Gal/Hr</span>
                         </div>
                     </div>
                     <div class="control-card">
                         <h3>Flow Rate 2 </h3>
-                        <div class="value-display" id="flow-rate">
+                        <div class="value-display" id="flow-rate-2">
                             <span class="value">0.0</span>
                             <span class="unit">Gal/Hr</span>
                         </div>
                     </div>
                     <div class="control-card">
                         <h3>Pump State 2</h3>
-                        <div class="state-display" id="pump-state">
+                        <div class="state-display" id="pump-state-2">
                             <span class="state-value">standby</span>
                         </div>
                     </div>
@@ -113,6 +113,19 @@
 
             <!-- Secondary Controls Row - Solar and Tank in Column -->
             <div class="secondary-controls-row">
+                <!-- Valve Control Section -->
+                <section class="control-section valve-section">
+                    <h2><i class="fas fa-faucet"></i> Valve </h2>
+                    <div class="controls-grid" id="valve-control">
+                        <div class="control-card">
+                            <h3>Valve 1</h3>
+                            <div class="value-display" id="valve-state">
+                                <span class="state-value">Closed</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Solar Control Section -->
                 <section class="control-section solar-section">
                     <h2><i class="fas fa-solar-panel"></i> Solar System</h2>
@@ -183,7 +196,14 @@
         <div class="fault-popover-content">
             <h2>Fault Detected</h2>
             <ul id="fault-message-list"></ul>
-            <p class="fault-popover-instructions">Press the selector button to clear the faults.</p>
+            <p class="fault-popover-instructions">Press the start button to clear the faults.</p>
+        </div>
+    </div>
+
+    <div id="valve-control-popup" class="valve-control-popup hidden">
+        <div class="valve-control-popup-content">
+            <p class="valve-popup-main">Valve Control Disabled</p>
+            <p class="valve-popup-sub">Calibration in progress...</p>
         </div>
     </div>
 
@@ -193,6 +213,11 @@
             <i class="fas fa-spinner fa-spin"></i>
             <p>Connecting to dashboard...</p>
         </div>
+    </div>
+
+    <!-- Footer Logo -->
+    <div class="footer-logo">
+        <img src="{{ url_for('static', filename='Doover Logo - Landscape - Frost White.svg') }}" alt="Doover Logo">
     </div>
 
     <!-- Scripts -->

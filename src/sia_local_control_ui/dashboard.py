@@ -44,6 +44,12 @@ class DashboardData:
         # System Data
         self.timestamp: datetime = datetime.now()
         self.system_status: str = "running"
+        
+        # Selector Data
+        self.selector: int = 0
+        
+        # Valve Control Data
+        self.valve_control_state: bool = False
 
         # Fault Data
         self.faults = {
@@ -75,6 +81,12 @@ class DashboardData:
                 "flow_rate": self.pump2_flow_rate,
                 "pump_state": self.pump2_pump_state,
             },
+            "selector": {
+                "state": self.selector,
+            },
+            "valve": {
+                "state": self.valve_control_state,
+            },
             "solar": {
                 "battery_voltage": self.battery_voltage,
                 "battery_percentage": self.battery_percentage,
@@ -100,7 +112,6 @@ class DashboardData:
         }
 
     def update_from_dict(self, data: Dict[str, Any]):
-        print(f"Updating dashboard data: {data}")
         """Update from dictionary with validation."""
         if "pump" in data:
             pump = data["pump"]
@@ -134,6 +145,14 @@ class DashboardData:
         if "system" in data:
             system = data["system"]
             self.system_status = str(system.get("status", self.system_status))
+            
+        if "selector" in data:
+            selector = data["selector"]
+            self.selector = int(selector.get("state", self.selector))
+
+        if "valve" in data:
+            valve = data["valve"]
+            self.valve_control_state = bool(valve.get("state", self.valve_control_state))
 
         if "faults" in data and isinstance(data["faults"], dict):
             faults = data["faults"]
@@ -249,6 +268,12 @@ class SiaDashboard:
         except Exception as e:
             log.error(f"Error updating dashboard data: {e}")
     
+    def show_valve_control_popup(self):
+        """Emit valve control popup event to all connected clients."""
+        if self.connected_clients:
+            self.socketio.emit('valve_control_popup', {})
+            log.info("Valve control popup event emitted")
+    
     def start(self):
         """Start the dashboard server."""
         log.info(f"Starting SIA Dashboard on {self.host}:{self.port}")
@@ -319,3 +344,11 @@ class DashboardInterface:
     def update_system_status(self, status: str):
         """Update system status."""
         self.dashboard.update_data(system={'status': status})
+        
+    def update_selector_state(self, state: str):
+        """Update selector state."""
+        self.dashboard.update_data(selector={'state': state})
+    
+    async def valve_control_popup(self):
+        """Trigger valve control popup on dashboard."""
+        self.dashboard.show_valve_control_popup()
