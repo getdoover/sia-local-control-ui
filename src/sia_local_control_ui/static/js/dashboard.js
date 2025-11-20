@@ -406,11 +406,15 @@ class Dashboard {
         }
 
         const messages = [];
+        const instructions = [];
+        
         if (faultData.hh_pressure) {
             messages.push('High High Pressure Tripped the Pumps!');
+            instructions.push('Reduce system pressure to clear the alarm');
         }
         if (faultData.ll_tank_level) {
             messages.push('Low Low Tank Level Tripped the Pumps! - Fill Tank');
+            instructions.push('Please refill the tank');
         }
 
         this.faultMessageList.innerHTML = '';
@@ -423,7 +427,8 @@ class Dashboard {
             });
 
             if (this.faultInstructions) {
-                this.faultInstructions.textContent = 'Press the selector button to clear the faults.';
+                // Show combined instructions if multiple faults, or single instruction
+                this.faultInstructions.textContent = instructions.join('. ') + '.';
             }
 
             this.faultPopover.classList.remove('hidden');

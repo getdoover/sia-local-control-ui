@@ -93,10 +93,6 @@ class SiaLocalControlUiApplication(Application):
         p1_sel = await self.get_ai(self.pump_1_selector)
         p2_sel = await self.get_ai(self.pump_2_selector)
         
-        print("p1_sel: ", p1_sel)
-        print("p2_sel: ", p2_sel)
-        
-        
         if p1_sel < 5 and p2_sel < 5:
             self.selector_state = 3
         elif p1_sel < 5 and p2_sel >= 5:
@@ -107,27 +103,27 @@ class SiaLocalControlUiApplication(Application):
             self.selector_state = 0
         self.dashboard_interface.update_selector_state(self.selector_state)
         
-        self.p1_selector_hi_lstn = self.platform_iface.start_di_pulse_listener(
-            self.pump_1_selector, 
-            self.p_selector_hi_callback,
-            edge="VI+10")
+        # self.p1_selector_hi_lstn = self.platform_iface.start_di_pulse_listener(
+        #     self.pump_1_selector, 
+        #     self.p_selector_hi_callback,
+        #     edge="VI+10")
         
-        self.p2_selector_hi_lstn = self.platform_iface.start_di_pulse_listener(
-            self.pump_2_selector, 
-            self.p_selector_hi_callback,
-            edge="VI+10"
-        )
+        # self.p2_selector_hi_lstn = self.platform_iface.start_di_pulse_listener(
+        #     self.pump_2_selector, 
+        #     self.p_selector_hi_callback,
+        #     edge="VI+10"
+        # )
         
-        self.p1_selector_lo_lstn = self.platform_iface.start_di_pulse_listener(
-            self.pump_1_selector, 
-            self.p_selector_lo_callback,
-            edge="VI-10")
+        # self.p1_selector_lo_lstn = self.platform_iface.start_di_pulse_listener(
+        #     self.pump_1_selector, 
+        #     self.p_selector_lo_callback,
+        #     edge="VI-10")
         
-        self.p2_selector_lo_lstn = self.platform_iface.start_di_pulse_listener(
-            self.pump_2_selector, 
-            self.p_selector_lo_callback,
-            edge="VI-10"
-        )
+        # self.p2_selector_lo_lstn = self.platform_iface.start_di_pulse_listener(
+        #     self.pump_2_selector, 
+        #     self.p_selector_lo_callback,
+        #     edge="VI-10"
+        # )
         
     async def p_selector_hi_callback(self, di, val, dt_secs, counter, edge):
         if di == self.pump_1_selector:
@@ -159,6 +155,21 @@ class SiaLocalControlUiApplication(Application):
         """Update dashboard with data from various sources."""
         
         update_data = {}
+        
+        p1_slt_state = self.get_tag(f"AI{self.pump_1_selector}", "platform")
+        p2_slt_state = self.get_tag(f"AI{self.pump_2_selector}", "platform")
+        
+        if p1_slt_state <= 5 and p2_slt_state <= 5:
+            self.selector_state = 3
+        elif p1_slt_state < 5 and p2_slt_state >= 5:
+            self.selector_state = 2
+        elif p1_slt_state >= 5 and p2_slt_state < 5:
+            self.selector_state = 1
+        else:
+            self.selector_state = 0
+        # if self.pump_1_selector is not None and self.pump_2_selector is not None:
+        update_data["selector"] = { "state": self.selector_state }
+        
             # Get pump control data from simulators
         update_data["pump"] = {
             "target_rate": self.get_tag("TargetRate", self.config.pump_controllers.elements[0].value),
@@ -183,15 +194,27 @@ class SiaLocalControlUiApplication(Application):
         if valv_ctrl_state is not None:
             self.valve_control_state = valv_ctrl_state
         update_data["valve"] = { "state": self.valve_control_state }
-        # if self.pump_1_selector is not None and self.pump_2_selector is not None:
-        update_data["selector"] = { "state": self.selector_state }
+        
         
         self.pump_1_state = self.get_tag("AppState", self.config.pump_controllers.elements[0].value)
         self.pump_2_state = self.get_tag("AppState", self.config.pump_controllers.elements[1].value)
+        
+        # Initialize faults dict if not already present
+        if "faults" not in update_data:
+            update_data["faults"] = {}
+        
+        # Set or clear low low tank level fault
         if "tank_level_low_low_level" in [self.pump_1_state, self.pump_2_state]:
-            update_data["faults"] = { "ll_tank_level": True }
-        if "tank_level_high_high_level" in [self.pump_1_state, self.pump_2_state]:
-            update_data["faults"] = { "hh_pressure": True }
+            update_data["faults"]["ll_tank_level"] = True
+        else:
+            update_data["faults"]["ll_tank_level"] = False
+        
+        # Set or clear high high pressure fault
+        if "pressure_high_high_level" in [self.pump_1_state, self.pump_2_state]:
+            update_data["faults"]["hh_pressure"] = True
+        else:
+            update_data["faults"]["hh_pressure"] = False
+            
         
         # Get and aggregate solar control data from all simulators
         battery_voltage = None
@@ -254,14 +277,13 @@ class SiaLocalControlUiApplication(Application):
 
         tank_data = {}
         if tank_level_mm is not None:
-            tank_data["tank_level_mm"] = tank_level_mm
+            tank_data["tank_level_mm"] = tank_level_mm*1000
         if tank_level_percent is not None:
             tank_data["tank_level_percent"] = tank_level_percent
 
         if tank_data:
             update_data["tank"] = tank_data
 
-        
         skid_flow = None
         skid_pressure = None
         if self.config.flow_sensor_app:
