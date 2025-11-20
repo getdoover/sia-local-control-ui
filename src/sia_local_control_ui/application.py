@@ -190,7 +190,7 @@ class SiaLocalControlUiApplication(Application):
                 "pump_state": pump2_pump_state
             }
         
-        valv_ctrl_state = self.get_tag(f"DO{self.valve_control_pin}","platform")
+        valv_ctrl_state = await self.get_do(self.valve_control_pin)
         if valv_ctrl_state is not None:
             self.valve_control_state = valv_ctrl_state
         update_data["valve"] = { "state": self.valve_control_state }
@@ -233,7 +233,7 @@ class SiaLocalControlUiApplication(Application):
                 voltage = self.get_tag("b_voltage", solar_controller.value)
                 if voltage is not None:
                     battery_voltages.append(voltage)
-                percentage = self.get_tag("b_percent", solar_controller)
+                percentage = self.get_tag("b_percent", solar_controller.value)
                 if percentage is not None:
                     battery_percentages.append(percentage)
                 panel_power = self.get_tag("panel_power", solar_controller.value)
