@@ -9,7 +9,7 @@
         "long_description": "README.md",
         "depends_on": [],
         "owner_org_key": "36a22e32-ab81-4a39-b400-869d532a052d",
-        "image_name": "ghcr.io/getdoover/sia-local-control-ui:main",
+        "image_name": "ghcr.io/getdoover/sia-local-control:main",
         "container_registry_profile_key": "88953909-e9c4-4f81-9ec0-56239d4b0a2e",
         "build_args": "--platform linux/amd64,linux/arm64",
         "config_schema": {
