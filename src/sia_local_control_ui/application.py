@@ -156,8 +156,10 @@ class SiaLocalControlUiApplication(Application):
         
         update_data = {}
         
-        p1_slt_state = self.get_tag(f"AI{self.pump_1_selector}", "platform")
-        p2_slt_state = self.get_tag(f"AI{self.pump_2_selector}", "platform")
+        # p1_slt_state = self.get_tag(f"AI{self.pump_1_selector}", "platform")
+        # p2_slt_state = self.get_tag(f"AI{self.pump_2_selector}", "platform")
+        p1_slt_state, p2_slt_state = await self.get_ai(self.pump_1_selector, self.pump_2_selector)
+        # p2_slt_state = await self.get_ai(self.pump_2_selector)
         
         if p1_slt_state <= 5 and p2_slt_state <= 5:
             self.selector_state = 3
