@@ -386,9 +386,9 @@ class Dashboard {
         
         // Update color based on percentage
         progressBar.className = 'progress-fill';
-        if (percentage < 25) {
+        if (percentage < 5) {
             progressBar.classList.add('low');
-        } else if (percentage < 75) {
+        } else if (percentage < 25) {
             progressBar.classList.add('medium');
         }
     }
