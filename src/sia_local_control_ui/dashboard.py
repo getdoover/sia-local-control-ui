@@ -3,7 +3,7 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from flask import Flask, render_template, request
@@ -42,7 +42,7 @@ class DashboardData:
         self.skid_pressure: float = 0.0
 
         # System Data
-        self.timestamp: datetime = datetime.now()
+        self.timestamp: datetime = datetime.now(timezone.utc)
         self.system_status: str = "running"
         
         # Selector Data
@@ -161,7 +161,7 @@ class DashboardData:
             if "ll_tank_level" in faults:
                 self.faults["ll_tank_level"] = self._to_bool(faults["ll_tank_level"], self.faults["ll_tank_level"])
 
-        self.timestamp = datetime.now()
+        self.timestamp = datetime.now(timezone.utc)
 
 
 class SiaDashboard:
@@ -210,7 +210,7 @@ class SiaDashboard:
         @self.app.route('/api/health')
         def health():
             """Health check endpoint."""
-            return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+            return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
     
     def _setup_socket_events(self):
         """Setup WebSocket event handlers."""
@@ -243,7 +243,7 @@ class SiaDashboard:
             try:
                 if 'state' in data:
                     self.data.pump_state = str(data['state'])
-                    self.data.timestamp = datetime.now()
+                    self.data.timestamp = datetime.now(timezone.utc)
                     log.info(f"Pump state changed to: {self.data.pump_state}")
                     
                     # Broadcast update to all clients
@@ -291,7 +291,7 @@ class SiaDashboard:
         while self._running:
             try:
                 # Update system timestamp
-                self.data.timestamp = datetime.now()
+                self.data.timestamp = datetime.now(timezone.utc)
                 
                 # Send periodic heartbeat to clients
                 if self.connected_clients:

@@ -111,7 +111,9 @@ class Dashboard {
             console.log('Received data update:', data);
             this.data = data;
             this.updateDashboard(data);
-            this.updateLastUpdateTime();
+            // Extract timestamp from system data if available
+            const timestamp = data.system?.timestamp || null;
+            this.updateLastUpdateTime(timestamp);
         });
         
         this.socket.on('heartbeat', (data) => {
@@ -448,8 +450,32 @@ class Dashboard {
     }
     
     updateLastUpdateTime(timestamp) {
-        const time = timestamp ? new Date(timestamp) : new Date();
-        this.lastUpdate.textContent = time.toLocaleTimeString();
+        if (timestamp) {
+            // Parse the timestamp - server sends UTC timestamps with timezone info
+            const time = new Date(timestamp);
+            // Check if date is valid
+            if (isNaN(time.getTime())) {
+                console.warn('Invalid timestamp received:', timestamp);
+                return;
+            }
+            // Use toLocaleTimeString with explicit options to ensure consistent formatting
+            // This converts UTC to local timezone for display
+            this.lastUpdate.textContent = time.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+        } else {
+            // Fallback to current time if no timestamp provided
+            const time = new Date();
+            this.lastUpdate.textContent = time.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+        }
     }
     
     changePumpState(state) {
