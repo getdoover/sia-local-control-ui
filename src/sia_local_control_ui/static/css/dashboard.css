@@ -112,6 +112,7 @@ body {
     grid-template-columns: 1fr 4fr 2fr;
     gap: 10px; /* clamp(15px, 3vw, 30px); */
     flex-shrink: 0;
+    margin-b
 }
 
 /* Control sections */
@@ -156,10 +157,22 @@ body {
 }
 
 /* Selected pump highlighting */
+.controls-grid {
+    border: 4px solid transparent;
+    border-radius: 10px;
+    box-shadow: 0 0 0 3px transparent;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+}
+
 .controls-grid.selected-pump {
     border: 4px solid #ff8c00;
     border-radius: 10px;
     box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.2);
+}
+
+/* Spacing between pump control sections */
+#pump-control-1 {
+    margin-bottom: 3px;
 }
 
 /* Control cards */
@@ -500,7 +513,7 @@ body {
     }
     
     .control-section {
-        padding: clamp(8px, 1.5vw, 15px);
+        padding: 12px;
     }
     
     .control-section h2 {
@@ -611,7 +624,7 @@ body {
     left: 50%;
     transform: translateX(-50%);
     z-index: 100;
-    padding: 10px;
+    padding: 5px;
     text-align: center;
 }
 

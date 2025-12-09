@@ -143,23 +143,14 @@ class SiaLocalControlUiApplication(Application):
                 log.info("Valve Selected")
                 self.selector_state = 3
     async def main_loop(self):
-        
-        # self.get_tag("flow_rate", self.config.flow_sensor_app.value)
-        # self.get_tag("pressure", self.config.pressure_sensor_app.value)
-        # self.get_tag("tank_level", self.config.tank_level_app.value)
-        # a random value we set inside our simulator. Go check it out in simulators/sample!
         # Update dashboard with example data
         await self.update_dashboard_data()
     
-    async def update_dashboard_data(self):
-        """Update dashboard with data from various sources."""
-        
+    async def update_dashboard_data(self): 
         update_data = {}
         
-        # p1_slt_state = self.get_tag(f"AI{self.pump_1_selector}", "platform")
-        # p2_slt_state = self.get_tag(f"AI{self.pump_2_selector}", "platform")
         p1_slt_state, p2_slt_state = await self.get_ai([self.pump_1_selector, self.pump_2_selector])
-        # p2_slt_state = await self.get_ai(self.pump_2_selector)
+
         
         if p1_slt_state <= 5 and p2_slt_state <= 5:
             self.selector_state = 3
@@ -197,7 +188,6 @@ class SiaLocalControlUiApplication(Application):
             self.valve_control_state = valv_ctrl_state
         update_data["valve"] = { "state": self.valve_control_state }
         
-        
         self.pump_1_state = self.get_tag("AppState", self.config.pump_controllers.elements[0].value)
         self.pump_2_state = self.get_tag("AppState", self.config.pump_controllers.elements[1].value)
         
@@ -217,7 +207,6 @@ class SiaLocalControlUiApplication(Application):
         else:
             update_data["faults"]["hh_pressure"] = False
             
-        
         # Get and aggregate solar control data from all simulators
         battery_voltage = None
         battery_percentage = None
