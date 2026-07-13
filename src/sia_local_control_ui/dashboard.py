@@ -1,354 +1,175 @@
-import asyncio
-import json
+"""Flask + Flask-SocketIO touchscreen server for the SIA local HMI.
+
+The application feeds it a status payload each loop (:meth:`SiaDashboard.update_data`)
+which is broadcast to connected touchscreens. Operator actions on the screen
+arrive as ``command`` socket events; those are marshalled back onto the app's
+asyncio loop via ``command_handler`` (an injected blocking bridge), which issues
+the real Doover RPC to the controller and returns an ack/err the JS turns into a
+spinner + success/error toast.
+"""
+
 import logging
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Callable, Optional
 
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
-import socketio
 
 log = logging.getLogger(__name__)
 
 
-class DashboardData:
-    """Container for dashboard data with validation and default values."""
-
-    def __init__(self):
-        # Pump Control Data
-        self.target_rate: float = 0.0
-        self.flow_rate: float = 0.0
-        self.pump_state: str = "standby"
-
-        # Pump 2 Control Data
-        self.pump2_target_rate: float = 0.0
-        self.pump2_flow_rate: float = 0.0
-        self.pump2_pump_state: str = "standby"
-
-        # Solar Control Data
-        self.battery_voltage: float = 0.0
-        self.battery_percentage: float = 0.0
-        self.panel_power: float = 0.0
-        self.battery_ah: float = 0.0
-
-        # Tank Control Data
-        self.tank_level_mm: float = 0.0
-        self.tank_level_percent: float = 0.0
-
-        # Skid Control Data
-        self.skid_flow: float = 0.0
-        self.skid_pressure: float = 0.0
-
-        # System Data
-        self.timestamp: datetime = datetime.now(timezone.utc)
-        self.system_status: str = "running"
-        
-        # Selector Data
-        self.selector: int = 0
-        
-        # Valve Control Data
-        self.valve_control_state: bool = False
-
-        # Fault Data
-        self.faults = {
-            "hh_pressure": False,
-            "ll_tank_level": False,
-        }
-
-    @staticmethod
-    def _to_bool(value: Any, default: bool = False) -> bool:
-        """Convert a value to boolean with fallback."""
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value != 0
-        if isinstance(value, str):
-            return value.strip().lower() in {"true", "1", "yes", "on"}
-        return default
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "pump": {
-                "target_rate": self.target_rate,
-                "flow_rate": self.flow_rate,
-                "pump_state": self.pump_state,
-            },
-            "pump2": {
-                "target_rate": self.pump2_target_rate,
-                "flow_rate": self.pump2_flow_rate,
-                "pump_state": self.pump2_pump_state,
-            },
-            "selector": {
-                "state": self.selector,
-            },
-            "valve": {
-                "state": self.valve_control_state,
-            },
-            "solar": {
-                "battery_voltage": self.battery_voltage,
-                "battery_percentage": self.battery_percentage,
-                "panel_power": self.panel_power,
-                "battery_ah": self.battery_ah,
-            },
-            "tank": {
-                "tank_level_mm": self.tank_level_mm,
-                "tank_level_percent": self.tank_level_percent,
-            },
-            "skid": {
-                "skid_flow": self.skid_flow,
-                "skid_pressure": self.skid_pressure,
-            },
-            "system": {
-                "timestamp": self.timestamp.isoformat(),
-                "status": self.system_status,
-            },
-            "faults": {
-                "hh_pressure": self.faults["hh_pressure"],
-                "ll_tank_level": self.faults["ll_tank_level"],
-            },
-        }
-
-    def update_from_dict(self, data: Dict[str, Any]):
-        """Update from dictionary with validation."""
-        if "pump" in data:
-            pump = data["pump"]
-            self.target_rate = float(pump.get("target_rate", self.target_rate))
-            self.flow_rate = float(pump.get("flow_rate", self.flow_rate))
-            self.pump_state = str(pump.get("pump_state", self.pump_state))
-
-        if "pump2" in data:
-            pump2 = data["pump2"]
-            self.pump2_target_rate = float(pump2.get("target_rate", self.pump2_target_rate))
-            self.pump2_flow_rate = float(pump2.get("flow_rate", self.pump2_flow_rate))
-            self.pump2_pump_state = str(pump2.get("pump_state", self.pump2_pump_state))
-
-        if "solar" in data:
-            solar = data["solar"]
-            self.battery_voltage = float(solar.get("battery_voltage", self.battery_voltage))
-            self.battery_percentage = float(solar.get("battery_percentage", self.battery_percentage))
-            self.panel_power = float(solar.get("panel_power", self.panel_power))
-            self.battery_ah = float(solar.get("battery_ah", self.battery_ah))
-
-        if "tank" in data:
-            tank = data["tank"]
-            self.tank_level_mm = float(tank.get("tank_level_mm", self.tank_level_mm))
-            self.tank_level_percent = float(tank.get("tank_level_percent", self.tank_level_percent))
-
-        if "skid" in data:
-            skid = data["skid"]
-            self.skid_flow = float(skid.get("skid_flow", self.skid_flow))
-            self.skid_pressure = float(skid.get("skid_pressure", self.skid_pressure))
-
-        if "system" in data:
-            system = data["system"]
-            self.system_status = str(system.get("status", self.system_status))
-            
-        if "selector" in data:
-            selector = data["selector"]
-            self.selector = int(selector.get("state", self.selector))
-
-        if "valve" in data:
-            valve = data["valve"]
-            self.valve_control_state = bool(valve.get("state", self.valve_control_state))
-
-        if "faults" in data and isinstance(data["faults"], dict):
-            faults = data["faults"]
-            if "hh_pressure" in faults:
-                self.faults["hh_pressure"] = self._to_bool(faults["hh_pressure"], self.faults["hh_pressure"])
-            if "ll_tank_level" in faults:
-                self.faults["ll_tank_level"] = self._to_bool(faults["ll_tank_level"], self.faults["ll_tank_level"])
-
-        self.timestamp = datetime.now(timezone.utc)
-
-
 class SiaDashboard:
-    """Flask dashboard with WebSocket support for SIA Local Control UI."""
-    
-    def __init__(self, host: str = "0.0.0.0", port: int = 8091, debug: bool = False):
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: int = 8091,
+        secret_key: str = "sia_local_control_ui",
+        command_handler: Optional[Callable[[str, Any], dict]] = None,
+    ):
         self.host = host
         self.port = port
-        self.debug = debug
-        
-        # Create Flask app
-        self.app = Flask(__name__, 
-                        template_folder='templates',
-                        static_folder='static')
-        self.app.config['SECRET_KEY'] = 'sia_dashboard_secret_key'
-        
-        # Create SocketIO instance
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
-        
-        # Dashboard data container
-        self.data = DashboardData()
-        
-        # Connection tracking
-        self.connected_clients = set()
-        
-        # Setup routes and event handlers
+        # Blocking bridge (cmd, value) -> {"ok": bool, ...}. Injected by the app.
+        self.command_handler = command_handler
+
+        self.app = Flask(__name__, template_folder="templates", static_folder="static")
+        self.app.config["SECRET_KEY"] = secret_key
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode="threading")
+
+        # Latest status payload broadcast to clients.
+        self.data: dict = {"pumps": [], "faults": [], "link_ok": False}
+        self.connected_clients: set = set()
+
         self._setup_routes()
         self._setup_socket_events()
-        
-        # Background thread for data updates
-        self._update_thread = None
+
+        self._update_thread: Optional[threading.Thread] = None
         self._running = False
-    
+
+    # -- routes -------------------------------------------------------------
     def _setup_routes(self):
-        """Setup Flask routes."""
-        
-        @self.app.route('/')
+        @self.app.route("/")
         def index():
-            return render_template('dashboard.html')
-        
-        @self.app.route('/api/data')
+            return render_template("dashboard.html")
+
+        @self.app.route("/api/data")
         def get_data():
-            """REST API endpoint to get current data."""
-            return self.data.to_dict()
-        
-        @self.app.route('/api/health')
+            return self._payload()
+
+        @self.app.route("/api/health")
         def health():
-            """Health check endpoint."""
-            return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
-    
+            return {"status": "healthy", "timestamp": _now_iso()}
+
+    def _payload(self) -> dict:
+        out = dict(self.data)
+        out["timestamp"] = _now_iso()
+        return out
+
+    # -- socket events ------------------------------------------------------
     def _setup_socket_events(self):
-        """Setup WebSocket event handlers."""
-        
-        @self.socketio.on('connect')
+        @self.socketio.on("connect")
         def handle_connect():
-            """Handle client connection."""
             self.connected_clients.add(request.sid)
-            log.info(f"Client connected: {request.sid}")
-            log.info(f"Total connected clients: {len(self.connected_clients)}")
-            
-            # Send current data to newly connected client
-            emit('data_update', self.data.to_dict())
-        
-        @self.socketio.on('disconnect')
+            log.info("Client connected: %s (total %d)", request.sid, len(self.connected_clients))
+            emit("data_update", self._payload())
+
+        @self.socketio.on("disconnect")
         def handle_disconnect():
-            """Handle client disconnection."""
             self.connected_clients.discard(request.sid)
-            log.info(f"Client disconnected: {request.sid}")
-            log.info(f"Total connected clients: {len(self.connected_clients)}")
-        
-        @self.socketio.on('request_data')
-        def handle_data_request():
-            """Handle explicit data request from client."""
-            emit('data_update', self.data.to_dict())
-        
-        @self.socketio.on('set_pump_state')
-        def handle_pump_state_change(data):
-            """Handle pump state change from client."""
+            log.info("Client disconnected: %s", request.sid)
+
+        @self.socketio.on("request_data")
+        def handle_request_data():
+            emit("data_update", self._payload())
+
+        @self.socketio.on("command")
+        def handle_command(data):
+            """Operator action -> controller RPC. Returns the ack to the client."""
+            cmd = (data or {}).get("cmd")
+            value = (data or {}).get("value")
+            if not cmd:
+                return {"ok": False, "code": "INVALID", "message": "missing command"}
+            if self.command_handler is None:
+                return {"ok": False, "code": "NOT_READY", "message": "command bridge not ready"}
             try:
-                if 'state' in data:
-                    self.data.pump_state = str(data['state'])
-                    self.data.timestamp = datetime.now(timezone.utc)
-                    log.info(f"Pump state changed to: {self.data.pump_state}")
-                    
-                    # Broadcast update to all clients
-                    self.broadcast_update()
-            except Exception as e:
-                log.error(f"Error handling pump state change: {e}")
-                emit('error', {'message': str(e)})
-    
+                log.info("Touchscreen command: %s=%r", cmd, value)
+                return self.command_handler(cmd, value)
+            except Exception as e:  # pragma: no cover - defensive
+                log.error("Error handling command %s: %s", cmd, e)
+                return {"ok": False, "code": "ERROR", "message": str(e)}
+
+    # -- broadcast ----------------------------------------------------------
     def broadcast_update(self):
-        """Broadcast data update to all connected clients."""
         if self.connected_clients:
-            self.socketio.emit('data_update', self.data.to_dict())
-    
-    def update_data(self, **kwargs):
-        """Update dashboard data and broadcast to clients."""
+            self.socketio.emit("data_update", self._payload())
+
+    def update_data(self, payload: dict):
         try:
-            # Update data container
-            if kwargs:
-                self.data.update_from_dict(kwargs)
+            if payload:
+                self.data = payload
                 self.broadcast_update()
-                log.debug(f"Dashboard data updated: {kwargs}")
         except Exception as e:
-            log.error(f"Error updating dashboard data: {e}")
-    
-    def show_valve_control_popup(self):
-        """Emit valve control popup event to all connected clients."""
-        if self.connected_clients:
-            self.socketio.emit('valve_control_popup', {})
-            log.info("Valve control popup event emitted")
-    
+            log.error("Error updating dashboard data: %s", e)
+
+    # -- lifecycle ----------------------------------------------------------
     def start(self):
-        """Start the dashboard server."""
-        log.info(f"Starting SIA Dashboard on {self.host}:{self.port}")
+        log.info("Starting SIA Dashboard on %s:%s", self.host, self.port)
         self._running = True
-        
-        # Start background update thread
         self._update_thread = threading.Thread(target=self._background_updates, daemon=True)
         self._update_thread.start()
-        
-        # Start Flask-SocketIO server (disable debug mode for threading compatibility)
-        self.socketio.run(self.app, host=self.host, port=self.port, debug=False, allow_unsafe_werkzeug=True)
-    
+        self.socketio.run(
+            self.app, host=self.host, port=self.port, debug=False, allow_unsafe_werkzeug=True
+        )
+
     def _background_updates(self):
-        """Background thread for periodic updates and health monitoring."""
         while self._running:
             try:
-                # Update system timestamp
-                self.data.timestamp = datetime.now(timezone.utc)
-                
-                # Send periodic heartbeat to clients
                 if self.connected_clients:
-                    self.socketio.emit('heartbeat', {'timestamp': self.data.timestamp.isoformat()})
-                
-                time.sleep(1)  # Update every second
+                    self.socketio.emit("heartbeat", {"timestamp": _now_iso()})
+                time.sleep(1)
             except Exception as e:
-                log.error(f"Error in background updates: {e}")
+                log.error("Error in background updates: %s", e)
                 time.sleep(5)
-    
+
     def stop(self):
-        """Stop the dashboard server."""
         log.info("Stopping SIA Dashboard")
         self._running = False
+        try:
+            self.socketio.stop()
+        except Exception as e:
+            log.debug("socketio.stop() raised (expected outside server context): %s", e)
         if self._update_thread and self._update_thread.is_alive():
             self._update_thread.join(timeout=5)
 
 
 class DashboardInterface:
-    """Interface class to integrate dashboard with Application class."""
-    
+    """Runs the dashboard in a daemon thread and exposes start/stop."""
+
     def __init__(self, dashboard: SiaDashboard):
         self.dashboard = dashboard
-        self._server_thread = None
-    
+        self._server_thread: Optional[threading.Thread] = None
+
     def start_dashboard(self):
-        """Start dashboard in a separate thread."""
         if self._server_thread and self._server_thread.is_alive():
             log.warning("Dashboard is already running")
             return
-        
-        self._server_thread = threading.Thread(target=self._dashboard_thread_start, daemon=True)
+        self._server_thread = threading.Thread(target=self._run, daemon=True)
         self._server_thread.start()
         log.info("Dashboard started in background thread")
-    
-    def _dashboard_thread_start(self):
-        """Thread-safe dashboard startup."""
+
+    def _run(self):
         try:
             self.dashboard.start()
         except Exception as e:
-            log.error(f"Dashboard startup failed: {e}")
-            # Dashboard will fall back gracefully
-    
+            log.error("Dashboard startup failed: %s", e)
+
     def stop_dashboard(self):
-        """Stop the dashboard."""
         self.dashboard.stop()
         if self._server_thread and self._server_thread.is_alive():
             self._server_thread.join(timeout=5)
         log.info("Dashboard stopped")
-    def update_system_status(self, status: str):
-        """Update system status."""
-        self.dashboard.update_data(system={'status': status})
-        
-    def update_selector_state(self, state: str):
-        """Update selector state."""
-        self.dashboard.update_data(selector={'state': state})
-    
-    async def valve_control_popup(self):
-        """Trigger valve control popup on dashboard."""
-        self.dashboard.show_valve_control_popup()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()

@@ -15,7 +15,7 @@
         "config_schema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "",
-            "title": "Application Config",
+            "title": "$default",
             "type": "object",
             "properties": {
                 "pump_controllers": {
@@ -23,68 +23,785 @@
                     "x-name": "pump_controllers",
                     "x-hidden": false,
                     "type": "array",
-                    "description": "List of pump controller applications",
+                    "x-required": true,
+                    "description": "Pump controller apps to display and control. The first is the primary (button/RPC target).",
+                    "x-position": 0,
                     "items": {
-                        "format": "doover-application",
                         "title": "Pump Controller",
                         "x-name": "pump_controller",
                         "x-hidden": false,
+                        "format": "doover-resource-application",
                         "type": "string",
-                        "description": "A pump controller application"
+                        "x-required": true,
+                        "description": "A sia_injection_controller application instance."
                     }
+                },
+                "state_tag": {
+                    "title": "State Tag",
+                    "x-name": "state_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller tag holding the machine state string.",
+                    "default": "StateString",
+                    "x-position": 1
+                },
+                "target_rate_tag": {
+                    "title": "Target Rate Tag",
+                    "x-name": "target_rate_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller tag holding the commanded dose rate.",
+                    "default": "TargetRate",
+                    "x-position": 2
+                },
+                "flow_rate_tag": {
+                    "title": "Flow Rate Tag",
+                    "x-name": "flow_rate_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller tag holding the measured flow rate.",
+                    "default": "FlowRate",
+                    "x-position": 3
+                },
+                "running_tag": {
+                    "title": "Running Tag",
+                    "x-name": "running_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller boolean tag: pump output energised.",
+                    "default": "Running",
+                    "x-position": 4
+                },
+                "fault_tag": {
+                    "title": "Fault Tag",
+                    "x-name": "fault_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller boolean tag: trip active.",
+                    "default": "Fault",
+                    "x-position": 5
+                },
+                "fault_reason_tag": {
+                    "title": "Fault Reason Tag",
+                    "x-name": "fault_reason_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller string tag: human-readable trip cause.",
+                    "default": "FaultReason",
+                    "x-position": 6
+                },
+                "start_button": {
+                    "title": "Start Button",
+                    "x-name": "start_button",
+                    "x-hidden": false,
+                    "type": "object",
+                    "x-required": true,
+                    "description": "Physical Start pushbutton. J5246: DI1.",
+                    "x-position": 7,
+                    "properties": {
+                        "source": {
+                            "enum": [
+                                "Disabled",
+                                "DI",
+                                "AI0",
+                                "AI1"
+                            ],
+                            "title": "Source",
+                            "x-name": "source",
+                            "x-hidden": false,
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "default": "DI",
+                            "x-position": 1
+                        },
+                        "pin": {
+                            "title": "Pin",
+                            "x-name": "pin",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Digital input pin number (used when Source is DI).",
+                            "default": 0,
+                            "x-position": 2,
+                            "minimum": 0
+                        },
+                        "threshold_voltage": {
+                            "title": "Threshold Voltage",
+                            "x-name": "threshold_voltage",
+                            "x-hidden": false,
+                            "type": [
+                                "number",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "default": 9.0,
+                            "x-position": 3,
+                            "minimum": 0.0
+                        },
+                        "invert": {
+                            "title": "Invert",
+                            "x-name": "invert",
+                            "x-hidden": false,
+                            "type": [
+                                "boolean",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Invert the boolean result (active-low input).",
+                            "default": false,
+                            "x-position": 4
+                        },
+                        "debounce_ms": {
+                            "title": "Debounce (ms)",
+                            "x-name": "debounce_ms",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "default": 50,
+                            "x-position": 5,
+                            "minimum": 0
+                        }
+                    },
+                    "additionalElements": true,
+                    "required": [],
+                    "x-collapsible": true,
+                    "x-defaultCollapsed": false
+                },
+                "stop_button": {
+                    "title": "Stop Button",
+                    "x-name": "stop_button",
+                    "x-hidden": false,
+                    "type": "object",
+                    "x-required": true,
+                    "description": "Physical Stop pushbutton. J5246: DI2.",
+                    "x-position": 8,
+                    "properties": {
+                        "source": {
+                            "enum": [
+                                "Disabled",
+                                "DI",
+                                "AI0",
+                                "AI1"
+                            ],
+                            "title": "Source",
+                            "x-name": "source",
+                            "x-hidden": false,
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "default": "DI",
+                            "x-position": 1
+                        },
+                        "pin": {
+                            "title": "Pin",
+                            "x-name": "pin",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Digital input pin number (used when Source is DI).",
+                            "default": 0,
+                            "x-position": 2,
+                            "minimum": 0
+                        },
+                        "threshold_voltage": {
+                            "title": "Threshold Voltage",
+                            "x-name": "threshold_voltage",
+                            "x-hidden": false,
+                            "type": [
+                                "number",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "default": 9.0,
+                            "x-position": 3,
+                            "minimum": 0.0
+                        },
+                        "invert": {
+                            "title": "Invert",
+                            "x-name": "invert",
+                            "x-hidden": false,
+                            "type": [
+                                "boolean",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Invert the boolean result (active-low input).",
+                            "default": false,
+                            "x-position": 4
+                        },
+                        "debounce_ms": {
+                            "title": "Debounce (ms)",
+                            "x-name": "debounce_ms",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "default": 50,
+                            "x-position": 5,
+                            "minimum": 0
+                        }
+                    },
+                    "additionalElements": true,
+                    "required": [],
+                    "x-collapsible": true,
+                    "x-defaultCollapsed": false
+                },
+                "flow_up_button": {
+                    "title": "Flow Up Button",
+                    "x-name": "flow_up_button",
+                    "x-hidden": false,
+                    "type": "object",
+                    "x-required": true,
+                    "description": "Physical Flow Up pushbutton. J5246: DI3.",
+                    "x-position": 9,
+                    "properties": {
+                        "source": {
+                            "enum": [
+                                "Disabled",
+                                "DI",
+                                "AI0",
+                                "AI1"
+                            ],
+                            "title": "Source",
+                            "x-name": "source",
+                            "x-hidden": false,
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "default": "DI",
+                            "x-position": 1
+                        },
+                        "pin": {
+                            "title": "Pin",
+                            "x-name": "pin",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Digital input pin number (used when Source is DI).",
+                            "default": 0,
+                            "x-position": 2,
+                            "minimum": 0
+                        },
+                        "threshold_voltage": {
+                            "title": "Threshold Voltage",
+                            "x-name": "threshold_voltage",
+                            "x-hidden": false,
+                            "type": [
+                                "number",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "default": 9.0,
+                            "x-position": 3,
+                            "minimum": 0.0
+                        },
+                        "invert": {
+                            "title": "Invert",
+                            "x-name": "invert",
+                            "x-hidden": false,
+                            "type": [
+                                "boolean",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Invert the boolean result (active-low input).",
+                            "default": false,
+                            "x-position": 4
+                        },
+                        "debounce_ms": {
+                            "title": "Debounce (ms)",
+                            "x-name": "debounce_ms",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "default": 50,
+                            "x-position": 5,
+                            "minimum": 0
+                        }
+                    },
+                    "additionalElements": true,
+                    "required": [],
+                    "x-collapsible": true,
+                    "x-defaultCollapsed": false
+                },
+                "flow_down_button": {
+                    "title": "Flow Down Button",
+                    "x-name": "flow_down_button",
+                    "x-hidden": false,
+                    "type": "object",
+                    "x-required": true,
+                    "description": "Physical Flow Down pushbutton. J5246: AI1 thresholded at 9V.",
+                    "x-position": 10,
+                    "properties": {
+                        "source": {
+                            "enum": [
+                                "Disabled",
+                                "DI",
+                                "AI0",
+                                "AI1"
+                            ],
+                            "title": "Source",
+                            "x-name": "source",
+                            "x-hidden": false,
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "default": "DI",
+                            "x-position": 1
+                        },
+                        "pin": {
+                            "title": "Pin",
+                            "x-name": "pin",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Digital input pin number (used when Source is DI).",
+                            "default": 0,
+                            "x-position": 2,
+                            "minimum": 0
+                        },
+                        "threshold_voltage": {
+                            "title": "Threshold Voltage",
+                            "x-name": "threshold_voltage",
+                            "x-hidden": false,
+                            "type": [
+                                "number",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "default": 9.0,
+                            "x-position": 3,
+                            "minimum": 0.0
+                        },
+                        "invert": {
+                            "title": "Invert",
+                            "x-name": "invert",
+                            "x-hidden": false,
+                            "type": [
+                                "boolean",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Invert the boolean result (active-low input).",
+                            "default": false,
+                            "x-position": 4
+                        },
+                        "debounce_ms": {
+                            "title": "Debounce (ms)",
+                            "x-name": "debounce_ms",
+                            "x-hidden": false,
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "default": 50,
+                            "x-position": 5,
+                            "minimum": 0
+                        }
+                    },
+                    "additionalElements": true,
+                    "required": [],
+                    "x-collapsible": true,
+                    "x-defaultCollapsed": false
+                },
+                "run_lamp_pin": {
+                    "title": "Run Lamp Pin",
+                    "x-name": "run_lamp_pin",
+                    "x-hidden": false,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Digital output for the green RUN lamp (J5246 DO3). Unset to disable.",
+                    "default": 3,
+                    "x-position": 11,
+                    "minimum": 0
+                },
+                "trip_lamp_pin": {
+                    "title": "Trip Lamp Pin",
+                    "x-name": "trip_lamp_pin",
+                    "x-hidden": false,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Digital output for the red TRIP lamp (J5246 DO4). Unset to disable.",
+                    "default": 4,
+                    "x-position": 12,
+                    "minimum": 0
+                },
+                "enable_pumpvalve_selector": {
+                    "title": "Enable Pump/Valve Selector",
+                    "x-name": "enable_pumpvalve_selector",
+                    "x-hidden": false,
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Legacy two-pump selector switch. Off for single-pump J5246 skids.",
+                    "default": false,
+                    "x-position": 13
+                },
+                "selector_threshold_voltage": {
+                    "title": "Selector Threshold Voltage",
+                    "x-name": "selector_threshold_voltage",
+                    "x-hidden": false,
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "AI voltage above which a selector position reads active.",
+                    "default": 5.0,
+                    "x-position": 14,
+                    "minimum": 0.0
+                },
+                "pump_1_selector_ai_pin": {
+                    "title": "Pump 1 Selector AI Pin",
+                    "x-name": "pump_1_selector_ai_pin",
+                    "x-hidden": false,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Analog input pin for the pump 1 selector (only used when the selector is enabled).",
+                    "default": null,
+                    "x-position": 15,
+                    "minimum": 0
+                },
+                "pump_2_selector_ai_pin": {
+                    "title": "Pump 2 Selector AI Pin",
+                    "x-name": "pump_2_selector_ai_pin",
+                    "x-hidden": false,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Analog input pin for the pump 2 selector (only used when the selector is enabled).",
+                    "default": null,
+                    "x-position": 16,
+                    "minimum": 0
+                },
+                "enable_valve_card": {
+                    "title": "Enable Valve Card",
+                    "x-name": "enable_valve_card",
+                    "x-hidden": false,
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Show the valve status card (legacy skids with a calibration valve). Off for J5246.",
+                    "default": false,
+                    "x-position": 17
                 },
                 "solar_controllers": {
                     "title": "Solar Controllers",
                     "x-name": "solar_controllers",
                     "x-hidden": false,
                     "type": "array",
-                    "description": "List of solar controller applications",
+                    "x-required": true,
+                    "description": "Solar controller apps whose battery/panel figures are aggregated on the dashboard.",
+                    "x-position": 18,
                     "items": {
-                        "format": "doover-application",
                         "title": "Solar Controller",
                         "x-name": "solar_controller",
                         "x-hidden": false,
+                        "format": "doover-resource-application",
                         "type": "string",
-                        "description": "A solar controller application"
+                        "x-required": true,
+                        "description": "A morningstar_prostar_app instance."
                     }
                 },
-                "flow_sensor_app": {
-                    "format": "doover-application",
-                    "title": "Flow Sensor App",
-                    "x-name": "flow_sensor_app",
-                    "x-hidden": false,
-                    "type": "string",
-                    "description": "A flow sensor application"
-                },
-                "pressure_sensor_app": {
-                    "format": "doover-application",
-                    "title": "Pressure Sensor App",
-                    "x-name": "pressure_sensor_app",
-                    "x-hidden": false,
-                    "type": "string",
-                    "description": "A pressure sensor application"
-                },
                 "tank_level_app": {
-                    "format": "doover-application",
                     "title": "Tank Level App",
                     "x-name": "tank_level_app",
                     "x-hidden": false,
-                    "type": "string",
-                    "description": "The tank level application"
+                    "format": "doover-resource-application",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "(Optional) tank level app for the tank card.",
+                    "default": null,
+                    "x-position": 19
+                },
+                "flow_sensor_app": {
+                    "title": "Flow Sensor App",
+                    "x-name": "flow_sensor_app",
+                    "x-hidden": false,
+                    "format": "doover-resource-application",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "(Optional) skid flow sensor app.",
+                    "default": null,
+                    "x-position": 20
+                },
+                "pressure_sensor_app": {
+                    "title": "Pressure Sensor App",
+                    "x-name": "pressure_sensor_app",
+                    "x-hidden": false,
+                    "format": "doover-resource-application",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "(Optional) skid pressure sensor app.",
+                    "default": null,
+                    "x-position": 21
+                },
+                "rate_units": {
+                    "title": "Rate Units",
+                    "x-name": "rate_units",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Units label shown against target/flow rate figures.",
+                    "default": "L/Hr",
+                    "x-position": 22
+                },
+                "pressure_units": {
+                    "title": "Pressure Units",
+                    "x-name": "pressure_units",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Units label shown against the skid pressure figure.",
+                    "default": "psi",
+                    "x-position": 23
+                },
+                "dashboard_port": {
+                    "title": "Dashboard Port",
+                    "x-name": "dashboard_port",
+                    "x-hidden": false,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "TCP port the Flask/SocketIO touchscreen server listens on.",
+                    "default": 8091,
+                    "x-position": 24,
+                    "minimum": 1,
+                    "maximum": 65535
+                },
+                "dashboard_secret_key": {
+                    "title": "Dashboard Secret Key",
+                    "x-name": "dashboard_secret_key",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Flask session secret key.",
+                    "default": "sia_local_control_ui",
+                    "x-position": 25
+                },
+                "button_poll_period_s": {
+                    "title": "Button Poll Period (s)",
+                    "x-name": "button_poll_period_s",
+                    "x-hidden": false,
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "How often physical pushbuttons are polled (lower = more responsive).",
+                    "default": 0.2,
+                    "x-position": 26,
+                    "minimum": 0.05
+                },
+                "rpc_timeout_s": {
+                    "title": "RPC Timeout (s)",
+                    "x-name": "rpc_timeout_s",
+                    "x-hidden": false,
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "How long an operator command waits for the controller to physically act.",
+                    "default": 20.0,
+                    "x-position": 27,
+                    "minimum": 1.0
                 }
             },
             "additionalElements": true,
             "required": [
                 "pump_controllers",
-                "solar_controllers",
-                "flow_sensor_app",
-                "pressure_sensor_app",
-                "tank_level_app"
+                "start_button",
+                "stop_button",
+                "flow_up_button",
+                "flow_down_button",
+                "solar_controllers"
             ]
         },
         "key": "c01f11da-53f8-4a22-ba00-8ffa1180cd92",
         "code_repo_key": null,
         "repo_branch": "main",
-        "staging_config": {}
+        "staging_config": {},
+        "ui_schema": {
+            "displayString": "$config.app().APP_DISPLAY_NAME",
+            "hidden": "$config.app().hidden:boolean:false:boolean:false",
+            "position": "$config.app().dv_app_position:number:100",
+            "icon": null,
+            "colour": null,
+            "defaultOpen": "$config.app().dv_app_default_open:boolean",
+            "type": "uiApplication",
+            "name": "$config.app().APP_KEY",
+            "children": {
+                "link_ok": {
+                    "name": "link_ok",
+                    "type": "uiVariable",
+                    "displayString": "Controller Link OK",
+                    "showActivity": true,
+                    "position": 51,
+                    "hidden": false,
+                    "varType": "bool",
+                    "currentValue": "$tag.app().LinkOk:boolean:false",
+                    "live": true
+                },
+                "controller_state": {
+                    "name": "controller_state",
+                    "type": "uiVariable",
+                    "displayString": "Pump State",
+                    "showActivity": true,
+                    "position": 52,
+                    "hidden": false,
+                    "varType": "string",
+                    "currentValue": "$tag.app().ControllerState:string:\"standby\"",
+                    "live": true
+                },
+                "target_rate": {
+                    "name": "target_rate",
+                    "type": "uiVariable",
+                    "displayString": "Target Rate",
+                    "showActivity": true,
+                    "position": 53,
+                    "hidden": false,
+                    "varType": "float",
+                    "currentValue": "$tag.app().TargetRate:number:0.0",
+                    "decPrecision": 2,
+                    "live": true
+                },
+                "flow_rate": {
+                    "name": "flow_rate",
+                    "type": "uiVariable",
+                    "displayString": "Flow Rate",
+                    "showActivity": true,
+                    "position": 54,
+                    "hidden": false,
+                    "varType": "float",
+                    "currentValue": "$tag.app().FlowRate:number:0.0",
+                    "decPrecision": 2,
+                    "live": true
+                },
+                "fault": {
+                    "name": "fault",
+                    "type": "uiVariable",
+                    "displayString": "Fault",
+                    "showActivity": true,
+                    "position": 55,
+                    "hidden": false,
+                    "varType": "bool",
+                    "currentValue": "$tag.app().Fault:boolean:false",
+                    "live": true
+                },
+                "fault_reason": {
+                    "name": "fault_reason",
+                    "type": "uiVariable",
+                    "displayString": "Fault Reason",
+                    "showActivity": true,
+                    "position": 56,
+                    "hidden": false,
+                    "varType": "string",
+                    "currentValue": "$tag.app().FaultReason:string:null",
+                    "live": true
+                }
+            }
+        }
     }
 }
