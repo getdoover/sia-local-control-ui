@@ -1,629 +1,257 @@
 /**
- * SIA Local Control Dashboard JavaScript
- * Handles WebSocket communication and UI updates
+ * SIA Local Control touchscreen HMI.
+ * Renders controller status pushed over SocketIO and turns operator actions
+ * into Doover RPC commands (with a loading spinner + success/error toast).
  */
 
 class Dashboard {
     constructor() {
         this.socket = null;
         this.isConnected = false;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 10;
-        this.reconnectDelay = 2000;
         this.data = {};
-        this.connectionErrorElement = null;
-        
-        this.initializeElements();
-        this.initializeSocket();
-        this.setupEventListeners();
-    }
-    
-    initializeElements() {
-        // Connection status
-        this.connectionStatus = document.getElementById('connection-status');
-        
-        // Pump controls
-        this.targetRate = document.getElementById('target-rate').querySelector('.value');
-        this.flowRate = document.getElementById('flow-rate').querySelector('.value');
-        this.pumpState = document.getElementById('pump-state').querySelector('.state-value');
-        
-        // Pump 2 controls
-        this.targetRate2 = document.getElementById('target-rate-2').querySelector('.value');
-        this.flowRate2 = document.getElementById('flow-rate-2').querySelector('.value');
-        this.pumpState2 = document.getElementById('pump-state-2').querySelector('.state-value');
-        
-        // Valve control sections for selection
-        this.valveState = document.getElementById('valve-state').querySelector('.state-value');
-        
-        // Solar controls
-        this.batteryVoltage = document.getElementById('battery-voltage').querySelector('.value');
-        this.batteryPercentage = document.getElementById('battery-percentage').querySelector('.value');
-        this.batteryProgress = document.getElementById('battery-progress');
-        this.arrayVoltage = document.getElementById('array-voltage').querySelector('.value');
-        this.batteryAh = document.getElementById('battery-ah').querySelector('.value');
-        
-        // Tank controls
-        this.tankLevelMm = document.getElementById('tank-level-mm').querySelector('.value');
-        this.tankLevelPercent = document.getElementById('tank-level-percent').querySelector('.value');
-        this.tankProgress = document.getElementById('tank-progress');
-        
-        // Skid controls
-        this.skidFlow = document.getElementById('skid-flow').querySelector('.value');
-        this.skidPressure = document.getElementById('skid-pressure').querySelector('.value');
-        
-        this.systemStatus = document.getElementById('system-status')?.querySelector('.status-value');
-        
-        // Footer
-        this.lastUpdate = document.getElementById('last-update');
-        
-        // Loading overlay
-        this.loadingOverlay = document.getElementById('loading-overlay');
+        this.units = { rate: 'L/Hr', pressure: 'psi' };
 
-        this.pumpControl1 = document.getElementById('pump-control-1');
-        this.pumpControl2 = document.getElementById('pump-control-2');
-        this.valveControl = document.getElementById('valve-control');
+        this.el = {
+            connection: document.getElementById('connection-status'),
+            lastUpdate: document.getElementById('last-update'),
+            pumpCards: document.getElementById('pump-cards'),
+            loading: document.getElementById('loading-overlay'),
+            cmdOverlay: document.getElementById('command-overlay'),
+            cmdOverlayText: document.getElementById('command-overlay-text'),
+            faultPopover: document.getElementById('fault-popover'),
+            faultList: document.getElementById('fault-message-list'),
+            toasts: document.getElementById('toast-container'),
+            rateInput: document.getElementById('rate-input'),
+        };
 
-        // Fault popover
-        this.faultPopover = document.getElementById('fault-popover');
-        this.faultMessageList = document.getElementById('fault-message-list');
-        this.faultInstructions = document.querySelector('.fault-popover-instructions');
+        this.initSocket();
+        this.bindCommands();
+    }
 
-        // Valve control popup
-        this.valveControlPopup = document.getElementById('valve-control-popup');
-    }
-    
-    initializeSocket() {
-        try {
-            this.socket = io();
-            this.setupSocketEvents();
-        } catch (error) {
-            console.error('Failed to initialize socket:', error);
-            this.showConnectionError();
-        }
-    }
-    
-    setupSocketEvents() {
-        // Connection events
+    initSocket() {
+        this.socket = io();
+
         this.socket.on('connect', () => {
-            console.log('Connected to dashboard server');
             this.isConnected = true;
-            this.reconnectAttempts = 0;
-            this.updateConnectionStatus(true);
-            this.hideLoadingOverlay();
-            this.hideConnectionError();
+            this.setConnection(true);
+            this.hide(this.el.loading);
         });
-        
         this.socket.on('disconnect', () => {
-            console.log('Disconnected from dashboard server');
             this.isConnected = false;
-            this.updateConnectionStatus(false);
-            this.attemptReconnect();
+            this.setConnection(false);
         });
-        
-        this.socket.on('connect_error', (error) => {
-            console.error('Connection error:', error);
-            this.updateConnectionStatus(false);
-            this.showConnectionError();
-        });
-        
-        // Data events
-        this.socket.on('data_update', (data) => {
-            console.log('Received data update:', data);
-            this.data = data;
-            this.updateDashboard(data);
-            // Extract timestamp from system data if available
-            const timestamp = data.system?.timestamp || null;
-            this.updateLastUpdateTime(timestamp);
-        });
-        
-        this.socket.on('heartbeat', (data) => {
-            console.log('Received heartbeat:', data);
-            this.updateLastUpdateTime(data.timestamp);
-        });
-        
-        this.socket.on('error', (error) => {
-            console.error('Socket error:', error);
-            this.showError(error.message || 'Unknown error occurred');
-        });
-
-        this.socket.on('pump_selection_changed', (data) => {
-            console.log('Received pump selection change:', data);
-            if (data.selected_pump) {
-                this.setSelectedPump(data.selected_pump, true); // true = fromWebSocket
-            }
-        });
-
-        this.socket.on('valve_control_popup', (data) => {
-            console.log('Received valve control popup event');
-            this.showValveControlPopup();
-        });
+        this.socket.on('connect_error', () => this.setConnection(false));
+        this.socket.on('data_update', (data) => this.render(data));
+        this.socket.on('heartbeat', (d) => this.setLastUpdate(d.timestamp));
     }
-    
-    setupEventListeners() {
-        // Pump state buttons
-        const pumpStateButtons = document.querySelectorAll('.state-btn[data-state]');
-        pumpStateButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                const state = e.target.getAttribute('data-state');
-                this.changePumpState(state);
+
+    bindCommands() {
+        document.querySelectorAll('.cmd-btn[data-cmd]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.sendCommand(btn.getAttribute('data-cmd'), btn.getAttribute('data-value'));
             });
         });
-        
-        // Request initial data
-        setTimeout(() => {
-            if (this.isConnected) {
-                this.socket.emit('request_data');
-            }
-        }, 1000);
-    }
-    
-    updateConnectionStatus(connected) {
-        if (connected) {
-            this.connectionStatus.innerHTML = '<i class="fas fa-circle"></i> Connected';
-            this.connectionStatus.className = 'status-connected';
-        } else {
-            this.connectionStatus.innerHTML = '<i class="fas fa-circle"></i> Disconnected';
-            this.connectionStatus.className = 'status-disconnected';
-        }
-    }
-
-    setSelectedPump(pumpNumber, fromWebSocket = false) {
-        if (pumpNumber === 1 || pumpNumber === 2 || pumpNumber === 3){
-            this.selectedPump = pumpNumber;
-            this.updatePumpSelection();
-            console.log(`Selected pump set to: ${this.selectedPump}`);
-            
-            // Only emit WebSocket event if not called from WebSocket (to avoid loops)
-            if (!fromWebSocket && this.isConnected) {
-                this.socket.emit('pump_selection_changed', {
-                    selected_pump: this.selectedPump,
-                    timestamp: new Date().toISOString()
-                });
-            }
-        } else {
-            console.error('Invalid pump number. Must be 0, 1 or 2.');
-        }
-        return this.selectedPump;
-    }
-
-    updatePumpSelection() {
-        // Remove selected class from both pumps
-        this.pumpControl1.classList.remove('selected-pump');
-        this.pumpControl2.classList.remove('selected-pump');
-        this.valveControl.classList.remove('selected-pump');
-        
-        // Add selected class to the currently selected pump
-        if (this.selectedPump === 1) {
-            this.pumpControl1.classList.add('selected-pump');
-        } else if (this.selectedPump === 2) {
-            this.pumpControl2.classList.add('selected-pump');
-        } else if (this.selectedPump === 3) {
-            this.valveControl.classList.add('selected-pump');
-        }
-    }
-    
-    updateDashboard(data) {
-        // Update pump data
-        if (data.pump) {
-            this.updatePumpData(data.pump);
-        }
-        
-        // Update pump 2 data
-        if (data.pump2) {
-            this.updatePump2Data(data.pump2);
-        }
-
-        // Update valve data
-        if (data.valve) {
-            this.updateValveData(data.valve);
-        }
-        
-        // Update solar data
-        if (data.solar) {
-            this.updateSolarData(data.solar);
-        }
-        
-        // Update tank data
-        if (data.tank) {
-            this.updateTankData(data.tank);
-        }
-        
-        // Update skid data
-        if (data.skid) {
-            this.updateSkidData(data.skid);
-        }
-        
-        // Update system data
-        if (data.system) {
-            this.updateSystemData(data.system);
-        }
-
-        // Update selected pump/valve state
-        if (data.selector) {
-            this.setSelectedPump(data.selector.state);
-        }
-
-        // Update faults
-        if (data.faults) {
-            this.updateFaults(data.faults);
-        } else {
-            this.updateFaults({});
-        }
-    }
-    
-    updatePumpData(pumpData) {
-        // Update target rate
-        if (pumpData.target_rate !== undefined) {
-            this.animateValueChange(this.targetRate, pumpData.target_rate.toFixed(2));
-        }
-        
-        // Update flow rate
-        if (pumpData.flow_rate !== undefined) {
-            this.animateValueChange(this.flowRate, pumpData.flow_rate.toFixed(2));
-        }
-        
-        // Update pump state
-        if (pumpData.pump_state !== undefined) {
-            this.updatePumpState(pumpData.pump_state);
-        }
-    }
-    
-    updatePump2Data(pumpData) {
-        // Update target rate
-        if (pumpData.target_rate !== undefined) {
-            this.animateValueChange(this.targetRate2, pumpData.target_rate.toFixed(2));
-        }
-        
-        // Update flow rate
-        if (pumpData.flow_rate !== undefined) {
-            this.animateValueChange(this.flowRate2, pumpData.flow_rate.toFixed(2));
-        }
-        
-        // Update pump state
-        if (pumpData.pump_state !== undefined) {
-            this.updatePump2State(pumpData.pump_state);
-        }
-    }
-
-    updateValveData(valveData) {
-        // Update valve state
-        if (valveData.state !== undefined) {
-            if (valveData.state) {
-                this.updateValveState("closed");
-            } else {
-                this.updateValveState("opened");
-            }
-        }
-    }
-    
-    updateSolarData(solarData) {
-        // Update battery voltage
-        if (solarData.battery_voltage !== undefined) {
-            this.animateValueChange(this.batteryVoltage, solarData.battery_voltage.toFixed(1));
-        }
-        
-        // Update battery percentage
-        if (solarData.battery_percentage !== undefined) {
-            const percentage = Math.round(solarData.battery_percentage);
-            this.animateValueChange(this.batteryPercentage, percentage.toString());
-            this.updateProgressBar(this.batteryProgress, percentage);
-        }
-        
-        // Update panel power
-        if (solarData.panel_power !== undefined) {
-            this.animateValueChange(this.arrayVoltage, solarData.panel_power.toFixed(1));
-        }
-        
-        // Update battery Ah
-        if (solarData.battery_ah !== undefined) {
-            this.animateValueChange(this.batteryAh, solarData.battery_ah.toFixed(1));
-        }
-    }
-    
-    updateTankData(tankData) {
-        // Update tank level in mm
-        if (tankData.tank_level_mm !== undefined) {
-            this.animateValueChange(this.tankLevelMm, Math.round(tankData.tank_level_mm).toString());
-        }
-        
-        // Update tank level percentage
-        if (tankData.tank_level_percent !== undefined) {
-            const percentage = Math.round(tankData.tank_level_percent);
-            this.animateValueChange(this.tankLevelPercent, percentage.toString());
-            this.updateProgressBar(this.tankProgress, percentage);
-        }
-    }
-    
-    updateSkidData(skidData) {
-        // Update skid flow
-        if (skidData.skid_flow !== undefined) {
-            this.animateValueChange(this.skidFlow, skidData.skid_flow.toFixed(1));
-        }
-        
-        // Update skid pressure
-        if (skidData.skid_pressure !== undefined) {
-            this.animateValueChange(this.skidPressure, skidData.skid_pressure.toFixed(1));
-        }
-    }
-    
-    updateSystemData(systemData) {
-        // Update system status
-        if (systemData.status !== undefined) {
-            this.updateSystemStatus(systemData.status);
-        }
-    }
-    
-    updatePumpState(state) {
-        this.pumpState.textContent = state;
-        // Normalize state to lowercase for CSS class matching
-        const normalizedState = state.toLowerCase();
-        this.pumpState.className = `state-value ${normalizedState}`;
-        
-        // Update active button
-        const buttons = document.querySelectorAll('.state-btn');
-        buttons.forEach(btn => {
-            btn.classList.remove('active');
-            if (btn.getAttribute('data-state') === state) {
-                btn.classList.add('active');
-            }
-        });
-    }
-    
-    updatePump2State(state) {
-        this.pumpState2.textContent = state;
-        // Normalize state to lowercase for CSS class matching
-        const normalizedState = state.toLowerCase();
-        this.pumpState2.className = `state-value ${normalizedState}`;
-    }
-
-    updateValveState(state) {
-        this.valveState.textContent = state;
-        // Normalize state to lowercase for CSS class matching
-        const normalizedState = state.toLowerCase();
-        this.valveState.className = `state-value ${normalizedState}`;
-    }
-    
-    updateProgressBar(progressBar, percentage) {
-        progressBar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
-        
-        // Update color based on percentage
-        progressBar.className = 'progress-fill';
-        if (percentage < 5) {
-            progressBar.classList.add('low');
-        } else if (percentage < 25) {
-            progressBar.classList.add('medium');
-        }
-    }
-    
-    updateSystemStatus(status) {
-        if (this.systemStatus) {
-            this.systemStatus.textContent = status;
-            this.systemStatus.className = `status-value ${status}`;
-        }
-    }
-
-    updateFaults(faultData = {}) {
-        if (!this.faultPopover || !this.faultMessageList) {
-            return;
-        }
-
-        const messages = [];
-        const instructions = [];
-        
-        if (faultData.hh_pressure) {
-            messages.push('High High Pressure Tripped the Pumps!');
-            instructions.push('Reduce system pressure to clear the alarm');
-        }
-        if (faultData.ll_tank_level) {
-            messages.push('Low Low Tank Level Tripped the Pumps! - Fill Tank');
-            instructions.push('Please refill the tank');
-        }
-
-        this.faultMessageList.innerHTML = '';
-
-        if (messages.length > 0) {
-            messages.forEach(message => {
-                const item = document.createElement('li');
-                item.textContent = message;
-                this.faultMessageList.appendChild(item);
-            });
-
-            if (this.faultInstructions) {
-                // Show combined instructions if multiple faults, or single instruction
-                this.faultInstructions.textContent = instructions.join('. ') + '.';
-            }
-
-            this.faultPopover.classList.remove('hidden');
-        } else {
-            this.faultPopover.classList.add('hidden');
-        }
-    }
-    
-    animateValueChange(element, newValue) {
-        if (element.textContent !== newValue) {
-            element.classList.add('updating');
-            element.textContent = newValue;
-            setTimeout(() => {
-                element.classList.remove('updating');
-            }, 1000);
-        }
-    }
-    
-    updateLastUpdateTime(timestamp) {
-        if (timestamp) {
-            // Parse the timestamp - server sends UTC timestamps with timezone info
-            const time = new Date(timestamp);
-            // Check if date is valid
-            if (isNaN(time.getTime())) {
-                console.warn('Invalid timestamp received:', timestamp);
-                return;
-            }
-            // Use toLocaleTimeString with explicit options to ensure consistent formatting
-            // This converts UTC to local timezone for display
-            this.lastUpdate.textContent = time.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-        } else {
-            // Fallback to current time if no timestamp provided
-            const time = new Date();
-            this.lastUpdate.textContent = time.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-        }
-    }
-    
-    changePumpState(state) {
-        if (this.isConnected) {
-            this.socket.emit('set_pump_state', { state: state });
-            console.log(`Requesting pump state change to: ${state}`);
-        } else {
-            this.showError('Not connected to server');
-        }
-    }
-    
-    attemptReconnect() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-            
-            setTimeout(() => {
-                if (!this.isConnected) {
-                    this.socket.connect();
+        const rateBtn = document.getElementById('rate-set-btn');
+        if (rateBtn) {
+            rateBtn.addEventListener('click', () => {
+                const v = parseFloat(this.el.rateInput.value);
+                if (isNaN(v)) {
+                    this.toast('error', 'Enter a rate value first');
+                    return;
                 }
-            }, this.reconnectDelay * this.reconnectAttempts);
-        } else {
-            console.error('Max reconnection attempts reached');
-            this.showConnectionError();
+                this.sendCommand('set_target_rate', v);
+            });
         }
     }
-    
-    hideLoadingOverlay() {
-        setTimeout(() => {
-            this.loadingOverlay.classList.add('hidden');
-        }, 500);
-    }
-    
-    showLoadingOverlay() {
-        this.loadingOverlay.classList.remove('hidden');
-    }
-    
-    showConnectionError() {
-        // Remove any existing connection error first
-        this.hideConnectionError();
-        // Store reference to the new error element
-        this.connectionErrorElement = this.showError('Unable to connect to dashboard server. Please check your connection.');
-    }
-    
-    hideConnectionError() {
-        if (this.connectionErrorElement && this.connectionErrorElement.parentNode) {
-            this.connectionErrorElement.parentNode.removeChild(this.connectionErrorElement);
-            this.connectionErrorElement = null;
-        }
-    }
-    
-    showError(message) {
-        // Create a simple error notification
-        const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #e74c3c;
-            color: white;
-            padding: 15px 20px;
-            border-radius: 5px;
-            z-index: 1001;
-            max-width: 300px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            cursor: pointer;
-        `;
-        errorDiv.textContent = message;
-        errorDiv.setAttribute('role', 'alert');
-        errorDiv.setAttribute('aria-live', 'assertive');
-        
-        document.body.appendChild(errorDiv);
-        errorDiv.addEventListener('click', () => {
-            if (errorDiv.parentNode) {
-                errorDiv.parentNode.removeChild(errorDiv);
-            }
-            // Clear reference if this was the connection error
-            if (this.connectionErrorElement === errorDiv) {
-                this.connectionErrorElement = null;
-            }
-        });
-        
-        return errorDiv;
-    }
-    
-    // Public API methods
-    requestData() {
-        if (this.isConnected) {
-            this.socket.emit('request_data');
-        }
-    }
-    
-    getData() {
-        return this.data;
-    }
-    
-    isConnectedToServer() {
-        return this.isConnected;
-    }
-    
-    showValveControlPopup() {
-        if (!this.valveControlPopup) {
+
+    sendCommand(cmd, value) {
+        if (!this.isConnected) {
+            this.toast('error', 'Not connected to controller');
             return;
         }
-        
-        // Show the popup
-        this.valveControlPopup.classList.remove('hidden');
-        
-        // Hide after 5 seconds
-        setTimeout(() => {
-            if (this.valveControlPopup) {
-                this.valveControlPopup.classList.add('hidden');
+        this.el.cmdOverlayText.textContent = this.commandLabel(cmd, value);
+        this.show(this.el.cmdOverlay);
+
+        let settled = false;
+        const done = (resp) => {
+            if (settled) return;
+            settled = true;
+            this.hide(this.el.cmdOverlay);
+            if (resp && resp.ok) {
+                this.toast('success', this.successLabel(cmd, value, resp.result));
+            } else {
+                const code = (resp && resp.code) || 'ERROR';
+                const msg = (resp && resp.message) || 'Command failed';
+                this.toast('error', `${code}: ${msg}`);
             }
-        }, 5000);
+        };
+        // Ack callback carries the controller's result / RPC error.
+        this.socket.emit('command', { cmd: cmd, value: value }, done);
+        // Safety timeout in case no ack arrives.
+        setTimeout(() => done({ ok: false, code: 'TIMEOUT', message: 'no response from controller' }), 35000);
+    }
+
+    commandLabel(cmd, value) {
+        switch (cmd) {
+            case 'set_pump_state': return value === 'start' ? 'Starting pump...' : 'Stopping pump...';
+            case 'nudge_rate': return value === '+1' ? 'Increasing rate...' : 'Decreasing rate...';
+            case 'set_target_rate': return 'Setting target rate...';
+            case 'reset_fault': return 'Clearing fault...';
+            default: return 'Sending command...';
+        }
+    }
+
+    successLabel(cmd, value, result) {
+        switch (cmd) {
+            case 'set_pump_state': return `Pump ${result && result.state ? result.state : value}`;
+            case 'nudge_rate':
+            case 'set_target_rate':
+                return `Target rate ${result && result.target_rate != null ? result.target_rate.toFixed(2) : ''} ${this.units.rate}`;
+            case 'reset_fault': return 'Fault cleared';
+            default: return 'Command applied';
+        }
+    }
+
+    render(data) {
+        this.data = data;
+        if (data.units) {
+            this.units = data.units;
+            document.querySelectorAll('.skid-flow-unit').forEach((e) => (e.textContent = data.units.rate));
+            document.querySelectorAll('.skid-pressure-unit').forEach((e) => (e.textContent = data.units.pressure));
+        }
+        this.setConnection(this.isConnected, data.link_ok);
+        this.renderPumps(data.pumps || []);
+        this.renderFaults(data.faults || []);
+        this.renderAux('solar-card', data.solar, this.renderSolar.bind(this));
+        this.renderAux('tank-card', data.tank, this.renderTank.bind(this));
+        this.renderAux('skid-card', data.skid, this.renderSkid.bind(this));
+        this.setLastUpdate(data.timestamp);
+    }
+
+    renderPumps(pumps) {
+        const rate = this.units.rate;
+        this.el.pumpCards.className = 'pump-cards' + (pumps.length > 1 ? ' multi' : '');
+        this.el.pumpCards.innerHTML = pumps.map((p) => {
+            const state = (p.state || 'unknown').toLowerCase();
+            const target = (p.target_rate != null ? p.target_rate : 0).toFixed(2);
+            const flow = (p.flow_rate != null ? p.flow_rate : 0).toFixed(2);
+            return `
+            <div class="pump-card state-${state}">
+                <div class="pump-head">
+                    <span class="pump-name">${p.name || 'Pump'}</span>
+                    <span class="pump-state state-badge state-${state}">${p.state || 'unknown'}</span>
+                </div>
+                <div class="pump-metrics">
+                    <div class="pump-metric">
+                        <span class="pm-label">Target</span>
+                        <span class="pm-value">${target}<span class="pm-unit">${rate}</span></span>
+                    </div>
+                    <div class="pump-metric">
+                        <span class="pm-label">Flow</span>
+                        <span class="pm-value">${flow}<span class="pm-unit">${rate}</span></span>
+                    </div>
+                </div>
+                <div class="pump-lamps">
+                    <span class="lamp lamp-run ${p.running ? 'on' : ''}">RUN</span>
+                    <span class="lamp lamp-trip ${p.fault ? 'on' : ''}">TRIP</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    renderFaults(faults) {
+        if (!faults.length) {
+            this.hide(this.el.faultPopover);
+            this.el.faultList.innerHTML = '';
+            return;
+        }
+        this.el.faultList.innerHTML = faults.map((f) => {
+            const who = f.pump ? `${f.pump}: ` : '';
+            return `<li>${who}${f.reason || 'Pump tripped'}</li>`;
+        }).join('');
+        this.show(this.el.faultPopover);
+    }
+
+    renderAux(cardId, data, renderer) {
+        const card = document.getElementById(cardId);
+        if (!data) { card.classList.add('hidden'); return; }
+        card.classList.remove('hidden');
+        renderer(data);
+    }
+
+    renderSolar(s) {
+        if (s.battery_voltage != null) this.setText('battery-voltage', s.battery_voltage.toFixed(1));
+        if (s.battery_percentage != null) {
+            const pct = Math.round(s.battery_percentage);
+            this.setText('battery-percentage', pct);
+            this.setBar('battery-progress', pct);
+        }
+        if (s.panel_power != null) this.setText('panel-power', s.panel_power.toFixed(1));
+        if (s.battery_ah != null) this.setText('battery-ah', s.battery_ah.toFixed(1));
+    }
+
+    renderTank(t) {
+        if (t.tank_level_mm != null) this.setText('tank-level-mm', Math.round(t.tank_level_mm));
+        if (t.tank_level_percent != null) {
+            const pct = Math.round(t.tank_level_percent);
+            this.setText('tank-level-percent', pct);
+            this.setBar('tank-progress', pct);
+        }
+    }
+
+    renderSkid(s) {
+        if (s.skid_flow != null) this.setText('skid-flow', s.skid_flow.toFixed(1));
+        if (s.skid_pressure != null) this.setText('skid-pressure', s.skid_pressure.toFixed(1));
+    }
+
+    // -- helpers ----------------------------------------------------------
+    setConnection(connected, linkOk) {
+        const e = this.el.connection;
+        if (!connected) {
+            e.className = 'conn conn-down';
+            e.innerHTML = '<span class="dot"></span> Disconnected';
+        } else if (linkOk === false) {
+            e.className = 'conn conn-warn';
+            e.innerHTML = '<span class="dot"></span> No controller';
+        } else {
+            e.className = 'conn conn-up';
+            e.innerHTML = '<span class="dot"></span> Connected';
+        }
+    }
+
+    setLastUpdate(ts) {
+        const t = ts ? new Date(ts) : new Date();
+        if (isNaN(t.getTime())) return;
+        this.el.lastUpdate.textContent = t.toLocaleTimeString('en-US', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        });
+    }
+
+    setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
+    setBar(id, pct) {
+        const e = document.getElementById(id);
+        if (!e) return;
+        e.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+        e.className = 'bar-fill' + (pct < 5 ? ' low' : pct < 25 ? ' medium' : '');
+    }
+
+    show(e) { if (e) e.classList.remove('hidden'); }
+    hide(e) { if (e) e.classList.add('hidden'); }
+
+    toast(kind, message) {
+        const t = document.createElement('div');
+        t.className = `toast toast-${kind}`;
+        t.textContent = message;
+        t.setAttribute('role', 'alert');
+        this.el.toasts.appendChild(t);
+        setTimeout(() => t.classList.add('show'), 10);
+        setTimeout(() => {
+            t.classList.remove('show');
+            setTimeout(() => t.remove(), 300);
+        }, kind === 'error' ? 6000 : 3500);
     }
 }
 
-// Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.dashboard = new Dashboard();
-    
-    // Add keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-            switch(e.key) {
-                case 'r':
-                    e.preventDefault();
-                    window.dashboard.requestData();
-                    break;
-                case 'f5':
-                    e.preventDefault();
-                    window.location.reload();
-                    break;
-            }
-        }
-    });
-    
-    // Handle page visibility changes
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && window.dashboard.isConnectedToServer()) {
-            window.dashboard.requestData();
-        }
-    });
-});
-
-// Handle page unload
-window.addEventListener('beforeunload', () => {
-    if (window.dashboard && window.dashboard.socket) {
-        window.dashboard.socket.disconnect();
-    }
 });
