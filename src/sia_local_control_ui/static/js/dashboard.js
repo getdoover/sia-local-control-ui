@@ -2,14 +2,14 @@
  * SIA Remote Command touchscreen HMI.
  *
  * Renders controller status pushed over SocketIO (WP5 backend contract) into the
- * card-based "SIA Remote Command" layout, and turns operator actions into Doover
- * RPC commands (loading spinner + success/error toast).
+ * card-based "SIA Remote Command" layout. DISPLAY ONLY — all operator input comes
+ * from the physical panel pushbuttons (read by the app backend as DI/AI), not from
+ * this touchscreen. There are no on-screen controls.
  *
  * Backend socket contract (see dashboard.py / application.py):
  *   server -> client:  'data_update' {pumps:[], faults:[], link_ok, units:{rate,pressure},
  *                                     timestamp, solar?, tank?, skid?, selector?}
  *                      'heartbeat'   {timestamp}
- *   client -> server:  'command' {cmd, value}  -> ack {ok, code?, message?, result?}
  */
 
 class Dashboard {
@@ -23,16 +23,11 @@ class Dashboard {
             connection: document.getElementById('connection-status'),
             lastUpdate: document.getElementById('last-update'),
             loading: document.getElementById('loading-overlay'),
-            cmdOverlay: document.getElementById('command-overlay'),
-            cmdOverlayText: document.getElementById('command-overlay-text'),
             faultPopover: document.getElementById('fault-popover'),
             faultList: document.getElementById('fault-message-list'),
-            toasts: document.getElementById('toast-container'),
-            rateInput: document.getElementById('rate-input'),
         };
 
         this.initSocket();
-        this.bindCommands();
     }
 
     // -- socket ------------------------------------------------------------
@@ -51,74 +46,6 @@ class Dashboard {
         this.socket.on('connect_error', () => this.setConnection(false));
         this.socket.on('data_update', (data) => this.render(data));
         this.socket.on('heartbeat', (d) => this.setLastUpdate(d.timestamp));
-    }
-
-    // -- command dispatch --------------------------------------------------
-    bindCommands() {
-        document.querySelectorAll('.cmd-btn[data-cmd]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                this.sendCommand(btn.getAttribute('data-cmd'), btn.getAttribute('data-value'));
-            });
-        });
-        const rateBtn = document.getElementById('rate-set-btn');
-        if (rateBtn) {
-            rateBtn.addEventListener('click', () => {
-                const v = parseFloat(this.el.rateInput.value);
-                if (isNaN(v)) {
-                    this.toast('error', 'Enter a rate value first');
-                    return;
-                }
-                this.sendCommand('set_target_rate', v);
-            });
-        }
-    }
-
-    sendCommand(cmd, value) {
-        if (!this.isConnected) {
-            this.toast('error', 'Not connected to controller');
-            return;
-        }
-        this.el.cmdOverlayText.textContent = this.commandLabel(cmd, value);
-        this.show(this.el.cmdOverlay);
-
-        let settled = false;
-        const done = (resp) => {
-            if (settled) return;
-            settled = true;
-            this.hide(this.el.cmdOverlay);
-            if (resp && resp.ok) {
-                this.toast('success', this.successLabel(cmd, value, resp.result));
-            } else {
-                const code = (resp && resp.code) || 'ERROR';
-                const msg = (resp && resp.message) || 'Command failed';
-                this.toast('error', `${code}: ${msg}`);
-            }
-        };
-        // Ack callback carries the controller's result / RPC error.
-        this.socket.emit('command', { cmd: cmd, value: value }, done);
-        // Safety timeout in case no ack arrives.
-        setTimeout(() => done({ ok: false, code: 'TIMEOUT', message: 'no response from controller' }), 35000);
-    }
-
-    commandLabel(cmd, value) {
-        switch (cmd) {
-            case 'set_pump_state': return value === 'start' ? 'Starting pump...' : 'Stopping pump...';
-            case 'nudge_rate': return value === '+1' ? 'Increasing rate...' : 'Decreasing rate...';
-            case 'set_target_rate': return 'Setting target rate...';
-            case 'reset_fault': return 'Clearing fault...';
-            default: return 'Sending command...';
-        }
-    }
-
-    successLabel(cmd, value, result) {
-        switch (cmd) {
-            case 'set_pump_state': return `Pump ${result && result.state ? result.state : value}`;
-            case 'nudge_rate':
-            case 'set_target_rate':
-                return `Target rate ${result && result.target_rate != null ? result.target_rate.toFixed(2) : ''} ${this.units.rate}`.trim();
-            case 'reset_fault': return 'Fault cleared';
-            default: return 'Command applied';
-        }
     }
 
     // -- render ------------------------------------------------------------
@@ -142,7 +69,6 @@ class Dashboard {
         const state = (pump.state || 'unknown');
         const stateClass = state.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-        this.setValue('pump-control-label', pump.name || 'Pump', '');
         this.setValue('target-rate', this.fmt(pump.target_rate, 1), rate);
         this.setValue('flow-rate', this.fmt(pump.flow_rate, 1), rate);
 
@@ -271,19 +197,6 @@ class Dashboard {
 
     show(e) { if (e) e.classList.remove('hidden'); }
     hide(e) { if (e) e.classList.add('hidden'); }
-
-    toast(kind, message) {
-        const t = document.createElement('div');
-        t.className = `toast toast-${kind}`;
-        t.textContent = message;
-        t.setAttribute('role', 'alert');
-        this.el.toasts.appendChild(t);
-        setTimeout(() => t.classList.add('show'), 10);
-        setTimeout(() => {
-            t.classList.remove('show');
-            setTimeout(() => t.remove(), 300);
-        }, kind === 'error' ? 6000 : 3500);
-    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
