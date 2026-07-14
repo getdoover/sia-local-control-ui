@@ -3,117 +3,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=1024, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIA Local Control</title>
+    <title>SIA Remote Command</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 </head>
 <body>
-    <div class="hmi">
-        <!-- Header -->
-        <header class="hmi-header">
-            <div class="brand">
-                <img src="{{ url_for('static', filename='remote_command_logo.png') }}" alt="" class="brand-logo">
-                <span class="brand-title">SIA Local Control</span>
-            </div>
-            <div class="header-status">
-                <span id="connection-status" class="conn conn-down">
-                    <span class="dot"></span> Disconnected
-                </span>
-                <span class="last-update">Updated <span id="last-update">--</span></span>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1><img src="{{ url_for('static', filename='remote_command_logo.png') }}" alt="SIA Remote Command" class="header-logo"> SIA Remote Command</h1>
+            <div class="header-info">
+                <div class="connection-status">
+                    <span id="connection-status" class="status-disconnected">
+                        &#9679; Disconnected
+                    </span>
+                </div>
+                <div class="timestamp">
+                    Last Update: <span id="last-update">--</span>
+                </div>
             </div>
         </header>
 
-        <main class="hmi-main">
-            <!-- Left: pump status + command surface -->
-            <section class="col-primary">
-                <div id="pump-cards" class="pump-cards"><!-- pump cards injected here --></div>
-
-                <div class="command-bar">
-                    <div class="cmd-row">
-                        <button class="cmd-btn cmd-start" data-cmd="set_pump_state" data-value="start">
-                            <span class="cmd-icon">&#9654;</span> Start
-                        </button>
-                        <button class="cmd-btn cmd-stop" data-cmd="set_pump_state" data-value="stop">
-                            <span class="cmd-icon">&#9632;</span> Stop
-                        </button>
-                        <button class="cmd-btn cmd-reset" data-cmd="reset_fault">
-                            Reset Fault
-                        </button>
-                    </div>
-                    <div class="cmd-row">
-                        <button class="cmd-btn cmd-nudge" data-cmd="nudge_rate" data-value="-1">
-                            <span class="cmd-icon">&#9660;</span> Flow Down
-                        </button>
-                        <button class="cmd-btn cmd-nudge" data-cmd="nudge_rate" data-value="+1">
-                            <span class="cmd-icon">&#9650;</span> Flow Up
-                        </button>
-                        <div class="rate-set">
-                            <input id="rate-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Rate">
-                            <button id="rate-set-btn" class="cmd-btn cmd-set">Set</button>
+        <main class="dashboard-content">
+            <!-- Pump Control and Skid Row -->
+            <div class="pump-skid-row" id="pump-skid-row">
+                <!-- Pump Control Section -->
+                <section class="control-section pump-section">
+                    <h2>Pump Control</h2>
+                    <div class="controls-grid" id="pump-control-1">
+                        <div class="control-card">
+                            <h3>Pump</h3>
+                            <div class="value-display" id="pump-control-label">
+                                <span class="value">Pump</span>
+                                <span class="unit"></span>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Target Rate</h3>
+                            <div class="value-display" id="target-rate">
+                                <span class="value">0.0</span>
+                                <span class="unit">L/Hr</span>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Flow Rate</h3>
+                            <div class="value-display" id="flow-rate">
+                                <span class="value">0.0</span>
+                                <span class="unit">L/Hr</span>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Pump State</h3>
+                            <div class="state-display" id="pump-state">
+                                <span class="state-value">unknown</span>
+                            </div>
+                            <div class="pump-lamps">
+                                <span class="lamp lamp-run" id="lamp-run">RUN</span>
+                                <span class="lamp lamp-trip" id="lamp-trip">TRIP</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </section>
 
-            <!-- Right: peripheral status -->
-            <aside class="col-aux">
-                <section class="aux-card hidden" id="solar-card">
-                    <h3>Solar</h3>
-                    <div class="aux-grid">
-                        <div class="metric"><span class="m-label">Battery</span><span class="m-value"><span id="battery-voltage">0.0</span> V</span></div>
-                        <div class="metric"><span class="m-label">Charge</span><span class="m-value"><span id="battery-percentage">0</span> %</span>
-                            <div class="bar"><div class="bar-fill" id="battery-progress"></div></div>
+                    <!-- Operator command surface (RPC path) -->
+                    <div class="command-bar">
+                        <div class="cmd-row">
+                            <button class="cmd-btn cmd-start" data-cmd="set_pump_state" data-value="start">
+                                <span class="cmd-icon">&#9654;</span> Start
+                            </button>
+                            <button class="cmd-btn cmd-stop" data-cmd="set_pump_state" data-value="stop">
+                                <span class="cmd-icon">&#9632;</span> Stop
+                            </button>
+                            <button class="cmd-btn cmd-reset" data-cmd="reset_fault">
+                                Reset Fault
+                            </button>
                         </div>
-                        <div class="metric"><span class="m-label">Panel</span><span class="m-value"><span id="panel-power">0.0</span> W</span></div>
-                        <div class="metric"><span class="m-label">Capacity</span><span class="m-value"><span id="battery-ah">0.0</span> Ah</span></div>
+                        <div class="cmd-row">
+                            <button class="cmd-btn cmd-nudge" data-cmd="nudge_rate" data-value="-1">
+                                <span class="cmd-icon">&#9660;</span> Flow Down
+                            </button>
+                            <button class="cmd-btn cmd-nudge" data-cmd="nudge_rate" data-value="+1">
+                                <span class="cmd-icon">&#9650;</span> Flow Up
+                            </button>
+                            <div class="rate-set">
+                                <input id="rate-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="Rate">
+                                <button id="rate-set-btn" class="cmd-btn cmd-set">Set</button>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
-                <section class="aux-card hidden" id="tank-card">
-                    <h3>Tank</h3>
-                    <div class="aux-grid">
-                        <div class="metric"><span class="m-label">Level</span><span class="m-value"><span id="tank-level-mm">0</span> mm</span></div>
-                        <div class="metric"><span class="m-label">Fill</span><span class="m-value"><span id="tank-level-percent">0</span> %</span>
-                            <div class="bar"><div class="bar-fill" id="tank-progress"></div></div>
+                <!-- Skid Control Section (config-gated) -->
+                <section class="control-section skid-section hidden" id="skid-section">
+                    <h2>Skid</h2>
+                    <div class="controls-grid">
+                        <div class="control-card">
+                            <h3>Flow</h3>
+                            <div class="value-display" id="skid-flow">
+                                <span class="value">0.0</span>
+                                <span class="unit">L/Hr</span>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Pressure</h3>
+                            <div class="value-display" id="skid-pressure">
+                                <span class="value">0.0</span>
+                                <span class="unit">psi</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Secondary Controls Row - Valve / Solar / Tank (all config-gated) -->
+            <div class="secondary-controls-row">
+                <!-- Valve Control Section -->
+                <section class="control-section valve-section hidden" id="valve-section">
+                    <h2>Valve</h2>
+                    <div class="controls-grid" id="valve-control">
+                        <div class="control-card">
+                            <h3>Selector</h3>
+                            <div class="value-display" id="valve-state">
+                                <span class="state-value">--</span>
+                            </div>
                         </div>
                     </div>
                 </section>
 
-                <section class="aux-card hidden" id="skid-card">
-                    <h3>Skid</h3>
-                    <div class="aux-grid">
-                        <div class="metric"><span class="m-label">Flow</span><span class="m-value"><span id="skid-flow">0.0</span> <span class="skid-flow-unit"></span></span></div>
-                        <div class="metric"><span class="m-label">Pressure</span><span class="m-value"><span id="skid-pressure">0.0</span> <span class="skid-pressure-unit"></span></span></div>
+                <!-- Solar Control Section -->
+                <section class="control-section solar-section hidden" id="solar-section">
+                    <h2>Solar System</h2>
+                    <div class="controls-grid">
+                        <div class="control-card">
+                            <h3>Battery</h3>
+                            <div class="value-display" id="battery-voltage">
+                                <span class="value">0.0</span>
+                                <span class="unit">V</span>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Charge</h3>
+                            <div class="value-display" id="battery-percentage">
+                                <span class="value">0</span>
+                                <span class="unit">%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="battery-progress"></div>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Panel</h3>
+                            <div class="value-display" id="panel-power">
+                                <span class="value">0.0</span>
+                                <span class="unit">W</span>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Capacity</h3>
+                            <div class="value-display" id="battery-ah">
+                                <span class="value">0.0</span>
+                                <span class="unit">Ah</span>
+                            </div>
+                        </div>
                     </div>
                 </section>
-            </aside>
+
+                <!-- Tank Control Section -->
+                <section class="control-section tank-section hidden" id="tank-section">
+                    <h2>Tank</h2>
+                    <div class="controls-grid">
+                        <div class="control-card">
+                            <h3>Tank Level</h3>
+                            <div class="value-display" id="tank-level-mm">
+                                <span class="value">0</span>
+                                <span class="unit">mm</span>
+                            </div>
+                        </div>
+                        <div class="control-card">
+                            <h3>Fill</h3>
+                            <div class="value-display" id="tank-level-percent">
+                                <span class="value">0</span>
+                                <span class="unit">%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="tank-progress"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </main>
-
-        <!-- Doover footer -->
-        <div class="footer-logo">
-            <img src="{{ url_for('static', filename='Doover Logo - Landscape - Frost White.svg') }}" alt="Doover">
-        </div>
     </div>
 
     <!-- Fault popover -->
-    <div id="fault-popover" class="overlay hidden">
-        <div class="overlay-card fault-card">
+    <div id="fault-popover" class="fault-popover hidden">
+        <div class="fault-popover-content">
             <h2>Fault Detected</h2>
             <ul id="fault-message-list"></ul>
-            <p class="fault-hint">Press Reset Fault (or the Start button) once the condition clears.</p>
+            <p class="fault-popover-instructions">Press Reset Fault (or the Start button) once the condition clears.</p>
         </div>
     </div>
 
     <!-- Command spinner -->
-    <div id="command-overlay" class="overlay hidden">
-        <div class="overlay-card">
+    <div id="command-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner">
             <div class="spinner"></div>
             <p id="command-overlay-text">Sending command...</p>
         </div>
     </div>
 
     <!-- Loading overlay -->
-    <div id="loading-overlay" class="overlay">
-        <div class="overlay-card">
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner">
             <div class="spinner"></div>
             <p>Connecting to controller...</p>
         </div>
@@ -122,6 +220,12 @@
     <!-- Toast container -->
     <div id="toast-container" class="toast-container"></div>
 
+    <!-- Footer Logo -->
+    <div class="footer-logo">
+        <img src="{{ url_for('static', filename='Doover Logo - Landscape - Frost White.svg') }}" alt="Doover Logo">
+    </div>
+
+    <!-- Scripts -->
     <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>

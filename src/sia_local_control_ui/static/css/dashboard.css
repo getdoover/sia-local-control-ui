@@ -632,3 +632,206 @@ body {
     height: 30px;
     width: auto;
 }
+
+/* ======================================================================
+   WP5 additions: operator command bar, lamps, toasts, spinner, gating.
+   Styled to match the SIA Remote Command card aesthetic above.
+   ====================================================================== */
+
+/* Generic visibility toggle used for config-gated sections + overlays */
+.hidden {
+    display: none !important;
+}
+
+/* Connection status warning (link down but socket up) */
+.status-warning {
+    color: #f39c12 !important;
+}
+
+/* When the skid card is not shown, let the pump section take full width */
+.pump-skid-row.no-skid {
+    grid-template-columns: 1fr;
+}
+
+/* Secondary row: flex so config-gated cards collapse cleanly */
+.secondary-controls-row {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.secondary-controls-row > .control-section {
+    flex: 1 1 clamp(220px, 24vw, 340px);
+}
+
+/* Give unmatched pump states a legible default badge */
+.state-value {
+    background: #34495e;
+    color: white;
+}
+
+.state-value.error { background: #e74c3c; color: white; }
+
+/* RUN / TRIP lamps under the pump state card */
+.pump-lamps {
+    display: flex;
+    gap: clamp(6px, 1vw, 10px);
+    justify-content: center;
+    margin-top: clamp(6px, 1vh, 10px);
+}
+
+.lamp {
+    flex: 1;
+    text-align: center;
+    padding: clamp(4px, 1vw, 7px) 0;
+    border-radius: clamp(6px, 1vw, 10px);
+    font-size: clamp(0.6rem, 1.6vw, 0.8rem);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    background: #ecf0f1;
+    color: #b0b8bd;
+    border: 2px solid #dfe4e6;
+    transition: all 0.2s ease;
+}
+
+.lamp-run.on {
+    background: #27ae60;
+    border-color: #229954;
+    color: white;
+    box-shadow: 0 0 12px rgba(39, 174, 96, 0.5);
+}
+
+.lamp-trip.on {
+    background: #e74c3c;
+    border-color: #c0392b;
+    color: white;
+    box-shadow: 0 0 12px rgba(231, 76, 60, 0.5);
+}
+
+/* Command bar */
+.command-bar {
+    margin-top: clamp(10px, 1.8vh, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1.4vh, 12px);
+}
+
+.cmd-row {
+    display: flex;
+    gap: clamp(8px, 1.4vw, 14px);
+    flex-wrap: wrap;
+}
+
+.cmd-btn {
+    flex: 1 1 0;
+    min-width: clamp(90px, 12vw, 140px);
+    padding: clamp(12px, 2.2vh, 20px) clamp(10px, 1.5vw, 16px);
+    border: none;
+    border-radius: clamp(8px, 1.5vw, 14px);
+    font-size: clamp(0.85rem, 2vw, 1.2rem);
+    font-weight: 700;
+    color: white;
+    cursor: pointer;
+    background: #3498db;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+.cmd-btn:hover { filter: brightness(1.05); }
+
+.cmd-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.cmd-icon { font-size: 0.9em; line-height: 1; }
+
+.cmd-start { background: #27ae60; }
+.cmd-stop  { background: #e74c3c; }
+.cmd-reset { background: #7f8c8d; }
+.cmd-nudge { background: #2980b9; }
+.cmd-set   { background: #f39c12; flex: 0 0 auto; min-width: 0; }
+
+/* Rate set input group */
+.rate-set {
+    flex: 1 1 0;
+    min-width: clamp(120px, 16vw, 200px);
+    display: flex;
+    gap: clamp(6px, 1vw, 10px);
+    align-items: stretch;
+}
+
+.rate-set input {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: clamp(10px, 2vh, 18px) clamp(8px, 1.2vw, 12px);
+    border: 2px solid #dfe4e6;
+    border-radius: clamp(8px, 1.5vw, 14px);
+    font-size: clamp(0.9rem, 2vw, 1.2rem);
+    font-weight: 600;
+    color: #2c3e50;
+    background: #f8f9fa;
+    text-align: center;
+}
+
+.rate-set input:focus {
+    outline: none;
+    border-color: #3498db;
+    background: #ffffff;
+}
+
+/* Spinner used by loading + command overlays */
+.spinner {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 20px;
+    border: 6px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #3498db;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Command overlay reuses .loading-overlay; ensure it sits above faults */
+#command-overlay { z-index: 1004; }
+
+/* Toasts */
+.toast-container {
+    position: fixed;
+    top: clamp(10px, 2vh, 20px);
+    right: clamp(10px, 2vw, 20px);
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: min(420px, 60vw);
+}
+
+.toast {
+    padding: clamp(12px, 1.8vh, 18px) clamp(16px, 2vw, 22px);
+    border-radius: clamp(8px, 1.5vw, 12px);
+    color: white;
+    font-weight: 600;
+    font-size: clamp(0.85rem, 1.8vw, 1.05rem);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transform: translateX(30px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-success { background: #27ae60; }
+.toast-error   { background: #e74c3c; }

@@ -1,7 +1,15 @@
 /**
- * SIA Local Control touchscreen HMI.
- * Renders controller status pushed over SocketIO and turns operator actions
- * into Doover RPC commands (with a loading spinner + success/error toast).
+ * SIA Remote Command touchscreen HMI.
+ *
+ * Renders controller status pushed over SocketIO (WP5 backend contract) into the
+ * card-based "SIA Remote Command" layout, and turns operator actions into Doover
+ * RPC commands (loading spinner + success/error toast).
+ *
+ * Backend socket contract (see dashboard.py / application.py):
+ *   server -> client:  'data_update' {pumps:[], faults:[], link_ok, units:{rate,pressure},
+ *                                     timestamp, solar?, tank?, skid?, selector?}
+ *                      'heartbeat'   {timestamp}
+ *   client -> server:  'command' {cmd, value}  -> ack {ok, code?, message?, result?}
  */
 
 class Dashboard {
@@ -14,7 +22,6 @@ class Dashboard {
         this.el = {
             connection: document.getElementById('connection-status'),
             lastUpdate: document.getElementById('last-update'),
-            pumpCards: document.getElementById('pump-cards'),
             loading: document.getElementById('loading-overlay'),
             cmdOverlay: document.getElementById('command-overlay'),
             cmdOverlayText: document.getElementById('command-overlay-text'),
@@ -28,6 +35,7 @@ class Dashboard {
         this.bindCommands();
     }
 
+    // -- socket ------------------------------------------------------------
     initSocket() {
         this.socket = io();
 
@@ -45,6 +53,7 @@ class Dashboard {
         this.socket.on('heartbeat', (d) => this.setLastUpdate(d.timestamp));
     }
 
+    // -- command dispatch --------------------------------------------------
     bindCommands() {
         document.querySelectorAll('.cmd-btn[data-cmd]').forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -106,57 +115,44 @@ class Dashboard {
             case 'set_pump_state': return `Pump ${result && result.state ? result.state : value}`;
             case 'nudge_rate':
             case 'set_target_rate':
-                return `Target rate ${result && result.target_rate != null ? result.target_rate.toFixed(2) : ''} ${this.units.rate}`;
+                return `Target rate ${result && result.target_rate != null ? result.target_rate.toFixed(2) : ''} ${this.units.rate}`.trim();
             case 'reset_fault': return 'Fault cleared';
             default: return 'Command applied';
         }
     }
 
+    // -- render ------------------------------------------------------------
     render(data) {
         this.data = data;
-        if (data.units) {
-            this.units = data.units;
-            document.querySelectorAll('.skid-flow-unit').forEach((e) => (e.textContent = data.units.rate));
-            document.querySelectorAll('.skid-pressure-unit').forEach((e) => (e.textContent = data.units.pressure));
-        }
+        if (data.units) this.units = data.units;
+
         this.setConnection(this.isConnected, data.link_ok);
-        this.renderPumps(data.pumps || []);
+        this.renderPump((data.pumps || [])[0]);
         this.renderFaults(data.faults || []);
-        this.renderAux('solar-card', data.solar, this.renderSolar.bind(this));
-        this.renderAux('tank-card', data.tank, this.renderTank.bind(this));
-        this.renderAux('skid-card', data.skid, this.renderSkid.bind(this));
+        this.renderSkid(data.skid);
+        this.renderSolar(data.solar);
+        this.renderTank(data.tank);
+        this.renderValve(data.selector);
         this.setLastUpdate(data.timestamp);
     }
 
-    renderPumps(pumps) {
+    renderPump(pump) {
+        if (!pump) return;
         const rate = this.units.rate;
-        this.el.pumpCards.className = 'pump-cards' + (pumps.length > 1 ? ' multi' : '');
-        this.el.pumpCards.innerHTML = pumps.map((p) => {
-            const state = (p.state || 'unknown').toLowerCase();
-            const target = (p.target_rate != null ? p.target_rate : 0).toFixed(2);
-            const flow = (p.flow_rate != null ? p.flow_rate : 0).toFixed(2);
-            return `
-            <div class="pump-card state-${state}">
-                <div class="pump-head">
-                    <span class="pump-name">${p.name || 'Pump'}</span>
-                    <span class="pump-state state-badge state-${state}">${p.state || 'unknown'}</span>
-                </div>
-                <div class="pump-metrics">
-                    <div class="pump-metric">
-                        <span class="pm-label">Target</span>
-                        <span class="pm-value">${target}<span class="pm-unit">${rate}</span></span>
-                    </div>
-                    <div class="pump-metric">
-                        <span class="pm-label">Flow</span>
-                        <span class="pm-value">${flow}<span class="pm-unit">${rate}</span></span>
-                    </div>
-                </div>
-                <div class="pump-lamps">
-                    <span class="lamp lamp-run ${p.running ? 'on' : ''}">RUN</span>
-                    <span class="lamp lamp-trip ${p.fault ? 'on' : ''}">TRIP</span>
-                </div>
-            </div>`;
-        }).join('');
+        const state = (pump.state || 'unknown');
+        const stateClass = state.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+        this.setValue('pump-control-label', pump.name || 'Pump', '');
+        this.setValue('target-rate', this.fmt(pump.target_rate, 1), rate);
+        this.setValue('flow-rate', this.fmt(pump.flow_rate, 1), rate);
+
+        const st = document.querySelector('#pump-state .state-value');
+        if (st) {
+            st.textContent = state;
+            st.className = 'state-value ' + stateClass + (pump.fault ? ' error' : '');
+        }
+        this.setLamp('lamp-run', pump.running);
+        this.setLamp('lamp-trip', pump.fault);
     }
 
     renderFaults(faults) {
@@ -172,50 +168,89 @@ class Dashboard {
         this.show(this.el.faultPopover);
     }
 
-    renderAux(cardId, data, renderer) {
-        const card = document.getElementById(cardId);
-        if (!data) { card.classList.add('hidden'); return; }
-        card.classList.remove('hidden');
-        renderer(data);
+    renderSkid(s) {
+        const section = document.getElementById('skid-section');
+        const row = document.getElementById('pump-skid-row');
+        if (!s) {
+            this.hide(section);
+            if (row) row.classList.add('no-skid');
+            return;
+        }
+        this.show(section);
+        if (row) row.classList.remove('no-skid');
+        if (s.skid_flow != null) this.setValue('skid-flow', this.fmt(s.skid_flow, 1), this.units.rate);
+        if (s.skid_pressure != null) this.setValue('skid-pressure', this.fmt(s.skid_pressure, 1), this.units.pressure);
     }
 
     renderSolar(s) {
-        if (s.battery_voltage != null) this.setText('battery-voltage', s.battery_voltage.toFixed(1));
+        const section = document.getElementById('solar-section');
+        if (!s) { this.hide(section); return; }
+        this.show(section);
+        if (s.battery_voltage != null) this.setValue('battery-voltage', this.fmt(s.battery_voltage, 1));
         if (s.battery_percentage != null) {
             const pct = Math.round(s.battery_percentage);
-            this.setText('battery-percentage', pct);
+            this.setValue('battery-percentage', pct);
             this.setBar('battery-progress', pct);
         }
-        if (s.panel_power != null) this.setText('panel-power', s.panel_power.toFixed(1));
-        if (s.battery_ah != null) this.setText('battery-ah', s.battery_ah.toFixed(1));
+        if (s.panel_power != null) this.setValue('panel-power', this.fmt(s.panel_power, 1));
+        if (s.battery_ah != null) this.setValue('battery-ah', this.fmt(s.battery_ah, 1));
     }
 
     renderTank(t) {
-        if (t.tank_level_mm != null) this.setText('tank-level-mm', Math.round(t.tank_level_mm));
+        const section = document.getElementById('tank-section');
+        if (!t) { this.hide(section); return; }
+        this.show(section);
+        if (t.tank_level_mm != null) this.setValue('tank-level-mm', Math.round(t.tank_level_mm));
         if (t.tank_level_percent != null) {
             const pct = Math.round(t.tank_level_percent);
-            this.setText('tank-level-percent', pct);
+            this.setValue('tank-level-percent', pct);
             this.setBar('tank-progress', pct);
         }
     }
 
-    renderSkid(s) {
-        if (s.skid_flow != null) this.setText('skid-flow', s.skid_flow.toFixed(1));
-        if (s.skid_pressure != null) this.setText('skid-pressure', s.skid_pressure.toFixed(1));
+    renderValve(sel) {
+        const section = document.getElementById('valve-section');
+        if (!sel) { this.hide(section); return; }
+        this.show(section);
+        const map = { 0: 'None', 1: 'Pump 1', 2: 'Pump 2', 3: 'Valve' };
+        const st = document.querySelector('#valve-state .state-value');
+        if (st) st.textContent = map[sel.state] != null ? map[sel.state] : '--';
     }
 
-    // -- helpers ----------------------------------------------------------
+    // -- helpers -----------------------------------------------------------
+    fmt(v, dp) {
+        const n = (v != null ? Number(v) : 0);
+        return isNaN(n) ? '0' : n.toFixed(dp);
+    }
+
+    setValue(containerId, value, unit) {
+        const c = document.getElementById(containerId);
+        if (!c) return;
+        const v = c.querySelector('.value');
+        if (v) v.textContent = value;
+        if (unit !== undefined) {
+            const u = c.querySelector('.unit');
+            if (u) u.textContent = unit;
+        }
+    }
+
+    setLamp(id, on) {
+        const e = document.getElementById(id);
+        if (e) e.classList.toggle('on', !!on);
+    }
+
     setConnection(connected, linkOk) {
         const e = this.el.connection;
+        if (!e) return;
         if (!connected) {
-            e.className = 'conn conn-down';
-            e.innerHTML = '<span class="dot"></span> Disconnected';
+            e.className = 'status-disconnected';
+            e.innerHTML = '&#9679; Disconnected';
         } else if (linkOk === false) {
-            e.className = 'conn conn-warn';
-            e.innerHTML = '<span class="dot"></span> No controller';
+            e.className = 'status-disconnected status-warning';
+            e.innerHTML = '&#9679; No controller';
         } else {
-            e.className = 'conn conn-up';
-            e.innerHTML = '<span class="dot"></span> Connected';
+            e.className = 'status-connected';
+            e.innerHTML = '&#9679; Connected';
         }
     }
 
@@ -227,12 +262,11 @@ class Dashboard {
         });
     }
 
-    setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
     setBar(id, pct) {
         const e = document.getElementById(id);
         if (!e) return;
         e.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-        e.className = 'bar-fill' + (pct < 5 ? ' low' : pct < 25 ? ' medium' : '');
+        e.className = 'progress-fill' + (pct < 5 ? ' low' : pct < 25 ? ' medium' : '');
     }
 
     show(e) { if (e) e.classList.remove('hidden'); }
