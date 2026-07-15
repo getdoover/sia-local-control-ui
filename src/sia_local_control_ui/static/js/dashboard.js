@@ -6,6 +6,12 @@
  * from the physical panel pushbuttons (read by the app backend as DI/AI), not from
  * this touchscreen. There are no on-screen controls.
  *
+ * Faults render as a non-blocking, in-flow banner between the header and the card
+ * grid: it auto-shows when the backend reports active faults and auto-hides when
+ * they clear, driven entirely by the live fault stream. It never overlays the
+ * status cards and has no on-screen acknowledge, dismiss, or clear affordance —
+ * faults clear only when the underlying condition clears.
+ *
  * Backend socket contract (see dashboard.py / application.py):
  *   server -> client:  'data_update' {pumps:[], faults:[], link_ok, units:{rate,pressure},
  *                                     timestamp, solar?, tank?, skid?, selector?}
@@ -23,7 +29,7 @@ class Dashboard {
             connection: document.getElementById('connection-status'),
             lastUpdate: document.getElementById('last-update'),
             loading: document.getElementById('loading-overlay'),
-            faultPopover: document.getElementById('fault-popover'),
+            faultBanner: document.getElementById('fault-banner'),
             faultList: document.getElementById('fault-message-list'),
         };
 
@@ -83,15 +89,17 @@ class Dashboard {
 
     renderFaults(faults) {
         if (!faults.length) {
-            this.hide(this.el.faultPopover);
-            this.el.faultList.innerHTML = '';
+            this.hide(this.el.faultBanner);
+            this.el.faultList.textContent = '';
             return;
         }
-        this.el.faultList.innerHTML = faults.map((f) => {
-            const who = f.pump ? `${f.pump}: ` : '';
-            return `<li>${who}${f.reason || 'Pump tripped'}</li>`;
-        }).join('');
-        this.show(this.el.faultPopover);
+        this.el.faultList.textContent = '';
+        for (const f of faults) {
+            const li = document.createElement('li');
+            li.textContent = (f.pump ? `${f.pump}: ` : '') + (f.reason || 'Pump tripped');
+            this.el.faultList.appendChild(li);
+        }
+        this.show(this.el.faultBanner);
     }
 
     renderSkid(s) {

@@ -22,6 +22,13 @@
             </div>
         </header>
 
+        <!-- Fault banner: auto-shows while the controller reports active faults, auto-hides when they clear. View-only — faults cannot be acknowledged, dismissed, or cleared from this screen. -->
+        <div id="fault-banner" class="fault-banner hidden" role="alert">
+            <span class="fault-banner-icon" aria-hidden="true">&#9888;</span>
+            <span class="fault-banner-title">Fault</span>
+            <ul id="fault-message-list" class="fault-banner-list"></ul>
+        </div>
+
         <main class="dashboard-content">
             <!-- Pump Control and Skid Row -->
             <div class="pump-skid-row" id="pump-skid-row">
@@ -156,15 +163,6 @@
                 </section>
             </div>
         </main>
-    </div>
-
-    <!-- Fault popover -->
-    <div id="fault-popover" class="fault-popover hidden">
-        <div class="fault-popover-content">
-            <h2>Fault Detected</h2>
-            <ul id="fault-message-list"></ul>
-            <p class="fault-popover-instructions">Press the Reset or Start pushbutton on the panel once the condition clears.</p>
-        </div>
     </div>
 
     <!-- Loading overlay -->

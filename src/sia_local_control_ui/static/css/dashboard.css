@@ -126,11 +126,6 @@ body {
     flex-shrink: 0;
 }
 
-.control-section:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
-
 .control-section h2 {
     color: #2c3e50;
     font-size: clamp(1.1rem, 2.5vw, 1.4rem);
@@ -185,11 +180,6 @@ body {
     transition: all 0.3s ease;
 }
 
-.control-card:hover {
-    border-color: #3498db;
-    background: #ffffff;
-}
-
 .control-card h3 {
     color: #2c3e50;
     font-size: clamp(0.7rem, 1.8vw, 0.9rem);
@@ -238,37 +228,6 @@ body {
 .state-value.closed { background: #f39c12; color: white; }
 .state-value.opened { background: #27ae60; color: white; }
 
-/* State controls */
-.state-controls {
-    display: flex;
-    gap: clamp(4px, 1vw, 8px);
-    flex-wrap: wrap;
-    justify-content: center;
-}
-
-.state-btn {
-    padding: clamp(4px, 1vw, 8px) clamp(6px, 1.5vw, 10px);
-    border: none;
-    border-radius: clamp(8px, 1.5vw, 12px);
-    background: #ecf0f1;
-    color: #2c3e50;
-    font-size: clamp(0.5rem, 1.5vw, 0.7rem);
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.state-btn:hover {
-    background: #3498db;
-    color: white;
-    transform: translateY(-2px);
-}
-
-.state-btn.active {
-    background: #3498db;
-    color: white;
-}
-
 /* Progress bars */
 .progress-bar {
     width: 100%;
@@ -294,27 +253,6 @@ body {
 .progress-fill.medium {
     background: linear-gradient(90deg, #f39c12, #e67e22);
 }
-
-/* Status display */
-.status-display {
-    text-align: center;
-}
-
-.status-value {
-    display: inline-block;
-    padding: 10px 20px;
-    border-radius: 25px;
-    font-weight: 600;
-    font-size: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.status-value.running { background: #27ae60; color: white; }
-.status-value.warning { background: #f39c12; color: white; }
-.status-value.error { background: #e74c3c; color: white; }
-.status-value.maintenance { background: #9b59b6; color: white; }
-
 
 /* Loading overlay */
 .loading-overlay {
@@ -352,109 +290,46 @@ body {
     font-weight: 500;
 }
 
-/* Fault popover */
-.fault-popover {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    min-width: clamp(260px, 32vw, 380px);
-    font-size: 1.4rem;
-    background: rgba(231, 76, 60, 0.95);
-    color: #ffffff;
-    border-radius: clamp(8px, 1.5vw, 14px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-    z-index: 1002;
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    transform: translate(-50%, -50%);
-}
-
-.fault-popover.hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: translate(-50%, calc(-50% - 20px));
-}
-
-/* Valve control popup */
-.valve-control-popup {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    min-width: clamp(300px, 40vw, 500px);
-    font-size: clamp(1.2rem, 3vw, 1.8rem);
-    background: rgba(255, 245, 235, 0.95);
-    color: #2c3e50;
-    border: 3px solid #ff8c00;
-    border-radius: clamp(8px, 1.5vw, 14px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-    z-index: 1003;
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    transform: translate(-50%, -50%);
-    padding: clamp(20px, 3vw, 40px);
-    text-align: center;
-    font-weight: 600;
-}
-
-.valve-control-popup.hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: translate(-50%, calc(-50% - 20px));
-}
-
-.valve-control-popup-content {
-    padding: 0;
-}
-
-.valve-control-popup-content p {
-    margin: 0;
-    line-height: 1.5;
-}
-
-.valve-popup-main {
-    margin-bottom: clamp(8px, 1.5vh, 12px);
-}
-
-.valve-popup-sub {
-    font-size: clamp(0.9rem, 2.2vw, 1.3rem);
-    opacity: 0.85;
-    font-weight: 500;
-}
-
-.fault-popover-content {
-    padding: clamp(16px, 2vw, 24px);
-}
-
-.fault-popover-content h2 {
-    font-size: clamp(1.4rem, 3.5vw, 1.96rem);
-    margin-bottom: clamp(8px, 1.5vh, 12px);
+/* Fault banner
+   In normal document flow between the header and the card grid: it reflows the
+   cards downward instead of covering them. No position, no z-index, no backdrop,
+   and no on-screen dismiss/clear affordance — faults auto-clear with the stream. */
+.fault-banner {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: clamp(8px, 1.2vw, 14px);
+    background: #e74c3c;
+    color: #ffffff;
+    border-radius: clamp(8px, 1.5vw, 15px);
+    padding: clamp(10px, 1.5vh, 16px) clamp(14px, 2vw, 22px);
+    margin-bottom: clamp(10px, 2vh, 20px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
-.fault-popover-content h2::before {
-    content: "\f071";
-    font-family: "Font Awesome 6 Free";
-    font-weight: 900;
+.fault-banner-icon {
+    font-size: clamp(1.2rem, 2.5vw, 1.6rem);
+    line-height: 1;
+    animation: pulse 2s infinite;
 }
 
-.fault-popover-content ul {
+.fault-banner-title {
+    font-weight: 700;
+    font-size: clamp(1rem, 2.2vw, 1.3rem);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fault-banner-list {
     list-style: none;
-    margin-bottom: clamp(10px, 1.5vh, 16px);
-}
-
-.fault-popover-content li {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(4px, 0.8vw, 10px) clamp(12px, 1.8vw, 20px);
     font-weight: 600;
-    margin-bottom: 6px;
-}
-
-.fault-popover-content li:last-child {
-    margin-bottom: 0;
-}
-
-.fault-popover-instructions {
-    font-size: clamp(1.12rem, 2.8vw, 1.33rem);
-    opacity: 0.85;
-    font-weight: 500;
+    font-size: clamp(0.9rem, 2vw, 1.15rem);
 }
 
 /* Responsive design */
@@ -485,14 +360,6 @@ body {
 @media (max-width: 480px) {
     .controls-grid {
         grid-template-columns: 1fr;
-    }
-    
-    .state-controls {
-        flex-direction: column;
-    }
-    
-    .state-btn {
-        width: 100%;
     }
 }
 
@@ -634,7 +501,7 @@ body {
 }
 
 /* ======================================================================
-   WP5 additions: operator command bar, lamps, toasts, spinner, gating.
+   WP5 additions: lamps, spinner, config-gating.
    Styled to match the SIA Remote Command card aesthetic above.
    ====================================================================== */
 
@@ -707,86 +574,7 @@ body {
     box-shadow: 0 0 12px rgba(231, 76, 60, 0.5);
 }
 
-/* Command bar */
-.command-bar {
-    margin-top: clamp(10px, 1.8vh, 16px);
-    display: flex;
-    flex-direction: column;
-    gap: clamp(8px, 1.4vh, 12px);
-}
-
-.cmd-row {
-    display: flex;
-    gap: clamp(8px, 1.4vw, 14px);
-    flex-wrap: wrap;
-}
-
-.cmd-btn {
-    flex: 1 1 0;
-    min-width: clamp(90px, 12vw, 140px);
-    padding: clamp(12px, 2.2vh, 20px) clamp(10px, 1.5vw, 16px);
-    border: none;
-    border-radius: clamp(8px, 1.5vw, 14px);
-    font-size: clamp(0.85rem, 2vw, 1.2rem);
-    font-weight: 700;
-    color: white;
-    cursor: pointer;
-    background: #3498db;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    -webkit-user-select: none;
-    user-select: none;
-    touch-action: manipulation;
-}
-
-.cmd-btn:hover { filter: brightness(1.05); }
-
-.cmd-btn:active {
-    transform: translateY(2px);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-}
-
-.cmd-icon { font-size: 0.9em; line-height: 1; }
-
-.cmd-start { background: #27ae60; }
-.cmd-stop  { background: #e74c3c; }
-.cmd-reset { background: #7f8c8d; }
-.cmd-nudge { background: #2980b9; }
-.cmd-set   { background: #f39c12; flex: 0 0 auto; min-width: 0; }
-
-/* Rate set input group */
-.rate-set {
-    flex: 1 1 0;
-    min-width: clamp(120px, 16vw, 200px);
-    display: flex;
-    gap: clamp(6px, 1vw, 10px);
-    align-items: stretch;
-}
-
-.rate-set input {
-    flex: 1 1 0;
-    min-width: 0;
-    padding: clamp(10px, 2vh, 18px) clamp(8px, 1.2vw, 12px);
-    border: 2px solid #dfe4e6;
-    border-radius: clamp(8px, 1.5vw, 14px);
-    font-size: clamp(0.9rem, 2vw, 1.2rem);
-    font-weight: 600;
-    color: #2c3e50;
-    background: #f8f9fa;
-    text-align: center;
-}
-
-.rate-set input:focus {
-    outline: none;
-    border-color: #3498db;
-    background: #ffffff;
-}
-
-/* Spinner used by loading + command overlays */
+/* Spinner used by the loading overlay */
 .spinner {
     width: 56px;
     height: 56px;
@@ -800,38 +588,3 @@ body {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
-
-/* Command overlay reuses .loading-overlay; ensure it sits above faults */
-#command-overlay { z-index: 1004; }
-
-/* Toasts */
-.toast-container {
-    position: fixed;
-    top: clamp(10px, 2vh, 20px);
-    right: clamp(10px, 2vw, 20px);
-    z-index: 1100;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    max-width: min(420px, 60vw);
-}
-
-.toast {
-    padding: clamp(12px, 1.8vh, 18px) clamp(16px, 2vw, 22px);
-    border-radius: clamp(8px, 1.5vw, 12px);
-    color: white;
-    font-weight: 600;
-    font-size: clamp(0.85rem, 1.8vw, 1.05rem);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-    opacity: 0;
-    transform: translateX(30px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-}
-
-.toast.show {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.toast-success { background: #27ae60; }
-.toast-error   { background: #e74c3c; }
