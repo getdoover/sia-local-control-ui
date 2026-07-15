@@ -8,9 +8,9 @@
         "description": "App for hosting the local control screen server for sia pump controllers",
         "long_description": "README.md",
         "depends_on": [],
-        "owner_org_key": "36a22e32-ab81-4a39-b400-869d532a052d",
-        "image_name": "ghcr.io/getdoover/sia-local-control-ui:main",
-        "container_registry_profile_key": "88953909-e9c4-4f81-9ec0-56239d4b0a2e",
+        "owner_org_key": "48f2d2c4-4c82-4fc3-8de8-d924d81c4588",
+        "image_name": "spaneng/sia-local-control-ui:main",
+        "container_registry_profile_key": "ee4568d0-9120-4ef9-b0f6-4ee121292a96",
         "build_args": "--platform linux/amd64,linux/arm64",
         "config_schema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -802,6 +802,21 @@
                     "live": true
                 }
             }
-        }
+        },
+        "owner_org": "48f2d2c4-4c82-4fc3-8de8-d924d81c4588",
+        "owner_org_id": 142400552532231428,
+        "organisation_id": 142400552532231428,
+        "container_registry_profile_id": 145420619704469767,
+        "id": 202714802705972494,
+        "code_repo_id": null,
+        "lambda_config": null,
+        "icon_url": null,
+        "banner_url": null,
+        "build_widget_command": null,
+        "export_config_command": null,
+        "export_ui_command": null,
+        "generate_ui": true,
+        "run_command": null,
+        "lambda_arn": null
     }
 }
