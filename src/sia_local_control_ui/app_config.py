@@ -1,8 +1,102 @@
+import enum
+
 from pathlib import Path
 
 from pydoover import config
 
-from .input_ref import InputRefConfig
+
+class ButtonSource(enum.Enum):
+    """Where a physical pushbutton is wired."""
+
+    disabled = "Disabled"
+    di = "DI"
+    ai = "AI"
+
+
+class ButtonConfig(config.Object):
+    """Nested config describing where one operator pushbutton is wired.
+
+    Buttons are event-driven via the platform pulse listener
+    (``platform_iface.get_new_pulse_counter``): DI buttons stream hardware IRQ
+    pulses, AI buttons use the platform's voltage-threshold ("VI") events.
+    ``pin`` is a DI or AI pin number depending on ``source``.
+    """
+
+    source = config.Enum(
+        "Source",
+        choices=ButtonSource,
+        default=ButtonSource.di,
+        description="Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
+    )
+    pin = config.Integer(
+        "Pin",
+        default=0,
+        minimum=0,
+        description="DI or AI pin number, per Source.",
+    )
+    threshold_v = config.Number(
+        "Threshold Voltage",
+        default=9.0,
+        minimum=0.0,
+        description="For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
+    )
+    active_low = config.Boolean(
+        "Active Low",
+        default=False,
+        description="Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
+    )
+    debounce_ms = config.Integer(
+        "Debounce (ms)",
+        default=50,
+        minimum=0,
+        description="Hardware debounce pushed to the DI pin config (not used for AI buttons).",
+    )
+
+
+def normalise_source(value) -> tuple[ButtonSource, int | None]:
+    """Normalise a raw config source value to ``(member, forced_pin)``.
+
+    config.Enum hands back a member OR a raw string depending on whether a
+    deployment config was injected. Legacy configs also used "AI0"/"AI1"
+    sources with the pin field unused -- map those to AI with the pin forced.
+    """
+    if isinstance(value, ButtonSource):
+        return value, None
+    if value is None:
+        return ButtonSource.disabled, None
+    text = str(value)
+    if text.upper() in ("AI0", "AI1"):
+        return ButtonSource.ai, int(text[-1])
+    try:
+        return ButtonSource(text), None
+    except ValueError:
+        # tolerate the sanitised member name too (e.g. "ai")
+        try:
+            return ButtonSource[text.lower()], None
+        except KeyError:
+            return ButtonSource.disabled, None
+
+
+def resolve_pulse(
+    source, pin, threshold_v=9.0, active_low=False
+) -> tuple[int, str] | tuple[None, None]:
+    """Resolve raw button settings to a ``(pin, edge)`` pair for
+    ``platform_iface.get_new_pulse_counter``.
+
+    DI edges are "rising"/"falling"; AI buttons use the platform's voltage
+    threshold events with edge "VI+<volts>" / "VI-<volts>". Returns
+    ``(None, None)`` when the button is disabled or has no pin.
+    """
+    src, forced_pin = normalise_source(source)
+    if forced_pin is not None:
+        pin = forced_pin
+    if src is ButtonSource.disabled or pin is None:
+        return None, None
+    pin = int(pin)
+    if src is ButtonSource.di:
+        return pin, "falling" if active_low else "rising"
+    threshold = float(threshold_v) if threshold_v is not None else 9.0
+    return pin, f"VI{'-' if active_low else '+'}{threshold}"
 
 
 class SiaLocalControlUiConfig(config.Schema):
@@ -54,21 +148,21 @@ class SiaLocalControlUiConfig(config.Schema):
         description="Controller string tag: human-readable trip cause.",
     )
 
-    # --- Physical operator pushbuttons (via flexible InputRef mapping) -------
+    # --- Physical operator pushbuttons (event-driven pulse listeners) --------
     # J5246 wiring: start=DI1, stop=DI2, flow_up=DI3, flow_down=AI1@9V.
-    start_button = InputRefConfig(
+    start_button = ButtonConfig(
         "Start Button",
         description="Physical Start pushbutton. J5246: DI1.",
     )
-    stop_button = InputRefConfig(
+    stop_button = ButtonConfig(
         "Stop Button",
         description="Physical Stop pushbutton. J5246: DI2.",
     )
-    flow_up_button = InputRefConfig(
+    flow_up_button = ButtonConfig(
         "Flow Up Button",
         description="Physical Flow Up pushbutton. J5246: DI3.",
     )
-    flow_down_button = InputRefConfig(
+    flow_down_button = ButtonConfig(
         "Flow Down Button",
         description="Physical Flow Down pushbutton. J5246: AI1 thresholded at 9V.",
     )
@@ -146,9 +240,9 @@ class SiaLocalControlUiConfig(config.Schema):
         "Dashboard Secret Key", default="sia_local_control_ui",
         description="Flask session secret key.",
     )
-    button_poll_period = config.Number(
-        "Button Poll Period (s)", default=0.2, minimum=0.05,
-        description="How often physical pushbuttons are polled (lower = more responsive).",
+    display_refresh_period = config.Number(
+        "Display Refresh Period (s)", default=0.5, minimum=0.1,
+        description="How often the dashboard/status readouts refresh. Buttons are event-driven and unaffected.",
     )
     rpc_timeout = config.Number(
         "RPC Timeout (s)", default=20.0, minimum=1.0,

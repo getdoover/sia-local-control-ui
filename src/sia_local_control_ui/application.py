@@ -2,16 +2,16 @@ import asyncio
 import logging
 import time
 from datetime import datetime
+from functools import partial
 
 from pydoover.docker import Application
 from pydoover.rpc import RPCError
 from pydoover.ui.manager import UI_CMDS_CHANNEL
 
-from .app_config import SiaLocalControlUiConfig
+from .app_config import SiaLocalControlUiConfig, resolve_pulse
 from .app_tags import SiaLocalControlUiTags
 from .app_ui import SiaLocalControlUiUI
 from .dashboard import SiaDashboard, DashboardInterface
-from .input_ref import InputRef
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ class SiaLocalControlUiApplication(Application):
     # ------------------------------------------------------------------
     async def setup(self):
         self.started: float = time.time()
-        # Poll fast enough that physical pushbuttons feel responsive.
-        self.loop_target_period = float(self.config.button_poll_period.value or 0.2)
+        # Buttons are event-driven, so the loop only paces the display refresh.
+        self.loop_target_period = float(self.config.display_refresh_period.value or 0.5)
 
         # Reference to the running event loop so the Flask/SocketIO thread can
         # marshal operator commands back onto the async side.
@@ -54,15 +54,37 @@ class SiaLocalControlUiApplication(Application):
         self.dashboard_interface = DashboardInterface(self.dashboard)
         self.dashboard_interface.start_dashboard()
 
-        # Physical operator pushbuttons via the flexible InputRef mapping.
-        self.buttons: dict[str, InputRef] = {
-            "start": InputRef(self.config.start_button, self.platform_iface),
-            "stop": InputRef(self.config.stop_button, self.platform_iface),
-            "flow_up": InputRef(self.config.flow_up_button, self.platform_iface),
-            "flow_down": InputRef(self.config.flow_down_button, self.platform_iface),
+        # Physical operator pushbuttons -> event-driven platform pulse
+        # listeners. DI buttons stream hardware IRQ pulses; AI buttons use the
+        # platform's voltage-threshold ("VI+<volts>") events. No polling.
+        self._pulse_counters = {}
+        button_configs = {
+            "start": self.config.start_button,
+            "stop": self.config.stop_button,
+            "flow_up": self.config.flow_up_button,
+            "flow_down": self.config.flow_down_button,
         }
-        # Previous debounced state per button, for rising-edge detection.
-        self._btn_prev: dict[str, bool] = {name: False for name in self.buttons}
+        for name, btn in button_configs.items():
+            pin, edge = resolve_pulse(
+                btn.source.value,
+                btn.pin.value,
+                btn.threshold_v.value,
+                bool(btn.active_low.value),
+            )
+            if pin is None:
+                continue
+            if edge in ("rising", "falling"):
+                # DI buttons: debounce is done in hardware -- push the config.
+                try:
+                    await self.platform_iface.set_di_config(
+                        pin, debounce_ms=int(btn.debounce_ms.value or 0)
+                    )
+                except Exception as e:
+                    log.debug("set_di_config(%s) failed: %s", pin, e)
+            self._pulse_counters[name] = self.platform_iface.get_new_pulse_counter(
+                pin, edge=edge, callback=partial(self._on_button_pulse, name)
+            )
+            log.info("Button %s -> pulse listener on pin %s (edge=%s)", name, pin, edge)
 
         # DO cache for the RUN / TRIP lamps -- write only on change.
         self._lamp_cache: dict[int, bool] = {}
@@ -134,30 +156,20 @@ class SiaLocalControlUiApplication(Application):
     # Main loop
     # ------------------------------------------------------------------
     async def main_loop(self):
-        await self._poll_buttons()
         update = await self._collect_dashboard_data()
         self.dashboard.update_data(update)
 
     # ------------------------------------------------------------------
     # Physical buttons
     # ------------------------------------------------------------------
-    async def _poll_buttons(self):
-        now = time.monotonic()
-        pressed: list[str] = []
-        for name, ref in self.buttons.items():
-            if not ref.enabled:
-                continue
-            try:
-                state = await ref.read(now)
-            except Exception as e:
-                log.debug("Button %s read failed: %s", name, e)
-                continue
-            if state and not self._btn_prev[name]:
-                pressed.append(name)  # rising edge
-            self._btn_prev[name] = state
+    async def _on_button_pulse(self, name, di, di_value, dt_secs, count, edge):
+        """Pulse-listener callback: one platform pulse event == one press.
 
-        for name in pressed:
-            await self._handle_button(name)
+        The listener dispatches callbacks as tasks, so awaiting the RPC here
+        doesn't block the pulse stream.
+        """
+        log.debug("Button %s pulse (pin=%s count=%s edge=%s)", name, di, count, edge)
+        await self._handle_button(name)
 
     async def _handle_button(self, name: str):
         if self._cmd_in_flight:
@@ -171,14 +183,10 @@ class SiaLocalControlUiApplication(Application):
 
         log.info("Operator button %s -> %s(%r)", name, cmd, value)
         self._cmd_in_flight = True
-
-        async def _run():
-            try:
-                await self._dispatch_command(cmd, value)
-            finally:
-                self._cmd_in_flight = False
-
-        asyncio.create_task(_run())
+        try:
+            await self._dispatch_command(cmd, value)
+        finally:
+            self._cmd_in_flight = False
 
     def _primary_fault(self) -> bool:
         key = self.config.primary_controller_key

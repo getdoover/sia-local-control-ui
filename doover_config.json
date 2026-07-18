@@ -127,8 +127,7 @@
                             "enum": [
                                 "Disabled",
                                 "DI",
-                                "AI0",
-                                "AI1"
+                                "AI"
                             ],
                             "title": "Source",
                             "x-name": "source",
@@ -138,7 +137,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
                             "default": "DI",
                             "x-position": 1
                         },
@@ -151,7 +150,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Digital input pin number (used when Source is DI).",
+                            "description": "DI or AI pin number, per Source.",
                             "default": 0,
                             "x-position": 2,
                             "minimum": 0
@@ -165,21 +164,21 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
                             "default": 9.0,
                             "x-position": 3,
                             "minimum": 0.0
                         },
-                        "invert": {
-                            "title": "Invert",
-                            "x-name": "invert",
+                        "active_low": {
+                            "title": "Active Low",
+                            "x-name": "active_low",
                             "x-hidden": false,
                             "type": [
                                 "boolean",
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Invert the boolean result (active-low input).",
+                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
                             "default": false,
                             "x-position": 4
                         },
@@ -192,7 +191,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
                             "default": 50,
                             "x-position": 5,
                             "minimum": 0
@@ -216,8 +215,7 @@
                             "enum": [
                                 "Disabled",
                                 "DI",
-                                "AI0",
-                                "AI1"
+                                "AI"
                             ],
                             "title": "Source",
                             "x-name": "source",
@@ -227,7 +225,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
                             "default": "DI",
                             "x-position": 1
                         },
@@ -240,7 +238,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Digital input pin number (used when Source is DI).",
+                            "description": "DI or AI pin number, per Source.",
                             "default": 0,
                             "x-position": 2,
                             "minimum": 0
@@ -254,21 +252,21 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
                             "default": 9.0,
                             "x-position": 3,
                             "minimum": 0.0
                         },
-                        "invert": {
-                            "title": "Invert",
-                            "x-name": "invert",
+                        "active_low": {
+                            "title": "Active Low",
+                            "x-name": "active_low",
                             "x-hidden": false,
                             "type": [
                                 "boolean",
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Invert the boolean result (active-low input).",
+                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
                             "default": false,
                             "x-position": 4
                         },
@@ -281,7 +279,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
                             "default": 50,
                             "x-position": 5,
                             "minimum": 0
@@ -305,8 +303,7 @@
                             "enum": [
                                 "Disabled",
                                 "DI",
-                                "AI0",
-                                "AI1"
+                                "AI"
                             ],
                             "title": "Source",
                             "x-name": "source",
@@ -316,7 +313,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
                             "default": "DI",
                             "x-position": 1
                         },
@@ -329,7 +326,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Digital input pin number (used when Source is DI).",
+                            "description": "DI or AI pin number, per Source.",
                             "default": 0,
                             "x-position": 2,
                             "minimum": 0
@@ -343,21 +340,21 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
                             "default": 9.0,
                             "x-position": 3,
                             "minimum": 0.0
                         },
-                        "invert": {
-                            "title": "Invert",
-                            "x-name": "invert",
+                        "active_low": {
+                            "title": "Active Low",
+                            "x-name": "active_low",
                             "x-hidden": false,
                             "type": [
                                 "boolean",
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Invert the boolean result (active-low input).",
+                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
                             "default": false,
                             "x-position": 4
                         },
@@ -370,7 +367,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
                             "default": 50,
                             "x-position": 5,
                             "minimum": 0
@@ -394,8 +391,7 @@
                             "enum": [
                                 "Disabled",
                                 "DI",
-                                "AI0",
-                                "AI1"
+                                "AI"
                             ],
                             "title": "Source",
                             "x-name": "source",
@@ -405,7 +401,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Where this input reads from: Disabled, a digital input (DI), or an analog input (AI0/AI1) thresholded to a boolean.",
+                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
                             "default": "DI",
                             "x-position": 1
                         },
@@ -418,7 +414,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Digital input pin number (used when Source is DI).",
+                            "description": "DI or AI pin number, per Source.",
                             "default": 0,
                             "x-position": 2,
                             "minimum": 0
@@ -432,21 +428,21 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "For AI sources: voltage above which the input reads True (matches the existing >9V selector idiom).",
+                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
                             "default": 9.0,
                             "x-position": 3,
                             "minimum": 0.0
                         },
-                        "invert": {
-                            "title": "Invert",
-                            "x-name": "invert",
+                        "active_low": {
+                            "title": "Active Low",
+                            "x-name": "active_low",
                             "x-hidden": false,
                             "type": [
                                 "boolean",
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "Invert the boolean result (active-low input).",
+                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
                             "default": false,
                             "x-position": 4
                         },
@@ -459,7 +455,7 @@
                                 "null"
                             ],
                             "x-required": false,
-                            "description": "The input must hold its new state this long before the debounced result flips.",
+                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
                             "default": 50,
                             "x-position": 5,
                             "minimum": 0
@@ -680,19 +676,19 @@
                     "default": "sia_local_control_ui",
                     "x-position": 25
                 },
-                "button_poll_period_s": {
-                    "title": "Button Poll Period (s)",
-                    "x-name": "button_poll_period_s",
+                "display_refresh_period_s": {
+                    "title": "Display Refresh Period (s)",
+                    "x-name": "display_refresh_period_s",
                     "x-hidden": false,
                     "type": [
                         "number",
                         "null"
                     ],
                     "x-required": false,
-                    "description": "How often physical pushbuttons are polled (lower = more responsive).",
-                    "default": 0.2,
+                    "description": "How often the dashboard/status readouts refresh. Buttons are event-driven and unaffected.",
+                    "default": 0.5,
                     "x-position": 26,
-                    "minimum": 0.05
+                    "minimum": 0.1
                 },
                 "rpc_timeout_s": {
                     "title": "RPC Timeout (s)",
