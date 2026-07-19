@@ -106,8 +106,10 @@ class Dashboard {
         return (rate || '').split('/')[0] || '';
     }
 
-    // Linear min..flow..max bar. Hidden whenever the controller hasn't published
-    // usable min/max deliverable rates (null, or max <= min).
+    // Linear min..target..max bar under the Target Rate readout: setpoint
+    // feedback while the operator presses the flow up/down buttons. Hidden
+    // whenever the controller hasn't published usable min/max deliverable
+    // rates (null, or max <= min).
     renderFlowRange(pump) {
         const el = document.getElementById('flow-range');
         if (!el) return;
@@ -121,8 +123,8 @@ class Dashboard {
         const rate = this.units.rate;
         this.setText('flow-range-min', this.fmt(min, 1) + ' ' + rate);
         this.setText('flow-range-max', this.fmt(max, 1) + ' ' + rate);
-        const flow = pump.flow_rate != null ? Number(pump.flow_rate) : 0;
-        const frac = Math.max(0, Math.min(1, (flow - min) / (max - min)));
+        const target = pump.target_rate != null ? Number(pump.target_rate) : 0;
+        const frac = Math.max(0, Math.min(1, (target - min) / (max - min)));
         const fill = document.getElementById('flow-range-fill');
         if (fill) fill.style.width = `${frac * 100}%`;
     }
