@@ -80,14 +80,51 @@ class Dashboard {
 
         this.setValue('target-rate', this.fmt(pump.target_rate, 1), rate);
         this.setValue('flow-rate', this.fmt(pump.flow_rate, 1), rate);
+        this.setTotal(pump.total, this.volumeUnit(rate));
+        this.renderFlowRange(pump);
 
         const st = document.querySelector('#pump-state .state-value');
         if (st) {
             st.textContent = state;
             st.className = 'state-value ' + stateClass + (pump.fault ? ' error' : '');
         }
-        this.setLamp('lamp-run', pump.running);
-        this.setLamp('lamp-trip', pump.fault);
+    }
+
+    // Total delivered volume shown as a smaller secondary line under Flow Rate.
+    // The volume unit is derived from the rate units by dropping the /time part.
+    setTotal(value, unit) {
+        const el = document.getElementById('flow-total');
+        if (!el) return;
+        const v = el.querySelector('.secondary-value');
+        if (v) v.textContent = this.fmt(value, 2);
+        const u = el.querySelector('.secondary-unit');
+        if (u) u.textContent = unit;
+    }
+
+    // "L/Day" -> "L", "Gal/Hr" -> "Gal": strip the time denominator.
+    volumeUnit(rate) {
+        return (rate || '').split('/')[0] || '';
+    }
+
+    // Linear min..flow..max bar. Hidden whenever the controller hasn't published
+    // usable min/max deliverable rates (null, or max <= min).
+    renderFlowRange(pump) {
+        const el = document.getElementById('flow-range');
+        if (!el) return;
+        const min = pump.min_rate;
+        const max = pump.max_rate;
+        if (min == null || max == null || max <= min) {
+            this.hide(el);
+            return;
+        }
+        this.show(el);
+        const rate = this.units.rate;
+        this.setText('flow-range-min', this.fmt(min, 1) + ' ' + rate);
+        this.setText('flow-range-max', this.fmt(max, 1) + ' ' + rate);
+        const flow = pump.flow_rate != null ? Number(pump.flow_rate) : 0;
+        const frac = Math.max(0, Math.min(1, (flow - min) / (max - min)));
+        const fill = document.getElementById('flow-range-fill');
+        if (fill) fill.style.width = `${frac * 100}%`;
     }
 
     renderFaults(faults) {
@@ -188,9 +225,9 @@ class Dashboard {
         }
     }
 
-    setLamp(id, on) {
+    setText(id, text) {
         const e = document.getElementById(id);
-        if (e) e.classList.toggle('on', !!on);
+        if (e) e.textContent = text;
     }
 
     setConnection(connected, linkOk) {

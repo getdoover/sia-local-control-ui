@@ -213,6 +213,11 @@ class SiaLocalControlUiApplication(Application):
                 "name": f"Pump {idx + 1}" if len(cfg.controller_keys) > 1 else "Pump",
                 "target_rate": _num(self.get_tag(cfg.tag_target_rate.value, key)),
                 "flow_rate": _num(self.get_tag(cfg.tag_flow_rate.value, key)),
+                "total": _num(self.get_tag(cfg.tag_total.value, key)),
+                # min/max may be absent until the controller publishes them --
+                # keep them None (not 0) so the UI can hide the flow-range bar.
+                "min_rate": _opt_num(self.get_tag(cfg.tag_min_rate.value, key)),
+                "max_rate": _opt_num(self.get_tag(cfg.tag_max_rate.value, key)),
                 "state": state if state is not None else "unknown",
                 "running": bool(self.get_tag(cfg.tag_running.value, key)),
                 "fault": fault,
@@ -372,3 +377,14 @@ def _num(value, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _opt_num(value) -> float | None:
+    """Like ``_num`` but preserves absence: returns None (not 0.0) when the tag
+    is missing/unpublished, so the dashboard can hide the flow-range bar."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

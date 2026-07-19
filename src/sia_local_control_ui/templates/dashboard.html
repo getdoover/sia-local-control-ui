@@ -56,16 +56,28 @@
                                 <span class="value">0.0</span>
                                 <span class="unit">L/Hr</span>
                             </div>
+                            <div class="secondary-line" id="flow-total">
+                                <span class="secondary-label">Total</span>
+                                <span class="secondary-value">0.00</span>
+                                <span class="secondary-unit">L</span>
+                            </div>
                         </div>
                         <div class="control-card">
                             <h3>Pump State</h3>
                             <div class="state-display" id="pump-state">
                                 <span class="state-value">unknown</span>
                             </div>
-                            <div class="pump-lamps">
-                                <span class="lamp lamp-run" id="lamp-run">RUN</span>
-                                <span class="lamp lamp-trip" id="lamp-trip">TRIP</span>
-                            </div>
+                        </div>
+                    </div>
+                    <!-- Flow-range bar: min .. flow .. max. Auto-hidden until the
+                         controller publishes min/max deliverable rates. -->
+                    <div class="flow-range hidden" id="flow-range">
+                        <div class="flow-range-track">
+                            <div class="flow-range-fill" id="flow-range-fill"></div>
+                        </div>
+                        <div class="flow-range-labels">
+                            <span class="flow-range-min" id="flow-range-min">--</span>
+                            <span class="flow-range-max" id="flow-range-max">--</span>
                         </div>
                     </div>
                 </section>

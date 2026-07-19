@@ -135,6 +135,18 @@ class SiaLocalControlUiConfig(config.Schema):
         "Flow Rate Tag", default="FlowRate",
         description="Controller tag holding the measured flow rate.",
     )
+    tag_total = config.String(
+        "Total Tag", default="Total",
+        description="Controller tag holding the total delivered volume.",
+    )
+    tag_min_rate = config.String(
+        "Min Rate Tag", default="MinRate",
+        description="Controller tag holding the pump's minimum deliverable rate (for the flow-range bar).",
+    )
+    tag_max_rate = config.String(
+        "Max Rate Tag", default="MaxRate",
+        description="Controller tag holding the pump's maximum deliverable rate (for the flow-range bar).",
+    )
     tag_running = config.String(
         "Running Tag", default="Running",
         description="Controller boolean tag: pump output energised.",

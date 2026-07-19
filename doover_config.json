@@ -75,6 +75,45 @@
                     "default": "FlowRate",
                     "x-position": 3
                 },
+                "total_tag": {
+                    "title": "Total Tag",
+                    "x-name": "total_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller tag holding the total delivered volume.",
+                    "default": "Total",
+                    "x-position": 4
+                },
+                "min_rate_tag": {
+                    "title": "Min Rate Tag",
+                    "x-name": "min_rate_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller tag holding the pump's minimum deliverable rate (for the flow-range bar).",
+                    "default": "MinRate",
+                    "x-position": 5
+                },
+                "max_rate_tag": {
+                    "title": "Max Rate Tag",
+                    "x-name": "max_rate_tag",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Controller tag holding the pump's maximum deliverable rate (for the flow-range bar).",
+                    "default": "MaxRate",
+                    "x-position": 6
+                },
                 "running_tag": {
                     "title": "Running Tag",
                     "x-name": "running_tag",
@@ -86,7 +125,7 @@
                     "x-required": false,
                     "description": "Controller boolean tag: pump output energised.",
                     "default": "Running",
-                    "x-position": 4
+                    "x-position": 7
                 },
                 "fault_tag": {
                     "title": "Fault Tag",
@@ -99,7 +138,7 @@
                     "x-required": false,
                     "description": "Controller boolean tag: trip active.",
                     "default": "Fault",
-                    "x-position": 5
+                    "x-position": 8
                 },
                 "fault_reason_tag": {
                     "title": "Fault Reason Tag",
@@ -112,7 +151,7 @@
                     "x-required": false,
                     "description": "Controller string tag: human-readable trip cause.",
                     "default": "FaultReason",
-                    "x-position": 6
+                    "x-position": 9
                 },
                 "warning_tag": {
                     "title": "Warning Tag",
@@ -125,7 +164,7 @@
                     "x-required": false,
                     "description": "Controller boolean tag: warning active (non-trip; pump keeps running).",
                     "default": "Warning",
-                    "x-position": 7
+                    "x-position": 10
                 },
                 "warning_reason_tag": {
                     "title": "Warning Reason Tag",
@@ -138,7 +177,7 @@
                     "x-required": false,
                     "description": "Controller string tag: human-readable warning cause.",
                     "default": "WarningReason",
-                    "x-position": 8
+                    "x-position": 11
                 },
                 "start_button": {
                     "title": "Start Button",
@@ -147,7 +186,7 @@
                     "type": "object",
                     "x-required": true,
                     "description": "Physical Start pushbutton. J5246: DI1.",
-                    "x-position": 9,
+                    "x-position": 12,
                     "properties": {
                         "source": {
                             "enum": [
@@ -235,7 +274,7 @@
                     "type": "object",
                     "x-required": true,
                     "description": "Physical Stop pushbutton. J5246: DI2.",
-                    "x-position": 10,
+                    "x-position": 13,
                     "properties": {
                         "source": {
                             "enum": [
@@ -323,7 +362,7 @@
                     "type": "object",
                     "x-required": true,
                     "description": "Physical Flow Up pushbutton. J5246: DI3.",
-                    "x-position": 11,
+                    "x-position": 14,
                     "properties": {
                         "source": {
                             "enum": [
@@ -411,7 +450,7 @@
                     "type": "object",
                     "x-required": true,
                     "description": "Physical Flow Down pushbutton. J5246: AI1 thresholded at 9V.",
-                    "x-position": 12,
+                    "x-position": 15,
                     "properties": {
                         "source": {
                             "enum": [
@@ -503,7 +542,7 @@
                     "x-required": false,
                     "description": "Digital output for the green RUN lamp (J5246 DO3). Unset to disable.",
                     "default": 3,
-                    "x-position": 13,
+                    "x-position": 16,
                     "minimum": 0
                 },
                 "trip_lamp_pin": {
@@ -517,7 +556,7 @@
                     "x-required": false,
                     "description": "Digital output for the red TRIP lamp (J5246 DO4). Unset to disable.",
                     "default": 4,
-                    "x-position": 14,
+                    "x-position": 17,
                     "minimum": 0
                 },
                 "enable_pumpvalve_selector": {
@@ -531,7 +570,7 @@
                     "x-required": false,
                     "description": "Legacy two-pump selector switch. Off for single-pump J5246 skids.",
                     "default": false,
-                    "x-position": 15
+                    "x-position": 18
                 },
                 "selector_threshold_voltage": {
                     "title": "Selector Threshold Voltage",
@@ -544,7 +583,7 @@
                     "x-required": false,
                     "description": "AI voltage above which a selector position reads active.",
                     "default": 5.0,
-                    "x-position": 16,
+                    "x-position": 19,
                     "minimum": 0.0
                 },
                 "pump_1_selector_ai_pin": {
@@ -558,7 +597,7 @@
                     "x-required": false,
                     "description": "Analog input pin for the pump 1 selector (only used when the selector is enabled).",
                     "default": null,
-                    "x-position": 17,
+                    "x-position": 20,
                     "minimum": 0
                 },
                 "pump_2_selector_ai_pin": {
@@ -572,7 +611,7 @@
                     "x-required": false,
                     "description": "Analog input pin for the pump 2 selector (only used when the selector is enabled).",
                     "default": null,
-                    "x-position": 18,
+                    "x-position": 21,
                     "minimum": 0
                 },
                 "enable_valve_card": {
@@ -586,7 +625,7 @@
                     "x-required": false,
                     "description": "Show the valve status card (legacy skids with a calibration valve). Off for J5246.",
                     "default": false,
-                    "x-position": 19
+                    "x-position": 22
                 },
                 "solar_controllers": {
                     "title": "Solar Controllers",
@@ -595,7 +634,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "Solar controller apps whose battery/panel figures are aggregated on the dashboard.",
-                    "x-position": 20,
+                    "x-position": 23,
                     "items": {
                         "title": "Solar Controller",
                         "x-name": "solar_controller",
@@ -618,7 +657,7 @@
                     "x-required": false,
                     "description": "(Optional) tank level app for the tank card.",
                     "default": null,
-                    "x-position": 21
+                    "x-position": 24
                 },
                 "flow_sensor_app": {
                     "title": "Flow Sensor App",
@@ -632,7 +671,7 @@
                     "x-required": false,
                     "description": "(Optional) skid flow sensor app.",
                     "default": null,
-                    "x-position": 22
+                    "x-position": 25
                 },
                 "pressure_sensor_app": {
                     "title": "Pressure Sensor App",
@@ -646,7 +685,7 @@
                     "x-required": false,
                     "description": "(Optional) skid pressure sensor app.",
                     "default": null,
-                    "x-position": 23
+                    "x-position": 26
                 },
                 "rate_units": {
                     "title": "Rate Units",
@@ -659,7 +698,7 @@
                     "x-required": false,
                     "description": "Units label shown against target/flow rate figures.",
                     "default": "L/Hr",
-                    "x-position": 24
+                    "x-position": 27
                 },
                 "pressure_units": {
                     "title": "Pressure Units",
@@ -672,7 +711,7 @@
                     "x-required": false,
                     "description": "Units label shown against the skid pressure figure.",
                     "default": "psi",
-                    "x-position": 25
+                    "x-position": 28
                 },
                 "dashboard_port": {
                     "title": "Dashboard Port",
@@ -685,7 +724,7 @@
                     "x-required": false,
                     "description": "TCP port the Flask/SocketIO touchscreen server listens on.",
                     "default": 8091,
-                    "x-position": 26,
+                    "x-position": 29,
                     "minimum": 1,
                     "maximum": 65535
                 },
@@ -700,7 +739,7 @@
                     "x-required": false,
                     "description": "Flask session secret key.",
                     "default": "sia_local_control_ui",
-                    "x-position": 27
+                    "x-position": 30
                 },
                 "display_refresh_period_s": {
                     "title": "Display Refresh Period (s)",
@@ -713,7 +752,7 @@
                     "x-required": false,
                     "description": "How often the dashboard/status readouts refresh. Buttons are event-driven and unaffected.",
                     "default": 0.5,
-                    "x-position": 28,
+                    "x-position": 31,
                     "minimum": 0.1
                 },
                 "rpc_timeout_s": {
@@ -727,7 +766,7 @@
                     "x-required": false,
                     "description": "How long an operator command waits for the controller to physically act.",
                     "default": 20.0,
-                    "x-position": 29,
+                    "x-position": 32,
                     "minimum": 1.0
                 }
             },

@@ -49,6 +49,9 @@ def _fake_config(controller_keys):
         tag_state=_val("StateString"),
         tag_target_rate=_val("TargetRate"),
         tag_flow_rate=_val("FlowRate"),
+        tag_total=_val("Total"),
+        tag_min_rate=_val("MinRate"),
+        tag_max_rate=_val("MaxRate"),
         tag_running=_val("Running"),
         tag_fault=_val("Fault"),
         tag_fault_reason=_val("FaultReason"),
@@ -106,6 +109,9 @@ async def test_single_pump_running_no_crash():
         (key, "StateString"): "pumping",
         (key, "TargetRate"): 12.5,
         (key, "FlowRate"): 11.9,
+        (key, "Total"): 345.6,
+        (key, "MinRate"): 2.0,
+        (key, "MaxRate"): 92.16,
         (key, "Running"): True,
         (key, "Fault"): False,
         (key, "FaultReason"): None,
@@ -119,6 +125,10 @@ async def test_single_pump_running_no_crash():
     assert pump["name"] == "Pump"  # single pump -> no numeric suffix
     assert pump["running"] is True
     assert pump["target_rate"] == 12.5
+    # total delivered volume + flow-range bounds flow through
+    assert pump["total"] == 345.6
+    assert pump["min_rate"] == 2.0
+    assert pump["max_rate"] == 92.16
     assert data["link_ok"] is True
     assert data["faults"] == []
     # RUN lamp (DO3) driven true, TRIP lamp (DO4) driven false
@@ -174,6 +184,27 @@ async def test_single_pump_warning_surfaces_without_trip():
     assert (4, False) in stub.do_writes
     assert stub.tags.Warning.value is True
     assert stub.tags.WarningReason.value == "No flow feedback — pump may not be turning"
+
+
+async def test_flow_range_bounds_none_when_unpublished():
+    # Controller hasn't published min/max yet -> they must pass through as None
+    # (NOT 0) so the dashboard can hide the flow-range bar. Total defaults to 0.
+    key = "ctrl_1"
+    tags = {
+        (key, "StateString"): "pumping",
+        (key, "TargetRate"): 5.0,
+        (key, "FlowRate"): 4.8,
+        (key, "Running"): True,
+        (key, "Fault"): False,
+    }
+    stub = _make_stub([key], tags)
+
+    data = await stub._collect_dashboard_data()
+
+    pump = data["pumps"][0]
+    assert pump["min_rate"] is None
+    assert pump["max_rate"] is None
+    assert pump["total"] == 0.0
 
 
 async def test_no_controllers_does_not_crash():
