@@ -16,4 +16,6 @@ class SiaLocalControlUiTags(Tags):
     FlowRate = Tag("number", default=0.0, live=True)
     Fault = Tag("boolean", default=False, live=True)
     FaultReason = Tag("string", default=None, live=True)
+    Warning = Tag("boolean", default=False, live=True)
+    WarningReason = Tag("string", default=None, live=True)
     LastCommand = Tag("string", default=None, live=True)

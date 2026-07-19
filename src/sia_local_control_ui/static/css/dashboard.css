@@ -332,6 +332,48 @@ body {
     font-size: clamp(0.9rem, 2vw, 1.15rem);
 }
 
+/* Warning banner
+   Same non-obscuring in-flow treatment as the fault banner, but orange: a
+   warning means the pump is still being driven — it only indicates the
+   controller can't see the pump turning (or similar non-trip conditions). */
+.warning-banner {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: clamp(8px, 1.2vw, 14px);
+    background: #e67e22;
+    color: #ffffff;
+    border-radius: clamp(8px, 1.5vw, 15px);
+    padding: clamp(10px, 1.5vh, 16px) clamp(14px, 2vw, 22px);
+    margin-bottom: clamp(10px, 2vh, 20px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.warning-banner-icon {
+    font-size: clamp(1.2rem, 2.5vw, 1.6rem);
+    line-height: 1;
+    animation: pulse 2s infinite;
+}
+
+.warning-banner-title {
+    font-weight: 700;
+    font-size: clamp(1rem, 2.2vw, 1.3rem);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.warning-banner-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(4px, 0.8vw, 10px) clamp(12px, 1.8vw, 20px);
+    font-weight: 600;
+    font-size: clamp(0.9rem, 2vw, 1.15rem);
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .dashboard-header {

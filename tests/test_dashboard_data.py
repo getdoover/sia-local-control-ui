@@ -37,6 +37,8 @@ def _fake_tags():
         FlowRate=_AsyncTag(),
         Fault=_AsyncTag(),
         FaultReason=_AsyncTag(),
+        Warning=_AsyncTag(),
+        WarningReason=_AsyncTag(),
         LastCommand=_AsyncTag(),
     )
 
@@ -50,6 +52,8 @@ def _fake_config(controller_keys):
         tag_running=_val("Running"),
         tag_fault=_val("Fault"),
         tag_fault_reason=_val("FaultReason"),
+        tag_warning=_val("Warning"),
+        tag_warning_reason=_val("WarningReason"),
         run_lamp_pin=_val(3),
         trip_lamp_pin=_val(4),
         rate_units=_val("L/Hr"),
@@ -143,6 +147,33 @@ async def test_single_pump_fault_surfaces_reason_and_trip_lamp():
     assert data["faults"][0]["reason"] == "Tank level low-low"
     assert (4, True) in stub.do_writes  # TRIP lamp lit
     assert stub.tags.FaultReason.value == "Tank level low-low"
+
+
+async def test_single_pump_warning_surfaces_without_trip():
+    key = "ctrl_1"
+    tags = {
+        (key, "StateString"): "pumping",
+        (key, "TargetRate"): 2.5,
+        (key, "FlowRate"): 0.0,
+        (key, "Running"): True,
+        (key, "Fault"): False,
+        (key, "FaultReason"): None,
+        (key, "Warning"): True,
+        (key, "WarningReason"): "No flow feedback — pump may not be turning",
+    }
+    stub = _make_stub([key], tags)
+
+    data = await stub._collect_dashboard_data()
+
+    # warning surfaces on its own banner list, NOT as a fault
+    assert data["faults"] == []
+    assert len(data["warnings"]) == 1
+    assert data["warnings"][0]["reason"] == "No flow feedback — pump may not be turning"
+    # pump keeps running: RUN lamp on, TRIP lamp off
+    assert (3, True) in stub.do_writes
+    assert (4, False) in stub.do_writes
+    assert stub.tags.Warning.value is True
+    assert stub.tags.WarningReason.value == "No flow feedback — pump may not be turning"
 
 
 async def test_no_controllers_does_not_crash():

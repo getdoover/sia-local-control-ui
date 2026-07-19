@@ -29,6 +29,13 @@
             <ul id="fault-message-list" class="fault-banner-list"></ul>
         </div>
 
+        <!-- Warning banner: orange, non-obscuring. Shows while the controller reports active warnings (e.g. no flow feedback — the pump keeps running). Auto-hides when they clear. -->
+        <div id="warning-banner" class="warning-banner hidden" role="status">
+            <span class="warning-banner-icon" aria-hidden="true">&#9888;</span>
+            <span class="warning-banner-title">Warning</span>
+            <ul id="warning-message-list" class="warning-banner-list"></ul>
+        </div>
+
         <main class="dashboard-content">
             <!-- Pump Control and Skid Row -->
             <div class="pump-skid-row" id="pump-skid-row">

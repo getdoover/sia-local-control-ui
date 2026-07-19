@@ -201,11 +201,14 @@ class SiaLocalControlUiApplication(Application):
         cfg = self.config
         pumps = []
         active_faults = []
+        active_warnings = []
 
         for idx, key in enumerate(cfg.controller_keys):
             state = self.get_tag(cfg.tag_state.value, key)
             fault = bool(self.get_tag(cfg.tag_fault.value, key))
             reason = self.get_tag(cfg.tag_fault_reason.value, key)
+            warning = bool(self.get_tag(cfg.tag_warning.value, key))
+            warning_reason = self.get_tag(cfg.tag_warning_reason.value, key)
             pump = {
                 "name": f"Pump {idx + 1}" if len(cfg.controller_keys) > 1 else "Pump",
                 "target_rate": _num(self.get_tag(cfg.tag_target_rate.value, key)),
@@ -214,11 +217,17 @@ class SiaLocalControlUiApplication(Application):
                 "running": bool(self.get_tag(cfg.tag_running.value, key)),
                 "fault": fault,
                 "fault_reason": reason,
+                "warning": warning,
+                "warning_reason": warning_reason,
             }
             pumps.append(pump)
             if fault:
                 active_faults.append(
                     {"pump": pump["name"], "reason": reason or "Pump tripped"}
+                )
+            if warning:
+                active_warnings.append(
+                    {"pump": pump["name"], "reason": warning_reason or "Warning"}
                 )
 
         primary = pumps[0] if pumps else None
@@ -236,10 +245,13 @@ class SiaLocalControlUiApplication(Application):
             await self.tags.FlowRate.set(primary["flow_rate"])
             await self.tags.Fault.set(primary["fault"])
             await self.tags.FaultReason.set(primary["fault_reason"])
+            await self.tags.Warning.set(primary["warning"])
+            await self.tags.WarningReason.set(primary["warning_reason"])
 
         data = {
             "pumps": pumps,
             "faults": active_faults,
+            "warnings": active_warnings,
             "link_ok": link_ok,
             "units": {
                 "rate": cfg.rate_units.value or "L/Hr",

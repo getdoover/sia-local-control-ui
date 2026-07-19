@@ -31,6 +31,8 @@ class Dashboard {
             loading: document.getElementById('loading-overlay'),
             faultBanner: document.getElementById('fault-banner'),
             faultList: document.getElementById('fault-message-list'),
+            warningBanner: document.getElementById('warning-banner'),
+            warningList: document.getElementById('warning-message-list'),
         };
 
         this.initSocket();
@@ -62,6 +64,7 @@ class Dashboard {
         this.setConnection(this.isConnected, data.link_ok);
         this.renderPump((data.pumps || [])[0]);
         this.renderFaults(data.faults || []);
+        this.renderWarnings(data.warnings || []);
         this.renderSkid(data.skid);
         this.renderSolar(data.solar);
         this.renderTank(data.tank);
@@ -100,6 +103,23 @@ class Dashboard {
             this.el.faultList.appendChild(li);
         }
         this.show(this.el.faultBanner);
+    }
+
+    // Warnings are non-trip conditions (e.g. no flow feedback): the pump keeps
+    // running, the operator just sees the orange banner while they persist.
+    renderWarnings(warnings) {
+        if (!warnings.length) {
+            this.hide(this.el.warningBanner);
+            this.el.warningList.textContent = '';
+            return;
+        }
+        this.el.warningList.textContent = '';
+        for (const w of warnings) {
+            const li = document.createElement('li');
+            li.textContent = (w.pump ? `${w.pump}: ` : '') + (w.reason || 'Warning');
+            this.el.warningList.appendChild(li);
+        }
+        this.show(this.el.warningBanner);
     }
 
     renderSkid(s) {

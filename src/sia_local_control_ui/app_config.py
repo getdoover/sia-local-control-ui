@@ -147,6 +147,14 @@ class SiaLocalControlUiConfig(config.Schema):
         "Fault Reason Tag", default="FaultReason",
         description="Controller string tag: human-readable trip cause.",
     )
+    tag_warning = config.String(
+        "Warning Tag", default="Warning",
+        description="Controller boolean tag: warning active (non-trip; pump keeps running).",
+    )
+    tag_warning_reason = config.String(
+        "Warning Reason Tag", default="WarningReason",
+        description="Controller string tag: human-readable warning cause.",
+    )
 
     # --- Physical operator pushbuttons (event-driven pulse listeners) --------
     # J5246 wiring: start=DI1, stop=DI2, flow_up=DI3, flow_down=AI1@9V.
