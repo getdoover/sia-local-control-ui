@@ -5,7 +5,7 @@ operator-panel adapter for Solar Injection Australia chemical injection skids.
 
 This branch publishes as the separate Doover application
 `sia_local_control` using the container image
-`ghcr.io/getdoover/sia-local-control:main`; it does not update the legacy
+`ghcr.io/getdoover/sia-local-control-ui:widgets`; it does not update the legacy
 `sia_local_control_ui` application record.
 
 ## Architecture
