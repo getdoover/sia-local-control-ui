@@ -88,7 +88,7 @@ def test_publish_identity_is_separate_from_legacy_app():
     assert set(data) == {"sia_local_control"}
     app = data["sia_local_control"]
     assert app["name"] == "sia_local_control"
-    assert app["image_name"] == "ghcr.io/getdoover/sia-local-control:main"
+    assert app["image_name"] == "ghcr.io/getdoover/sia-local-control-ui:widgets"
     # Publishing must never update the legacy sia_local_control_ui record.
     # A persisted identity is expected after the separate app has been created.
     assert app.get("id") != 202714802705972494
