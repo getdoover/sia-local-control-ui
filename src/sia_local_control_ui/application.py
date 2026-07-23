@@ -1,7 +1,5 @@
-import asyncio
 import logging
 import time
-from datetime import datetime
 from functools import partial
 
 from pydoover.docker import Application
@@ -11,7 +9,6 @@ from pydoover.ui.manager import UI_CMDS_CHANNEL
 from .app_config import SiaLocalControlUiConfig, resolve_pulse
 from .app_tags import SiaLocalControlUiTags
 from .app_ui import SiaLocalControlUiUI
-from .dashboard import SiaDashboard, DashboardInterface
 
 log = logging.getLogger(__name__)
 
@@ -37,22 +34,9 @@ class SiaLocalControlUiApplication(Application):
     # ------------------------------------------------------------------
     async def setup(self):
         self.started: float = time.time()
-        # Buttons are event-driven, so the loop only paces the display refresh.
+        # Buttons are event-driven, so the loop only refreshes lamps and the
+        # selector tag consumed by the channel-native widget.
         self.loop_target_period = float(self.config.display_refresh_period.value or 0.5)
-
-        # Reference to the running event loop so the Flask/SocketIO thread can
-        # marshal operator commands back onto the async side.
-        self._loop = asyncio.get_running_loop()
-
-        # Dashboard (Flask + SocketIO) in its own daemon thread.
-        self.dashboard = SiaDashboard(
-            host="0.0.0.0",
-            port=int(self.config.dashboard_port.value or 8091),
-            secret_key=str(self.config.dashboard_secret_key.value or "sia_local_control_ui"),
-            command_handler=self._run_command_sync,
-        )
-        self.dashboard_interface = DashboardInterface(self.dashboard)
-        self.dashboard_interface.start_dashboard()
 
         # Physical operator pushbuttons -> event-driven platform pulse
         # listeners. DI buttons stream hardware IRQ pulses; AI buttons use the
@@ -98,14 +82,7 @@ class SiaLocalControlUiApplication(Application):
                 "and operator commands have no target."
             )
 
-        log.info("Dashboard started on port %s", self.config.dashboard_port.value)
-
-    async def on_shutdown_at(self, dt: datetime) -> None:
-        log.info("Shutdown scheduled at %s -- stopping dashboard server.", dt)
-        try:
-            self.dashboard_interface.stop_dashboard()
-        except Exception as e:
-            log.warning("Error stopping dashboard: %s", e)
+        log.info("Physical operator-panel adapter ready")
 
     # ------------------------------------------------------------------
     # Command path (shared by physical buttons and the touchscreen)
@@ -134,30 +111,14 @@ class SiaLocalControlUiApplication(Application):
             log.warning("RPC %s(%r) failed: %s", cmd, value, e)
             return {"ok": False, "code": "ERROR", "message": str(e)}
 
-    def _run_command_sync(self, cmd: str, value) -> dict:
-        """Blocking entry point for the Flask/SocketIO thread.
-
-        Marshals the coroutine onto the app's event loop and blocks the socket
-        handler until the controller has physically acted (or errored), so the
-        touchscreen can show a spinner then a success/error toast.
-        """
-        loop = getattr(self, "_loop", None)
-        if loop is None or not loop.is_running():
-            return {"ok": False, "code": "NOT_READY", "message": "controller link not ready"}
-        try:
-            fut = asyncio.run_coroutine_threadsafe(self._dispatch_command(cmd, value), loop)
-            # A little headroom over the RPC timeout so the controller's own
-            # timeout surfaces as a proper error rather than a bridge timeout.
-            return fut.result(timeout=float(self.config.rpc_timeout.value or 20.0) + 10.0)
-        except Exception as e:
-            return {"ok": False, "code": "TIMEOUT", "message": str(e)}
-
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
     async def main_loop(self):
-        update = await self._collect_dashboard_data()
-        self.dashboard.update_data(update)
+        # The widget reads controller/sensor tags directly from `tag_values`.
+        # This loop only maintains physical outputs, backwards-compatible
+        # mirror tags, and the selector value which originates as local AI.
+        await self._refresh_hardware_state()
 
     # ------------------------------------------------------------------
     # Physical buttons
@@ -195,87 +156,49 @@ class SiaLocalControlUiApplication(Application):
         return bool(self.get_tag(self.config.tag_fault.value, key))
 
     # ------------------------------------------------------------------
-    # Status readouts + lamps
+    # Hardware outputs + compatibility tags
     # ------------------------------------------------------------------
-    async def _collect_dashboard_data(self) -> dict:
-        cfg = self.config
-        pumps = []
-        active_faults = []
-        active_warnings = []
+    async def _refresh_hardware_state(self) -> None:
+        """Refresh state that genuinely requires the device-local process.
 
-        for idx, key in enumerate(cfg.controller_keys):
-            state = self.get_tag(cfg.tag_state.value, key)
+        Controller and sensor display data is intentionally not assembled
+        here: the widget consumes those app blocks directly from
+        ``tag_values``. This method only drives local DOs, maintains the
+        historical mirror tags, and publishes the physical selector input.
+        """
+        cfg = self.config
+        key = cfg.primary_controller_key
+        if key is None:
+            state = "unknown"
+            target_rate = flow_rate = 0.0
+            running = fault = warning = False
+            fault_reason = warning_reason = None
+        else:
+            state = self.get_tag(cfg.tag_state.value, key) or "unknown"
+            target_rate = _num(self.get_tag(cfg.tag_target_rate.value, key))
+            flow_rate = _num(self.get_tag(cfg.tag_flow_rate.value, key))
+            running = bool(self.get_tag(cfg.tag_running.value, key))
             fault = bool(self.get_tag(cfg.tag_fault.value, key))
-            reason = self.get_tag(cfg.tag_fault_reason.value, key)
+            fault_reason = self.get_tag(cfg.tag_fault_reason.value, key)
             warning = bool(self.get_tag(cfg.tag_warning.value, key))
             warning_reason = self.get_tag(cfg.tag_warning_reason.value, key)
-            pump = {
-                "name": f"Pump {idx + 1}" if len(cfg.controller_keys) > 1 else "Pump",
-                "target_rate": _num(self.get_tag(cfg.tag_target_rate.value, key)),
-                "flow_rate": _num(self.get_tag(cfg.tag_flow_rate.value, key)),
-                "total": _num(self.get_tag(cfg.tag_total.value, key)),
-                # min/max may be absent until the controller publishes them --
-                # keep them None (not 0) so the UI can hide the flow-range bar.
-                "min_rate": _opt_num(self.get_tag(cfg.tag_min_rate.value, key)),
-                "max_rate": _opt_num(self.get_tag(cfg.tag_max_rate.value, key)),
-                "state": state if state is not None else "unknown",
-                "running": bool(self.get_tag(cfg.tag_running.value, key)),
-                "fault": fault,
-                "fault_reason": reason,
-                "warning": warning,
-                "warning_reason": warning_reason,
-            }
-            pumps.append(pump)
-            if fault:
-                active_faults.append(
-                    {"pump": pump["name"], "reason": reason or "Pump tripped"}
-                )
-            if warning:
-                active_warnings.append(
-                    {"pump": pump["name"], "reason": warning_reason or "Warning"}
-                )
 
-        primary = pumps[0] if pumps else None
-        link_ok = primary is not None and primary["state"] != "unknown"
+        link_ok = key is not None and state != "unknown"
+        await self._drive_lamp(cfg.run_lamp_pin.value, running)
+        await self._drive_lamp(cfg.trip_lamp_pin.value, fault)
 
-        # Drive the operator lamps from the primary controller's status.
-        await self._drive_lamp(cfg.run_lamp_pin.value, primary["running"] if primary else False)
-        await self._drive_lamp(cfg.trip_lamp_pin.value, primary["fault"] if primary else False)
+        await self.tags.LinkOk.set(link_ok)
+        await self.tags.ControllerState.set(state)
+        await self.tags.TargetRate.set(target_rate)
+        await self.tags.FlowRate.set(flow_rate)
+        await self.tags.Fault.set(fault)
+        await self.tags.FaultReason.set(fault_reason)
+        await self.tags.Warning.set(warning)
+        await self.tags.WarningReason.set(warning_reason)
 
-        # Mirror the primary status onto the HMI's own (cloud-visible) tags.
-        if primary is not None:
-            await self.tags.LinkOk.set(link_ok)
-            await self.tags.ControllerState.set(primary["state"])
-            await self.tags.TargetRate.set(primary["target_rate"])
-            await self.tags.FlowRate.set(primary["flow_rate"])
-            await self.tags.Fault.set(primary["fault"])
-            await self.tags.FaultReason.set(primary["fault_reason"])
-            await self.tags.Warning.set(primary["warning"])
-            await self.tags.WarningReason.set(primary["warning_reason"])
-
-        data = {
-            "pumps": pumps,
-            "faults": active_faults,
-            "warnings": active_warnings,
-            "link_ok": link_ok,
-            "units": {
-                "rate": cfg.rate_units.value or "L/Hr",
-                "pressure": cfg.pressure_units.value or "psi",
-            },
-        }
-
-        solar = self._collect_solar()
-        if solar:
-            data["solar"] = solar
-        tank = self._collect_tank()
-        if tank:
-            data["tank"] = tank
-        skid = self._collect_skid()
-        if skid:
-            data["skid"] = skid
         if cfg.selector_enabled:
-            data["selector"] = {"state": await self._read_selector()}
-        return data
+            selector_state = await self._read_selector()
+            await self.tags.SelectorState.set(selector_state)
 
     async def _drive_lamp(self, pin, value: bool):
         if pin is None:
@@ -289,67 +212,6 @@ class SiaLocalControlUiApplication(Application):
             self._lamp_cache[pin] = value
         except Exception as e:
             log.warning("Failed to drive lamp on DO%s -> %s: %s", pin, value, e)
-
-    def _collect_solar(self) -> dict | None:
-        cfg = self.config
-        try:
-            controllers = [el.value for el in cfg.solar_controllers.elements if el.value]
-        except Exception:
-            controllers = []
-        if not controllers:
-            return None
-
-        voltages, percents, powers, ahs = [], [], [], []
-        for key in controllers:
-            v = self.get_tag("b_voltage", key)
-            if v is not None:
-                voltages.append(v)
-            p = self.get_tag("b_percent", key)
-            if p is not None:
-                percents.append(p)
-            pw = self.get_tag("panel_power", key)
-            if pw is not None:
-                powers.append(pw)
-            ah = self.get_tag("remaining_ah", key)
-            if ah is not None:
-                ahs.append(ah)
-
-        out = {}
-        if voltages:
-            out["battery_voltage"] = sum(voltages) / len(voltages)
-        if percents:
-            out["battery_percentage"] = sum(percents) / len(percents)
-        if powers:
-            out["panel_power"] = sum(powers) / len(powers)
-        if ahs:
-            out["battery_ah"] = sum(ahs)  # capacity sums across controllers
-        return out or None
-
-    def _collect_tank(self) -> dict | None:
-        cfg = self.config
-        if cfg.tank_level_app.value is None:
-            return None
-        out = {}
-        mm = self.get_tag("level_reading", cfg.tank_level_app.value)
-        if mm is not None:
-            out["tank_level_mm"] = mm * 1000
-        pct = self.get_tag("level_filled_percentage", cfg.tank_level_app.value)
-        if pct is not None:
-            out["tank_level_percent"] = pct
-        return out or None
-
-    def _collect_skid(self) -> dict | None:
-        cfg = self.config
-        out = {}
-        if cfg.flow_sensor_app.value is not None:
-            f = self.get_tag("value", cfg.flow_sensor_app.value)
-            if f is not None:
-                out["skid_flow"] = f
-        if cfg.pressure_sensor_app.value is not None:
-            p = self.get_tag("value", cfg.pressure_sensor_app.value)
-            if p is not None:
-                out["skid_pressure"] = p
-        return out or None
 
     async def _read_selector(self) -> int:
         cfg = self.config
@@ -377,14 +239,3 @@ def _num(value, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
-
-
-def _opt_num(value) -> float | None:
-    """Like ``_num`` but preserves absence: returns None (not 0.0) when the tag
-    is missing/unpublished, so the dashboard can hide the flow-range bar."""
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None

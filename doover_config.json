@@ -1,15 +1,15 @@
 {
-    "sia_local_control_ui": {
-        "name": "sia_local_control_ui",
-        "display_name": "SIA Local Control UI",
+    "sia_local_control": {
+        "name": "sia_local_control",
+        "display_name": "SIA Local Control",
         "type": "DEV",
         "visibility": "PUB",
         "allow_many": true,
-        "description": "App for hosting the local control screen server for sia pump controllers",
+        "description": "Channel-native HMI widget and physical operator-panel adapter for SIA pump controllers",
         "long_description": "README.md",
         "depends_on": [],
         "owner_org_key": "48f2d2c4-4c82-4fc3-8de8-d924d81c4588",
-        "image_name": "spaneng/sia-local-control-ui:main",
+        "image_name": "ghcr.io/getdoover/sia-local-control:main",
         "container_registry_profile_key": "ee4568d0-9120-4ef9-b0f6-4ee121292a96",
         "build_args": "--platform linux/amd64,linux/arm64",
         "config_schema": {
@@ -633,7 +633,7 @@
                     "x-hidden": false,
                     "type": "array",
                     "x-required": true,
-                    "description": "Solar controller apps whose battery/panel figures are aggregated on the dashboard.",
+                    "description": "Solar controller apps whose battery/panel figures are aggregated in the widget.",
                     "x-position": 23,
                     "items": {
                         "title": "Solar Controller",
@@ -713,34 +713,6 @@
                     "default": "psi",
                     "x-position": 28
                 },
-                "dashboard_port": {
-                    "title": "Dashboard Port",
-                    "x-name": "dashboard_port",
-                    "x-hidden": false,
-                    "type": [
-                        "integer",
-                        "null"
-                    ],
-                    "x-required": false,
-                    "description": "TCP port the Flask/SocketIO touchscreen server listens on.",
-                    "default": 8091,
-                    "x-position": 29,
-                    "minimum": 1,
-                    "maximum": 65535
-                },
-                "dashboard_secret_key": {
-                    "title": "Dashboard Secret Key",
-                    "x-name": "dashboard_secret_key",
-                    "x-hidden": false,
-                    "type": [
-                        "string",
-                        "null"
-                    ],
-                    "x-required": false,
-                    "description": "Flask session secret key.",
-                    "default": "sia_local_control_ui",
-                    "x-position": 30
-                },
                 "display_refresh_period_s": {
                     "title": "Display Refresh Period (s)",
                     "x-name": "display_refresh_period_s",
@@ -750,9 +722,9 @@
                         "null"
                     ],
                     "x-required": false,
-                    "description": "How often the dashboard/status readouts refresh. Buttons are event-driven and unaffected.",
+                    "description": "How often lamps and channel-backed hardware status refresh. Buttons are event-driven and unaffected.",
                     "default": 0.5,
-                    "x-position": 31,
+                    "x-position": 29,
                     "minimum": 0.1
                 },
                 "rpc_timeout_s": {
@@ -766,7 +738,7 @@
                     "x-required": false,
                     "description": "How long an operator command waits for the controller to physically act.",
                     "default": 20.0,
-                    "x-position": 32,
+                    "x-position": 30,
                     "minimum": 1.0
                 }
             },
@@ -780,87 +752,31 @@
                 "solar_controllers"
             ]
         },
-        "key": "c01f11da-53f8-4a22-ba00-8ffa1180cd92",
         "code_repo_key": null,
-        "repo_branch": "main",
+        "repo_branch": "widget-hmi",
         "staging_config": {},
         "ui_schema": {
             "displayString": "$config.app().APP_DISPLAY_NAME",
             "hidden": "$config.app().hidden:boolean:false:boolean:false",
-            "position": "$config.app().dv_app_position:number:100",
+            "position": "$config.app().dv_app_position:number:0",
             "icon": null,
             "colour": null,
-            "defaultOpen": "$config.app().dv_app_default_open:boolean",
+            "defaultOpen": "$config.app().dv_app_default_open:boolean:true",
             "type": "uiApplication",
             "name": "$config.app().APP_KEY",
             "children": {
-                "link_ok": {
-                    "name": "link_ok",
-                    "type": "uiVariable",
-                    "displayString": "Controller Link OK",
+                "sia_hmi_widget": {
+                    "name": "sia_hmi_widget",
+                    "type": "uiRemoteComponent",
+                    "displayString": "SIA Remote Command",
                     "showActivity": true,
+                    "componentUrl": "$config.app().dv_widget_url",
                     "position": 51,
                     "hidden": false,
-                    "varType": "bool",
-                    "currentValue": "$tag.app().LinkOk:boolean:false",
-                    "live": true
-                },
-                "controller_state": {
-                    "name": "controller_state",
-                    "type": "uiVariable",
-                    "displayString": "Pump State",
-                    "showActivity": true,
-                    "position": 52,
-                    "hidden": false,
-                    "varType": "string",
-                    "currentValue": "$tag.app().ControllerState:string:\"standby\"",
-                    "live": true
-                },
-                "target_rate": {
-                    "name": "target_rate",
-                    "type": "uiVariable",
-                    "displayString": "Target Rate",
-                    "showActivity": true,
-                    "position": 53,
-                    "hidden": false,
-                    "varType": "float",
-                    "currentValue": "$tag.app().TargetRate:number:0.0",
-                    "decPrecision": 2,
-                    "live": true
-                },
-                "flow_rate": {
-                    "name": "flow_rate",
-                    "type": "uiVariable",
-                    "displayString": "Flow Rate",
-                    "showActivity": true,
-                    "position": 54,
-                    "hidden": false,
-                    "varType": "float",
-                    "currentValue": "$tag.app().FlowRate:number:0.0",
-                    "decPrecision": 2,
-                    "live": true
-                },
-                "fault": {
-                    "name": "fault",
-                    "type": "uiVariable",
-                    "displayString": "Fault",
-                    "showActivity": true,
-                    "position": 55,
-                    "hidden": false,
-                    "varType": "bool",
-                    "currentValue": "$tag.app().Fault:boolean:false",
-                    "live": true
-                },
-                "fault_reason": {
-                    "name": "fault_reason",
-                    "type": "uiVariable",
-                    "displayString": "Fault Reason",
-                    "showActivity": true,
-                    "position": 56,
-                    "hidden": false,
-                    "varType": "string",
-                    "currentValue": "$tag.app().FaultReason:string:null",
-                    "live": true
+                    "children": {},
+                    "scope": "SiaHmiWidget",
+                    "module": "./SiaHmiWidget",
+                    "app_key": "$config.app().APP_KEY"
                 }
             }
         },
@@ -868,16 +784,18 @@
         "owner_org_id": 142400552532231428,
         "organisation_id": 142400552532231428,
         "container_registry_profile_id": 145420619704469767,
-        "id": 202714802705972494,
         "code_repo_id": null,
         "lambda_config": null,
         "icon_url": null,
         "banner_url": null,
-        "build_widget_command": null,
+        "build_widget_command": "npm --prefix widget run build",
+        "widget": "widget/assets/SiaHmiWidget.js",
         "export_config_command": null,
         "export_ui_command": null,
         "generate_ui": true,
         "run_command": null,
-        "lambda_arn": null
+        "lambda_arn": null,
+        "id": 205834591137757191,
+        "key": null
     }
 }

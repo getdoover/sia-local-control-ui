@@ -1,80 +1,62 @@
-# Doover Application Template
+# SIA Local Control UI
 
-This repository serves as a template for creating Doover applications.
+A channel-native Doover HMI widget plus the device-local physical
+operator-panel adapter for Solar Injection Australia chemical injection skids.
 
-It provides a structured layout for application code, deployment configurations, simulators, and tests. The template is
-designed to simplify the development and deployment of Doover-compatible applications.
+This branch publishes as the separate Doover application
+`sia_local_control` using the container image
+`ghcr.io/getdoover/sia-local-control:main`; it does not update the legacy
+`sia_local_control_ui` application record.
 
-The basic structure of the repository is as follows:
+## Architecture
 
-## Getting Started
+The HMI is a Module Federation remote component in `widget/`. It reads the
+agent's standard Doover channels directly through `doover-js`:
 
-```
-README.md           <-- This file
-pyproject.toml      <-- Python project configuration file (including dependencies)
-Dockerfile          <-- Dockerfile for building the application image
-doover_config.json  <-- Configuration file for doover
+- `tag_values`: controller state, target/flow/total, faults and warnings,
+  optional skid sensors, solar data, tank data, and selector state.
+- `deployment_config`: controller and sensor app keys, configurable tag names,
+  feature gates, and display units.
 
-src/sia_local_control_ui/   <-- Application directory
-  application.py    <-- Main application code
-  app_config.py     <-- Config schema definition
-  app_ui.py         <-- UI code (if applicable)
-  app_state.py      <-- State machine (if applicable)
+There is no Flask server, Socket.IO bridge, bespoke REST endpoint, or mirrored
+dashboard payload. The widget shares the host application's existing Doover
+gateway connection, like the `tag_values_widget` reference implementation.
 
-simulator/
-  app_config.json   <-- Sample configuration for the simulator
-  docker-compose.yml <-- Docker Compose file for the simulator
-  
-tests/
-    test_imports.py  <-- Test file for the application
-```
+The Python container remains because browser code cannot safely access device
+pins. Its responsibilities are limited to:
 
-The `doover_config.json` file is the doover configuration file for the application. 
+- converting physical Start/Stop/Flow Up/Flow Down button pulses into the
+  pump controller's existing `ui_cmds` RPC surface;
+- driving RUN/TRIP lamps from controller tags;
+- reading the optional analog selector and publishing `SelectorState` into
+  this app's `tag_values` block.
 
-It defines all metadata about the application, including name, short and long description, 
-dependent apps, image name, owner organisation, container registry and more.
+## Compatibility
 
-### Prerequisites
+The widget preserves the previous dashboard's pump state, target/flow/total,
+min/max range, link indication, fault and warning banners, configurable units,
+optional skid flow/pressure, aggregated solar figures, tank figures, and
+selector card. The existing physical button and lamp behavior is unchanged.
 
-- Docker and Docker Compose installed
-- Python 3.11 or later (if running locally)
-- Pipenv for managing Python dependencies
+The previous touchscreen was display-only, so the widget intentionally does
+not add on-screen pump commands. Physical commands continue to receive the
+controller RPC acknowledgement/error behavior.
 
-### Running Locally
+## Development
 
-1. Run the application:
-
-```bash
-doover app run
-```
-
-## Simulators
-
-The `simulator/` directory contains tools for simulating application behavior. For example:
-
-- `app_config.json`: Sample configuration file for the app.
-- `docker-compose.yml`: Defines services for running the application.
-
-You can find a sample simulator in the `simulator/sample/` directory. While it is fairly bare-bones, it shows
-positioning of the simulator in the application structure, and how to start the simulator alongside your application.
-
-## Testing
-
-Run the tests using the following command:
+Python checks:
 
 ```bash
-pytest tests/
+uv run pytest
 ```
 
-## Deployment
+Widget checks and build:
 
-The `deployment/` directory contains deployment configurations, including a `docker-compose.yml` file for orchestrating
-services.
+```bash
+npm --prefix widget install
+npm --prefix widget test
+npm --prefix widget run typecheck
+npm --prefix widget run build
+```
 
-## Customization
-
-To create your own Doover application:
-
-1. Modify the application logic in the appropriate directory.
-2. Update the simulator and test configurations as needed.
-3. Adjust deployment configurations to suit your requirements.
+The deployable widget is generated at `widget/assets/SiaHmiWidget.js`.

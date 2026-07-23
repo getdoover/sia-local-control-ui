@@ -102,11 +102,10 @@ def resolve_pulse(
 class SiaLocalControlUiConfig(config.Schema):
     """Config for the local HMI touchscreen app.
 
-    The HMI owns the operator surface (physical pushbuttons + RUN/TRIP lamps)
-    and turns operator actions into Doover 2.0 RPC calls against the injection
-    controller. Everything the HMI needs -- the controller app key, button pin
-    mappings, lamp pins, display units, the Flask port/secret -- lives HERE, in
-    the HMI's own config. It no longer reads the controller's deployment_config.
+    The channel-native widget reads controller and sensor state directly from
+    ``tag_values`` and reads this schema from ``deployment_config``. This local
+    process only owns hardware that a browser cannot access: physical
+    pushbuttons, RUN/TRIP lamps, and the optional analog selector.
     """
 
     # --- Pump controllers (1..N; single pump is the J5246 default) ----------
@@ -226,7 +225,7 @@ class SiaLocalControlUiConfig(config.Schema):
             "Solar Controller",
             description="A morningstar_prostar_app instance.",
         ),
-        description="Solar controller apps whose battery/panel figures are aggregated on the dashboard.",
+        description="Solar controller apps whose battery/panel figures are aggregated in the widget.",
     )
     tank_level_app = config.Application(
         "Tank Level App", default=None,
@@ -251,18 +250,9 @@ class SiaLocalControlUiConfig(config.Schema):
         description="Units label shown against the skid pressure figure.",
     )
 
-    # --- Dashboard server ---------------------------------------------------
-    dashboard_port = config.Integer(
-        "Dashboard Port", default=8091, minimum=1, maximum=65535,
-        description="TCP port the Flask/SocketIO touchscreen server listens on.",
-    )
-    dashboard_secret_key = config.String(
-        "Dashboard Secret Key", default="sia_local_control_ui",
-        description="Flask session secret key.",
-    )
     display_refresh_period = config.Number(
         "Display Refresh Period (s)", default=0.5, minimum=0.1,
-        description="How often the dashboard/status readouts refresh. Buttons are event-driven and unaffected.",
+        description="How often lamps and channel-backed hardware status refresh. Buttons are event-driven and unaffected.",
     )
     rpc_timeout = config.Number(
         "RPC Timeout (s)", default=20.0, minimum=1.0,
@@ -307,7 +297,7 @@ class SiaLocalControlUiConfig(config.Schema):
 
 def export():
     SiaLocalControlUiConfig.export(
-        Path(__file__).parents[2] / "doover_config.json", "sia_local_control_ui"
+        Path(__file__).parents[2] / "doover_config.json", "sia_local_control"
     )
 
 

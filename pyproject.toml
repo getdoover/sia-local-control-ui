@@ -1,14 +1,11 @@
 [project]
 name = "sia-local-control-ui"
 version = "0.1.0"
-description = "Local HMI touchscreen app for Solar Injection Australia chemical injection skids: a Flask/SocketIO dashboard that renders the pump controller's status and drives it (Start/Stop/rate) through the Doover 2.0 RPC command surface, and owns the operator surface (physical pushbuttons + RUN/TRIP lamps)."
+description = "Channel-native Doover HMI widget and physical operator-panel adapter for Solar Injection Australia chemical injection skids."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydoover>=1.9.1",
-    "flask>=3.0.0",
-    "flask-socketio>=5.3.0",
-    "python-socketio>=5.9.0",
 ]
 
 [project.scripts]

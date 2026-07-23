@@ -4,10 +4,10 @@ from pydoover.tags import Tag, Tags
 class SiaLocalControlUiTags(Tags):
     """HMI-owned tags.
 
-    The HMI is primarily a *consumer* of the controller's status tags (read via
-    ``get_tag(name, app_key)``), but it publishes a small mirror of the primary
-    controller's state plus a link-health flag so the cloud has a view of what
-    the touchscreen is showing and whether the local RPC link is alive.
+    The widget does not consume these mirrors; it reads peer app blocks in
+    ``tag_values`` directly. The historical primary-controller mirrors remain
+    for API compatibility, while ``SelectorState`` exposes the one HMI value
+    that originates from local hardware.
     """
 
     LinkOk = Tag("boolean", default=False, live=True)
@@ -18,4 +18,7 @@ class SiaLocalControlUiTags(Tags):
     FaultReason = Tag("string", default=None, live=True)
     Warning = Tag("boolean", default=False, live=True)
     WarningReason = Tag("string", default=None, live=True)
+    # Physical selector state has no upstream application/channel. Publishing
+    # it here lets the widget stay channel-native without a bespoke web bridge.
+    SelectorState = Tag("number", default=0, live=True)
     LastCommand = Tag("string", default=None, live=True)

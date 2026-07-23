@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches-ignore:
-      - main  # run build-image action for main
+      - widget-hmi  # build-image runs lint and tests for the release branch
   pull_request:
 
 jobs:

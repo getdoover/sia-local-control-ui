@@ -1,0 +1,226 @@
+.sia-hmi,
+.sia-hmi * {
+  box-sizing: border-box;
+}
+
+.sia-hmi {
+  --sia-ink: #263747;
+  --sia-muted: #71808d;
+  --sia-blue: #3498db;
+  width: 100%;
+  padding: clamp(10px, 2vw, 24px);
+  border-radius: 14px;
+  color: var(--sia-ink);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.sia-hmi-header,
+.sia-hmi-section,
+.sia-hmi-empty {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 28px rgba(20, 31, 50, 0.14);
+}
+
+.sia-hmi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: clamp(14px, 2vw, 24px);
+  margin-bottom: 12px;
+}
+
+.sia-hmi-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+  font-size: clamp(1.25rem, 3vw, 2rem);
+}
+
+.sia-hmi-title img {
+  width: auto;
+  height: 1.55em;
+  max-width: 135px;
+  object-fit: contain;
+}
+
+.sia-hmi-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 0 0 auto;
+  gap: 5px;
+  color: var(--sia-muted);
+}
+
+.sia-hmi-meta .connected { color: #239b56; }
+.sia-hmi-meta .disconnected { color: #e67e22; }
+
+.sia-hmi-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  color: white;
+}
+
+.sia-hmi-banner.fault { background: #e74c3c; }
+.sia-hmi-banner.warning { background: #e67e22; }
+.sia-hmi-banner > strong { text-transform: uppercase; }
+.sia-hmi-banner ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  font-weight: 600;
+}
+
+.sia-hmi-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.sia-hmi-row.with-skid { grid-template-columns: minmax(0, 4fr) minmax(210px, 1fr); }
+
+.sia-hmi-section { padding: clamp(12px, 2vw, 20px); }
+.sia-hmi-section h2 {
+  margin: 0 0 12px;
+  padding: 0 0 8px;
+  border-bottom: 2px solid #edf1f4;
+  font-size: clamp(1rem, 2.2vw, 1.3rem);
+}
+
+.sia-hmi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 10px;
+}
+
+.sia-hmi-card {
+  min-width: 0;
+  padding: clamp(10px, 1.5vw, 15px);
+  border-radius: 9px;
+  background: #f7f9fa;
+  text-align: center;
+}
+
+.sia-hmi-card h3 {
+  margin: 0 0 8px;
+  font-size: 0.84rem;
+}
+
+.sia-hmi-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.sia-hmi-value strong { font-size: clamp(1.15rem, 3vw, 1.75rem); }
+.sia-hmi-value span { color: var(--sia-muted); font-size: 0.76rem; }
+
+.sia-hmi-state {
+  display: inline-block;
+  padding: 7px 14px;
+  border-radius: 18px;
+  color: white;
+  background: #34495e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sia-hmi-state.pumping { background: #27ae60; }
+.sia-hmi-state.standby { background: #95a5a6; }
+.sia-hmi-state.calibration { background: #f39c12; }
+.sia-hmi-state.closed { background: #f39c12; }
+.sia-hmi-state.opened { background: #27ae60; }
+.sia-hmi-state.fault { background: #e74c3c; }
+
+.sia-hmi-range { margin-top: 10px; }
+.sia-hmi-range-track,
+.sia-hmi-progress {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #e7ecef;
+}
+
+.sia-hmi-range-track span,
+.sia-hmi-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sia-blue), #2ecc71);
+}
+
+.sia-hmi-range-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: var(--sia-muted);
+  font-size: 0.66rem;
+}
+
+.sia-hmi-secondary {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+  padding-top: 7px;
+  margin-top: 7px;
+  border-top: 1px solid #e4e9ec;
+  font-size: 0.75rem;
+  color: var(--sia-muted);
+}
+.sia-hmi-secondary strong { color: var(--sia-ink); font-size: 1rem; }
+
+.sia-hmi-progress { margin-top: 9px; }
+.sia-hmi-progress span.medium { background: #f39c12; }
+.sia-hmi-progress span.low { background: #e74c3c; }
+
+.sia-hmi-secondary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.sia-hmi-secondary-row > section { flex: 1 1 230px; }
+.sia-hmi-secondary-row > .solar { flex-grow: 2; }
+.sia-hmi-empty { padding: 24px; text-align: center; color: var(--sia-muted); }
+
+.sia-hmi footer { padding-top: 12px; text-align: center; }
+.sia-hmi footer img { height: 27px; width: auto; }
+
+.sia-hmi-state-message {
+  padding: 24px;
+  border-radius: 10px;
+  background: #f5f7f8;
+  color: #52616d;
+  text-align: center;
+}
+.sia-hmi-state-message.error { color: #c0392b; }
+
+@media (max-width: 760px) {
+  .sia-hmi-header { align-items: flex-start; }
+  .sia-hmi-title { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .sia-hmi-row.with-skid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .sia-hmi-header { flex-direction: column; }
+  .sia-hmi-meta { align-items: flex-start; }
+  .sia-hmi-grid { grid-template-columns: 1fr; }
+}
