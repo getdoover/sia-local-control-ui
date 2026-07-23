@@ -22,6 +22,28 @@ def test_config_schema():
     # button mappings + controller list are present
     assert "start_button" in schema["properties"]
     assert "pump_controllers" in schema["properties"]
+    assert schema["properties"]["interpreter_hidden"] == {
+        "title": "Interpreter Hidden",
+        "x-name": "interpreter_hidden",
+        "x-hidden": False,
+        "type": ["boolean", "null"],
+        "x-required": False,
+        "description": "Whether the application is hidden in the interpreter.",
+        "default": False,
+        "x-position": 31,
+        "x-advanced": True,
+    }
+    assert schema["properties"]["cockpit_visible"] == {
+        "title": "Cockpit Visible",
+        "x-name": "cockpit_visible",
+        "x-hidden": False,
+        "type": ["boolean", "null"],
+        "x-required": False,
+        "description": "Whether the application's custom widgets are visible in a Cockpit tab.",
+        "default": False,
+        "x-position": 32,
+        "x-advanced": True,
+    }
 
 
 def test_tags():
@@ -49,6 +71,7 @@ def test_ui_is_channel_native_widget():
     assert widget["scope"] == "SiaHmiWidget"
     assert widget["module"] == "./SiaHmiWidget"
     assert widget["app_key"] == "$config.app().APP_KEY"
+    assert schema["hidden"] == "$config.app().interpreter_hidden:boolean:false"
     assert schema["position"] == "$config.app().dv_app_position:number:0"
     assert schema["defaultOpen"] == "$config.app().dv_app_default_open:boolean:true"
 

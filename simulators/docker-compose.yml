@@ -20,4 +20,4 @@ services:
     #   - device_agent
     #   - sample_simulator
     environment:
-      - APP_KEY=sia_local_control_ui-1
+      - APP_KEY=sia_local_control_1

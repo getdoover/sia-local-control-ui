@@ -259,6 +259,10 @@ class SiaLocalControlUiConfig(config.Schema):
         description="How long an operator command waits for the controller to physically act.",
     )
 
+    # --- Application visibility --------------------------------------------
+    interpreter_hidden = config.ApplicationInterpreterHidden()
+    cockpit_visible = config.ApplicationCockpitVisible()
+
     # ------------------------------------------------------------------
     # Derived helpers
     # ------------------------------------------------------------------

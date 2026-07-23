@@ -740,6 +740,34 @@
                     "default": 20.0,
                     "x-position": 30,
                     "minimum": 1.0
+                },
+                "interpreter_hidden": {
+                    "title": "Interpreter Hidden",
+                    "x-name": "interpreter_hidden",
+                    "x-hidden": false,
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Whether the application is hidden in the interpreter.",
+                    "default": false,
+                    "x-position": 31,
+                    "x-advanced": true
+                },
+                "cockpit_visible": {
+                    "title": "Cockpit Visible",
+                    "x-name": "cockpit_visible",
+                    "x-hidden": false,
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Whether the application's custom widgets are visible in a Cockpit tab.",
+                    "default": false,
+                    "x-position": 32,
+                    "x-advanced": true
                 }
             },
             "additionalElements": true,
@@ -757,7 +785,7 @@
         "staging_config": {},
         "ui_schema": {
             "displayString": "$config.app().APP_DISPLAY_NAME",
-            "hidden": "$config.app().hidden:boolean:false:boolean:false",
+            "hidden": "$config.app().interpreter_hidden:boolean:false",
             "position": "$config.app().dv_app_position:number:0",
             "icon": null,
             "colour": null,

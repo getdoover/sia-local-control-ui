@@ -5,7 +5,7 @@ description = "Channel-native Doover HMI widget and physical operator-panel adap
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydoover>=1.9.1",
+    "pydoover>=1.11.2",
 ]
 
 [project.scripts]
