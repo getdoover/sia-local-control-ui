@@ -5,7 +5,7 @@ description = "Local HMI touchscreen app for Solar Injection Australia chemical 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydoover>=1.9.1",
+    "pydoover>=1.11.3",
     "flask>=3.0.0",
     "flask-socketio>=5.3.0",
     "python-socketio>=5.9.0",
