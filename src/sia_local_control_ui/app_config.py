@@ -228,6 +228,18 @@ class SiaLocalControlUiConfig(config.Schema):
         ),
         description="Solar controller apps whose battery/panel figures are aggregated on the dashboard.",
     )
+    low_battery_percentage = config.Number(
+        "Low Battery Warning (%)", default=30.0, minimum=0.0, maximum=100.0,
+        description="Aggregated battery charge at or below which the dashboard shows a low-battery warning. 0 disables the check.",
+    )
+    low_battery_voltage = config.Number(
+        "Low Battery Warning (V)", default=0.0, minimum=0.0,
+        description="Aggregated battery voltage at or below which the low-battery warning shows. 0 disables the check (use the percentage instead).",
+    )
+    low_battery_clear_margin = config.Number(
+        "Low Battery Clear Margin", default=5.0, minimum=0.0,
+        description="Hysteresis: once warning, the reading must recover this far above the threshold before the banner clears (percentage points / volts).",
+    )
     tank_level_app = config.Application(
         "Tank Level App", default=None,
         description="(Optional) tank level app for the tank card.",

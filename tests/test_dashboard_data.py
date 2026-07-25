@@ -64,6 +64,9 @@ def _fake_config(controller_keys):
         selector_enabled=False,
         valve_enabled=False,
         solar_controllers=types.SimpleNamespace(elements=[]),
+        low_battery_percentage=_val(30.0),
+        low_battery_voltage=_val(0.0),
+        low_battery_clear_margin=_val(5.0),
         tank_level_app=_val(None),
         flow_sensor_app=_val(None),
         pressure_sensor_app=_val(None),
@@ -91,6 +94,7 @@ def _make_stub(controller_keys, tag_values):
         "_collect_dashboard_data",
         "_drive_lamp",
         "_collect_solar",
+        "_battery_warnings",
         "_collect_tank",
         "_collect_skid",
     ):
@@ -226,6 +230,105 @@ async def test_lamp_cache_writes_only_on_change():
     first = list(stub.do_writes)
     await stub._collect_dashboard_data()  # nothing changed
     assert stub.do_writes == first  # no extra writes second pass
+
+
+# ---------------------------------------------------------------------------
+# low-battery warning
+# ---------------------------------------------------------------------------
+
+
+def _solar_stub(percent=None, voltage=None, **thresholds):
+    """Stub with one solar controller publishing the given battery figures."""
+    key = "ctrl_1"
+    solar_key = "solar_1"
+    tags = {
+        (key, "StateString"): "pumping",
+        (key, "Running"): True,
+        (key, "Fault"): False,
+    }
+    if percent is not None:
+        tags[(solar_key, "b_percent")] = percent
+    if voltage is not None:
+        tags[(solar_key, "b_voltage")] = voltage
+
+    stub = _make_stub([key], tags)
+    stub.config.solar_controllers = types.SimpleNamespace(
+        elements=[_val(solar_key)]
+    )
+    for name, value in thresholds.items():
+        setattr(stub.config, name, _val(value))
+    return stub
+
+
+def _battery_warnings(data):
+    return [w for w in data["warnings"] if w["pump"] == "Solar"]
+
+
+async def test_low_battery_percentage_raises_warning():
+    stub = _solar_stub(percent=18.0)
+    data = await stub._collect_dashboard_data()
+
+    warnings = _battery_warnings(data)
+    assert len(warnings) == 1
+    assert "18.0%" in warnings[0]["reason"]
+    # not a fault -- the pump keeps running
+    assert data["faults"] == []
+    assert data["solar"]["battery_percentage"] == 18.0
+
+
+async def test_healthy_battery_no_warning():
+    stub = _solar_stub(percent=85.0)
+    data = await stub._collect_dashboard_data()
+    assert _battery_warnings(data) == []
+
+
+async def test_low_battery_latches_until_clear_margin_passed():
+    # threshold 30%, margin 5 -> once warning, must recover above 35% to clear
+    stub = _solar_stub(percent=29.0)
+    assert len(_battery_warnings(await stub._collect_dashboard_data())) == 1
+
+    # recovered past the threshold but still inside the margin -> still warning
+    stub.get_tag = lambda name, key=None, default=None: {
+        ("solar_1", "b_percent"): 32.0,
+        ("ctrl_1", "StateString"): "pumping",
+        ("ctrl_1", "Running"): True,
+        ("ctrl_1", "Fault"): False,
+    }.get((key, name), default)
+    assert len(_battery_warnings(await stub._collect_dashboard_data())) == 1
+
+    # clear of the margin -> banner clears
+    stub.get_tag = lambda name, key=None, default=None: {
+        ("solar_1", "b_percent"): 40.0,
+        ("ctrl_1", "StateString"): "pumping",
+        ("ctrl_1", "Running"): True,
+        ("ctrl_1", "Fault"): False,
+    }.get((key, name), default)
+    assert _battery_warnings(await stub._collect_dashboard_data()) == []
+
+
+async def test_low_battery_voltage_check_off_by_default():
+    # 22.1 V would be low for a 24 V bank, but the voltage threshold is 0
+    stub = _solar_stub(percent=90.0, voltage=22.1)
+    assert _battery_warnings(await stub._collect_dashboard_data()) == []
+
+
+async def test_low_battery_voltage_check_when_configured():
+    stub = _solar_stub(percent=90.0, voltage=22.1, low_battery_voltage=23.5)
+    warnings = _battery_warnings(await stub._collect_dashboard_data())
+    assert len(warnings) == 1
+    assert "22.1V" in warnings[0]["reason"]
+
+
+async def test_no_solar_controllers_no_battery_warning():
+    stub = _make_stub(["ctrl_1"], {("ctrl_1", "StateString"): "idle"})
+    data = await stub._collect_dashboard_data()
+    assert _battery_warnings(data) == []
+    assert "solar" not in data
+
+
+async def test_battery_warning_disabled_by_zero_threshold():
+    stub = _solar_stub(percent=2.0, low_battery_percentage=0.0)
+    assert _battery_warnings(await stub._collect_dashboard_data()) == []
 
 
 # ---------------------------------------------------------------------------

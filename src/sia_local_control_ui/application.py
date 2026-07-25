@@ -92,6 +92,9 @@ class SiaLocalControlUiApplication(Application):
         # Guard so a held button / slow controller can't stack RPC calls.
         self._cmd_in_flight = False
 
+        # Latched state for the low-battery warning (see _battery_warnings).
+        self._low_battery_active: dict[str, bool] = {}
+
         if self.config.primary_controller_key is None:
             log.warning(
                 "No pump controllers configured -- the HMI will display nothing "
@@ -235,6 +238,12 @@ class SiaLocalControlUiApplication(Application):
                     {"pump": pump["name"], "reason": warning_reason or "Warning"}
                 )
 
+        # Solar is collected before the banner lists are frozen so a flat
+        # battery raises a warning alongside any pump warnings.
+        solar = self._collect_solar()
+        if solar:
+            active_warnings.extend(self._battery_warnings(solar))
+
         primary = pumps[0] if pumps else None
         link_ok = primary is not None and primary["state"] != "unknown"
 
@@ -264,8 +273,7 @@ class SiaLocalControlUiApplication(Application):
             },
         }
 
-        solar = self._collect_solar()
-        if solar:
+        if solar is not None:
             data["solar"] = solar
         tank = self._collect_tank()
         if tank:
@@ -323,7 +331,51 @@ class SiaLocalControlUiApplication(Application):
             out["panel_power"] = sum(powers) / len(powers)
         if ahs:
             out["battery_ah"] = sum(ahs)  # capacity sums across controllers
-        return out or None
+        # Show the Solar System card whenever solar controllers are configured,
+        # even before any readings arrive (e.g. controller comms still down) --
+        # unpublished fields render as "--" instead of the whole card vanishing.
+        # (Returns None only when no solar controllers are configured at all,
+        # handled by the early `if not controllers` return above.)
+        return out
+
+    def _battery_warnings(self, solar: dict) -> list[dict]:
+        """Low-battery warnings for the aggregated solar figures.
+
+        Latching with a clear margin, so a reading sitting right on the
+        threshold doesn't flap the banner on and off every refresh. Each check
+        is independent and disabled by setting its threshold to 0.
+        """
+        cfg = self.config
+        state = getattr(self, "_low_battery_active", None)
+        if state is None:
+            state = self._low_battery_active = {}
+        margin = _num(cfg.low_battery_clear_margin.value)
+
+        checks = (
+            ("percentage", solar.get("battery_percentage"),
+             _num(cfg.low_battery_percentage.value), "%"),
+            ("voltage", solar.get("battery_voltage"),
+             _num(cfg.low_battery_voltage.value), "V"),
+        )
+
+        warnings = []
+        for name, reading, threshold, unit in checks:
+            if threshold <= 0 or reading is None:
+                state[name] = False
+                continue
+            # Already warning -> require recovery past the margin to clear.
+            trip_at = threshold + margin if state.get(name) else threshold
+            active = float(reading) <= trip_at
+            state[name] = active
+            if active:
+                warnings.append({
+                    "pump": "Solar",
+                    "reason": (
+                        f"Battery low: {float(reading):.1f}{unit} "
+                        f"(warn below {threshold:.1f}{unit})"
+                    ),
+                })
+        return warnings
 
     def _collect_tank(self) -> dict | None:
         cfg = self.config
