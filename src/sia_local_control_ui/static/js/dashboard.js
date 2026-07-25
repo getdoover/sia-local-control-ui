@@ -176,17 +176,23 @@ class Dashboard {
     }
 
     renderSolar(s) {
+        // The backend sends a solar object (possibly empty) whenever solar
+        // controllers are configured, so the card shows even before readings
+        // arrive. Missing fields render as "--" rather than a fake "0.0".
         const section = document.getElementById('solar-section');
         if (!s) { this.hide(section); return; }
         this.show(section);
-        if (s.battery_voltage != null) this.setValue('battery-voltage', this.fmt(s.battery_voltage, 1));
+        this.setValue('battery-voltage', s.battery_voltage != null ? this.fmt(s.battery_voltage, 1) : '--');
         if (s.battery_percentage != null) {
             const pct = Math.round(s.battery_percentage);
             this.setValue('battery-percentage', pct);
             this.setBar('battery-progress', pct);
+        } else {
+            this.setValue('battery-percentage', '--');
+            this.setBar('battery-progress', 0);
         }
-        if (s.panel_power != null) this.setValue('panel-power', this.fmt(s.panel_power, 1));
-        if (s.battery_ah != null) this.setValue('battery-ah', this.fmt(s.battery_ah, 1));
+        this.setValue('panel-power', s.panel_power != null ? this.fmt(s.panel_power, 1) : '--');
+        this.setValue('battery-ah', s.battery_ah != null ? this.fmt(s.battery_ah, 1) : '--');
     }
 
     renderTank(t) {
