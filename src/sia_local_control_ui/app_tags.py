@@ -12,7 +12,9 @@ class SiaLocalControlUiTags(Tags):
 
     LinkOk = Tag("boolean", default=False, live=True)
     ControllerState = Tag("string", default="standby", live=True)
-    TargetRate = Tag("number", default=0.0, live=True)
+    # Mirror the controller's resolved target only; None means the controller
+    # has not published its source-of-truth value yet.
+    TargetRate = Tag("number", default=None, live=True)
     FlowRate = Tag("number", default=0.0, live=True)
     Fault = Tag("boolean", default=False, live=True)
     FaultReason = Tag("string", default=None, live=True)

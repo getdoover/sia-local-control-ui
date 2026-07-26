@@ -115,7 +115,12 @@ class Dashboard {
         if (!el) return;
         const min = pump.min_rate;
         const max = pump.max_rate;
-        if (min == null || max == null || max <= min) {
+        if (
+            min == null ||
+            max == null ||
+            max <= min ||
+            pump.target_rate == null
+        ) {
             this.hide(el);
             return;
         }
@@ -123,7 +128,7 @@ class Dashboard {
         const rate = this.units.rate;
         this.setText('flow-range-min', this.fmt(min, 1) + ' ' + rate);
         this.setText('flow-range-max', this.fmt(max, 1) + ' ' + rate);
-        const target = pump.target_rate != null ? Number(pump.target_rate) : 0;
+        const target = Number(pump.target_rate);
         const frac = Math.max(0, Math.min(1, (target - min) / (max - min)));
         const fill = document.getElementById('flow-range-fill');
         if (fill) fill.style.width = `${frac * 100}%`;

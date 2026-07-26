@@ -11,7 +11,7 @@ from pydoover.ui.manager import UI_CMDS_CHANNEL
 from .app_config import SiaLocalControlUiConfig, resolve_pulse
 from .app_tags import SiaLocalControlUiTags
 from .app_ui import SiaLocalControlUiUI
-from .dashboard import SiaDashboard, DashboardInterface
+from .dashboard import DashboardInterface, SiaDashboard
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,9 @@ class SiaLocalControlUiApplication(Application):
         self.dashboard = SiaDashboard(
             host="0.0.0.0",
             port=int(self.config.dashboard_port.value or 8091),
-            secret_key=str(self.config.dashboard_secret_key.value or "sia_local_control_ui"),
+            secret_key=str(
+                self.config.dashboard_secret_key.value or "sia_local_control_ui"
+            ),
             command_handler=self._run_command_sync,
         )
         self.dashboard_interface = DashboardInterface(self.dashboard)
@@ -113,7 +115,9 @@ class SiaLocalControlUiApplication(Application):
     # ------------------------------------------------------------------
     # Command path (shared by physical buttons and the touchscreen)
     # ------------------------------------------------------------------
-    async def _dispatch_command(self, cmd: str, value, app_key: str | None = None) -> dict:
+    async def _dispatch_command(
+        self, cmd: str, value, app_key: str | None = None
+    ) -> dict:
         """Issue a single RPC to the controller. Never raises.
 
         Returns a normalised dict: ``{"ok": True, "result": {...}}`` or
@@ -121,7 +125,11 @@ class SiaLocalControlUiApplication(Application):
         """
         key = app_key or self.config.primary_controller_key
         if key is None:
-            return {"ok": False, "code": "NO_CONTROLLER", "message": "no pump controller configured"}
+            return {
+                "ok": False,
+                "code": "NO_CONTROLLER",
+                "message": "no pump controller configured",
+            }
 
         timeout = float(self.config.rpc_timeout.value or 20.0)
         try:
@@ -146,12 +154,20 @@ class SiaLocalControlUiApplication(Application):
         """
         loop = getattr(self, "_loop", None)
         if loop is None or not loop.is_running():
-            return {"ok": False, "code": "NOT_READY", "message": "controller link not ready"}
+            return {
+                "ok": False,
+                "code": "NOT_READY",
+                "message": "controller link not ready",
+            }
         try:
-            fut = asyncio.run_coroutine_threadsafe(self._dispatch_command(cmd, value), loop)
+            fut = asyncio.run_coroutine_threadsafe(
+                self._dispatch_command(cmd, value), loop
+            )
             # A little headroom over the RPC timeout so the controller's own
             # timeout surfaces as a proper error rather than a bridge timeout.
-            return fut.result(timeout=float(self.config.rpc_timeout.value or 20.0) + 10.0)
+            return fut.result(
+                timeout=float(self.config.rpc_timeout.value or 20.0) + 10.0
+            )
         except Exception as e:
             return {"ok": False, "code": "TIMEOUT", "message": str(e)}
 
@@ -214,7 +230,9 @@ class SiaLocalControlUiApplication(Application):
             warning_reason = self.get_tag(cfg.tag_warning_reason.value, key)
             pump = {
                 "name": f"Pump {idx + 1}" if len(cfg.controller_keys) > 1 else "Pump",
-                "target_rate": _num(self.get_tag(cfg.tag_target_rate.value, key)),
+                # The injection controller owns defaulting and clamping. Keep
+                # absence as None instead of inventing a local 0.0 target.
+                "target_rate": _opt_num(self.get_tag(cfg.tag_target_rate.value, key)),
                 "flow_rate": _num(self.get_tag(cfg.tag_flow_rate.value, key)),
                 "total": _num(self.get_tag(cfg.tag_total.value, key)),
                 # min/max may be absent until the controller publishes them --
@@ -248,8 +266,12 @@ class SiaLocalControlUiApplication(Application):
         link_ok = primary is not None and primary["state"] != "unknown"
 
         # Drive the operator lamps from the primary controller's status.
-        await self._drive_lamp(cfg.run_lamp_pin.value, primary["running"] if primary else False)
-        await self._drive_lamp(cfg.trip_lamp_pin.value, primary["fault"] if primary else False)
+        await self._drive_lamp(
+            cfg.run_lamp_pin.value, primary["running"] if primary else False
+        )
+        await self._drive_lamp(
+            cfg.trip_lamp_pin.value, primary["fault"] if primary else False
+        )
 
         # Mirror the primary status onto the HMI's own (cloud-visible) tags.
         if primary is not None:
@@ -301,7 +323,9 @@ class SiaLocalControlUiApplication(Application):
     def _collect_solar(self) -> dict | None:
         cfg = self.config
         try:
-            controllers = [el.value for el in cfg.solar_controllers.elements if el.value]
+            controllers = [
+                el.value for el in cfg.solar_controllers.elements if el.value
+            ]
         except Exception:
             controllers = []
         if not controllers:
@@ -352,10 +376,18 @@ class SiaLocalControlUiApplication(Application):
         margin = _num(cfg.low_battery_clear_margin.value)
 
         checks = (
-            ("percentage", solar.get("battery_percentage"),
-             _num(cfg.low_battery_percentage.value), "%"),
-            ("voltage", solar.get("battery_voltage"),
-             _num(cfg.low_battery_voltage.value), "V"),
+            (
+                "percentage",
+                solar.get("battery_percentage"),
+                _num(cfg.low_battery_percentage.value),
+                "%",
+            ),
+            (
+                "voltage",
+                solar.get("battery_voltage"),
+                _num(cfg.low_battery_voltage.value),
+                "V",
+            ),
         )
 
         warnings = []
@@ -368,13 +400,15 @@ class SiaLocalControlUiApplication(Application):
             active = float(reading) <= trip_at
             state[name] = active
             if active:
-                warnings.append({
-                    "pump": "Solar",
-                    "reason": (
-                        f"Battery low: {float(reading):.1f}{unit} "
-                        f"(warn below {threshold:.1f}{unit})"
-                    ),
-                })
+                warnings.append(
+                    {
+                        "pump": "Solar",
+                        "reason": (
+                            f"Battery low: {float(reading):.1f}{unit} "
+                            f"(warn below {threshold:.1f}{unit})"
+                        ),
+                    }
+                )
         return warnings
 
     def _collect_tank(self) -> dict | None:

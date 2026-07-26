@@ -9,8 +9,8 @@ caching, and the command dispatch translation to a normalised ack/error dict.
 import types
 
 from pydoover.rpc import RPCError
-from sia_local_control_ui.application import SiaLocalControlUiApplication as App
 
+from sia_local_control_ui.application import SiaLocalControlUiApplication as App
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -211,6 +211,23 @@ async def test_flow_range_bounds_none_when_unpublished():
     assert pump["total"] == 0.0
 
 
+async def test_missing_target_rate_remains_unset_until_controller_publishes():
+    key = "ctrl_1"
+    tags = {
+        (key, "StateString"): "standby",
+        (key, "MinRate"): 3.456,
+        (key, "MaxRate"): 17.28,
+        (key, "Running"): False,
+        (key, "Fault"): False,
+    }
+    stub = _make_stub([key], tags)
+
+    data = await stub._collect_dashboard_data()
+
+    assert data["pumps"][0]["target_rate"] is None
+    assert stub.tags.TargetRate.value is None
+
+
 async def test_no_controllers_does_not_crash():
     stub = _make_stub([], {})
     data = await stub._collect_dashboard_data()
@@ -252,9 +269,7 @@ def _solar_stub(percent=None, voltage=None, **thresholds):
         tags[(solar_key, "b_voltage")] = voltage
 
     stub = _make_stub([key], tags)
-    stub.config.solar_controllers = types.SimpleNamespace(
-        elements=[_val(solar_key)]
-    )
+    stub.config.solar_controllers = types.SimpleNamespace(elements=[_val(solar_key)])
     for name, value in thresholds.items():
         setattr(stub.config, name, _val(value))
     return stub
