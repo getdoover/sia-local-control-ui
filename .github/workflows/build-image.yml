@@ -72,6 +72,7 @@ jobs:
 
       - name: Sign image
         env:
+          COSIGN_EXPERIMENTAL: "1"
           COSIGN_PRIVATE_KEY: ${{ secrets.DOOVER_PUBLIC_COSIGN_PRIVATE_KEY }}
         run: >-
           cosign sign --yes --tlog-upload=false --registry-referrers-mode oci-1-1
