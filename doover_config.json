@@ -645,6 +645,49 @@
                         "description": "A morningstar_prostar_app instance."
                     }
                 },
+                "low_battery_warning_": {
+                    "title": "Low Battery Warning (%)",
+                    "x-name": "low_battery_warning_",
+                    "x-hidden": false,
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Aggregated battery charge at or below which the dashboard shows a low-battery warning. 0 disables the check.",
+                    "default": 30.0,
+                    "x-position": 24,
+                    "minimum": 0.0,
+                    "maximum": 100.0
+                },
+                "low_battery_warning_v": {
+                    "title": "Low Battery Warning (V)",
+                    "x-name": "low_battery_warning_v",
+                    "x-hidden": false,
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Aggregated battery voltage at or below which the low-battery warning shows. 0 disables the check (use the percentage instead).",
+                    "default": 0.0,
+                    "x-position": 25,
+                    "minimum": 0.0
+                },
+                "low_battery_clear_margin": {
+                    "title": "Low Battery Clear Margin",
+                    "x-name": "low_battery_clear_margin",
+                    "x-hidden": false,
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Hysteresis: once warning, the reading must recover this far above the threshold before the banner clears (percentage points / volts).",
+                    "default": 5.0,
+                    "x-position": 26,
+                    "minimum": 0.0
+                },
                 "tank_level_app": {
                     "title": "Tank Level App",
                     "x-name": "tank_level_app",
@@ -657,7 +700,7 @@
                     "x-required": false,
                     "description": "(Optional) tank level app for the tank card.",
                     "default": null,
-                    "x-position": 24
+                    "x-position": 27
                 },
                 "flow_sensor_app": {
                     "title": "Flow Sensor App",
@@ -671,7 +714,7 @@
                     "x-required": false,
                     "description": "(Optional) skid flow sensor app.",
                     "default": null,
-                    "x-position": 25
+                    "x-position": 28
                 },
                 "pressure_sensor_app": {
                     "title": "Pressure Sensor App",
@@ -685,7 +728,7 @@
                     "x-required": false,
                     "description": "(Optional) skid pressure sensor app.",
                     "default": null,
-                    "x-position": 26
+                    "x-position": 29
                 },
                 "rate_units": {
                     "title": "Rate Units",
@@ -698,7 +741,7 @@
                     "x-required": false,
                     "description": "Units label shown against target/flow rate figures.",
                     "default": "L/Hr",
-                    "x-position": 27
+                    "x-position": 30
                 },
                 "pressure_units": {
                     "title": "Pressure Units",
@@ -711,7 +754,7 @@
                     "x-required": false,
                     "description": "Units label shown against the skid pressure figure.",
                     "default": "psi",
-                    "x-position": 28
+                    "x-position": 31
                 },
                 "dashboard_port": {
                     "title": "Dashboard Port",
@@ -724,7 +767,7 @@
                     "x-required": false,
                     "description": "TCP port the Flask/SocketIO touchscreen server listens on.",
                     "default": 8091,
-                    "x-position": 29,
+                    "x-position": 32,
                     "minimum": 1,
                     "maximum": 65535
                 },
@@ -739,7 +782,7 @@
                     "x-required": false,
                     "description": "Flask session secret key.",
                     "default": "sia_local_control_ui",
-                    "x-position": 30
+                    "x-position": 33
                 },
                 "display_refresh_period_s": {
                     "title": "Display Refresh Period (s)",
@@ -752,7 +795,7 @@
                     "x-required": false,
                     "description": "How often the dashboard/status readouts refresh. Buttons are event-driven and unaffected.",
                     "default": 0.5,
-                    "x-position": 31,
+                    "x-position": 34,
                     "minimum": 0.1
                 },
                 "rpc_timeout_s": {
@@ -766,7 +809,7 @@
                     "x-required": false,
                     "description": "How long an operator command waits for the controller to physically act.",
                     "default": 20.0,
-                    "x-position": 32,
+                    "x-position": 35,
                     "minimum": 1.0
                 }
             },
@@ -786,7 +829,7 @@
         "staging_config": {},
         "ui_schema": {
             "displayString": "$config.app().APP_DISPLAY_NAME",
-            "hidden": "$config.app().hidden:boolean:false:boolean:false",
+            "hidden": "$config.app().interpreter_hidden:boolean:false",
             "position": "$config.app().dv_app_position:number:100",
             "icon": null,
             "colour": null,
@@ -824,7 +867,7 @@
                     "position": 53,
                     "hidden": false,
                     "varType": "float",
-                    "currentValue": "$tag.app().TargetRate:number:0.0",
+                    "currentValue": "$tag.app().TargetRate:number:null",
                     "decPrecision": 2,
                     "live": true
                 },
