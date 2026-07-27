@@ -134,7 +134,14 @@ class SiaLocalControlUiApplication(Application):
         timeout = float(self.config.rpc_timeout.value or 20.0)
         try:
             result = await self.ui_manager.call(
-                cmd, value, channel=UI_CMDS_CHANNEL, app_key=key, timeout=timeout
+                cmd,
+                value,
+                channel=UI_CMDS_CHANNEL,
+                app_key=key,
+                timeout=timeout,
+                # Attribute the command in the cloud UI's history — without an
+                # actor it renders as a pending change by "Unknown user".
+                actor={"name": "Local HMI"},
             )
             await self.tags.LastCommand.set(f"{cmd}={value}")
             return {"ok": True, "result": result or {}}

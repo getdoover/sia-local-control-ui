@@ -364,7 +364,7 @@ def _cmd_stub(call_impl):
 
 
 async def test_dispatch_success():
-    async def ok(method, value, channel=None, app_key=None, timeout=None):
+    async def ok(method, value, channel=None, app_key=None, timeout=None, **kwargs):
         return {"state": "pumping"}
 
     stub = _cmd_stub(ok)
@@ -375,7 +375,7 @@ async def test_dispatch_success():
 
 
 async def test_dispatch_rpc_error():
-    async def boom(method, value, channel=None, app_key=None, timeout=None):
+    async def boom(method, value, channel=None, app_key=None, timeout=None, **kwargs):
         raise RPCError("FAULTED", "pump tripped")
 
     stub = _cmd_stub(boom)
