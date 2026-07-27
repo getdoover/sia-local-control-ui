@@ -126,8 +126,8 @@ class Dashboard {
         }
         this.show(el);
         const rate = this.units.rate;
-        this.setText('flow-range-min', this.fmt(min, 1) + ' ' + rate);
-        this.setText('flow-range-max', this.fmt(max, 1) + ' ' + rate);
+        this.setText('flow-range-min', this.fmt(min, 2) + ' ' + rate);
+        this.setText('flow-range-max', this.fmt(max, 2) + ' ' + rate);
         const target = Number(pump.target_rate);
         const frac = Math.max(0, Math.min(1, (target - min) / (max - min)));
         const fill = document.getElementById('flow-range-fill');
