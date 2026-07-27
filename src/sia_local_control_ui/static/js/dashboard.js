@@ -78,7 +78,7 @@ class Dashboard {
         const state = (pump.state || 'unknown');
         const stateClass = state.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-        this.setValue('target-rate', this.fmt(pump.target_rate, 1), rate);
+        this.setValue('target-rate', this.fmt(pump.target_rate, 2), rate);
         this.setValue('flow-rate', this.fmt(pump.flow_rate, 1), rate);
         this.setTotal(pump.total, this.volumeUnit(rate));
         this.renderFlowRange(pump);
