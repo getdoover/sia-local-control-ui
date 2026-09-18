@@ -914,7 +914,7 @@
         "id": 202714802705972494,
         "code_repo_id": null,
         "lambda_config": null,
-        "icon_url": null,
+        "icon_url": "https://cdn.jsdelivr.net/gh/getdoover/app-icons@126ec9f5ce22d9d5c100013a7da2740233f0720b/icons/customer-142400552532231428.png",
         "banner_url": null,
         "build_widget_command": null,
         "export_config_command": null,
