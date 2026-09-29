@@ -1164,3 +1164,244 @@
         transition: none !important;
     }
 }
+
+/* ------------------------------------------------------------------
+   1min Calibration Sequence: the CALIBRATE tile and the wizard popover
+   (same overlay, panel and key styling as the VSD panel and keypad).
+   The keypad and confirmation come later in the markup, so they open
+   above it.
+   ------------------------------------------------------------------ */
+.sia-hmi .touch-cal .touch-hint:empty { display: none; }
+.sia-hmi .touch-cal.calibrate { border-color: var(--hmi-blue); }
+.sia-hmi .touch-cal.calibrate .touch-number {
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: clamp(0.95rem, 2.3vw, 1.2rem);
+}
+.sia-hmi .touch-cal.calibrate .touch-caption { order: 2; text-transform: none; }
+.sia-hmi .touch-cal.calibrate .touch-hint { order: 3; color: var(--hmi-amber); }
+
+.sia-hmi .calwiz-overlay { align-items: stretch; }
+
+.sia-hmi .calwiz {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(760px, 100%);
+    max-height: min(560px, 100%);
+    margin: auto;
+    padding: 12px 14px;
+    background: var(--hmi-panel);
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px var(--hmi-edge), 0 12px 40px #0009;
+    overflow: hidden;
+}
+
+.sia-hmi .calwiz-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--hmi-edge);
+}
+
+.sia-hmi .calwiz-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--hmi-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.sia-hmi .calwiz-step {
+    flex: 1 1 auto;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--hmi-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.sia-hmi .calwiz-close.hidden { display: none; }
+
+.sia-hmi .calwiz-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    overflow: hidden;
+}
+
+.sia-hmi .calwiz-text { font-size: 1.2rem; font-weight: 600; color: var(--hmi-text); }
+.sia-hmi .calwiz-lead { font-size: clamp(1.15rem, 3.4vh, 1.5rem); line-height: 1.3; }
+.sia-hmi .calwiz-note { font-size: 0.95rem; color: var(--hmi-muted); font-weight: 600; }
+.sia-hmi .calwiz-warn { color: var(--hmi-amber); }
+.sia-hmi .calwiz-ok { color: var(--hmi-green); }
+.sia-hmi .calwiz-ended { color: var(--hmi-amber); }
+
+.sia-hmi .calwiz-link {
+    align-self: flex-start;
+    min-height: 44px;
+    padding: 8px 4px;
+    border: 0;
+    background: none;
+    color: var(--hmi-blue);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.sia-hmi .calwiz-field {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 4px 12px;
+    min-height: 72px;
+    padding: 10px 14px;
+    border: 2px solid var(--hmi-blue);
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
+    text-align: left;
+    cursor: pointer;
+    box-shadow: inset 0 2px 4px #090e11;
+}
+
+.sia-hmi .calwiz-field-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--hmi-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sia-hmi .calwiz-field-value {
+    grid-row: span 2;
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(1.6rem, 5vh, 2.2rem);
+    font-weight: 700;
+}
+
+.sia-hmi .calwiz-field-value.empty {
+    font-family: inherit;
+    font-size: 1.1rem;
+    color: var(--hmi-blue);
+}
+
+.sia-hmi .calwiz-field-note { font-size: 0.85rem; color: var(--hmi-muted); font-weight: 600; }
+.sia-hmi .calwiz-unit { font-size: 0.9rem; color: var(--hmi-muted); font-weight: 600; margin-left: 6px; font-family: inherit; }
+
+.sia-hmi .calwiz-rows { display: flex; flex-direction: column; gap: 6px; }
+
+.sia-hmi .calwiz-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 6px 10px;
+    background: var(--hmi-instrument);
+    border: 2px solid #39464f;
+    border-radius: 3px;
+}
+
+.sia-hmi .calwiz-row-label { font-size: 0.9rem; font-weight: 700; color: var(--hmi-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.sia-hmi .calwiz-row-value {
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(1.05rem, 3.2vh, 1.35rem);
+    font-weight: 700;
+    white-space: nowrap;
+}
+.sia-hmi .calwiz-row-value strong { color: var(--hmi-green); }
+
+.sia-hmi .calwiz-run {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: 1fr auto;
+    gap: 10px 16px;
+    align-items: center;
+}
+
+.sia-hmi .calwiz-count {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 0;
+    background: var(--hmi-instrument);
+    border: 2px solid #39464f;
+    border-radius: 3px;
+    box-shadow: inset 0 2px 4px #090e11;
+}
+
+.sia-hmi .calwiz-count-value {
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(3.5rem, 20vh, 7.5rem);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--hmi-green);
+}
+
+.sia-hmi .calwiz-count-unit { font-size: 0.9rem; font-weight: 700; color: var(--hmi-muted); text-transform: uppercase; }
+
+.sia-hmi .calwiz-count { grid-column: 1; grid-row: 1; }
+.sia-hmi .calwiz-run-side { grid-column: 2; grid-row: 1; }
+
+.sia-hmi .calwiz-progress {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: 10px;
+    background: var(--hmi-instrument);
+    border: 1px solid #39464f;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.sia-hmi .calwiz-progress-fill { height: 100%; width: 0; background: var(--hmi-green); }
+
+.sia-hmi .calwiz-run-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.sia-hmi .calwiz-cancel {
+    min-height: 72px;
+    background: #922c29;
+    border-color: var(--hmi-red);
+    color: white;
+    font-size: 1.4rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sia-hmi .calwiz-error { flex-shrink: 0; min-height: 1.1em; font-size: 0.9rem; color: var(--hmi-red); font-weight: 700; }
+.sia-hmi .calwiz-error:empty { display: none; }
+
+.sia-hmi .calwiz-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.sia-hmi .calwiz-actions .key { flex: 1; font-size: 1.1rem; }
+.sia-hmi .calwiz-actions .key.hidden { display: none; }
+.sia-hmi .calwiz-next.calwiz-go { background: #185c3b; border-color: var(--hmi-green); }
+.sia-hmi .calwiz-actions .key.pending { opacity: 0.6; }
+
+/* Short screens (800x480, 1024x600): tighter so every page fits. */
+@media (max-height: 620px) {
+    .sia-hmi .calwiz { gap: 6px; padding: 8px 10px; }
+    .sia-hmi .calwiz-head { padding-bottom: 6px; }
+    .sia-hmi .calwiz-title { font-size: 1rem; }
+    .sia-hmi .calwiz-body { gap: 8px; }
+    .sia-hmi .calwiz-row { padding: 4px 10px; }
+    .sia-hmi .calwiz-note { font-size: 0.85rem; }
+}
+
+@media (max-width: 640px) {
+    .sia-hmi .calwiz-step { display: none; }
+    .sia-hmi .calwiz-title { flex: 1 1 auto; }
+}

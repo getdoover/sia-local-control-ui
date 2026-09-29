@@ -319,6 +319,29 @@ export interface TouchData {
   calibration_max: number;
 }
 
+/** The controller's CalibrationMethod that turns the wizard on. */
+export const CALIBRATION_METHOD_MANUAL = "Manual (HMI)";
+
+/** The controller's timed test run (CONTRACT.md, REQ-009). */
+export interface TestRunData {
+  active: boolean;
+  remaining_s: number | null;
+  rate: number | null;
+  duration_s: number | null;
+  elapsed_s: number | null;
+  result: "completed" | "cancelled" | "faulted" | null;
+}
+
+/**
+ * The 1min Calibration Sequence: only in Touch, and only when the controller
+ * publishes `CalibrationMethod` = "Manual (HMI)". Absent otherwise (including
+ * an older controller with no such tag): the tile stays CAL FACTOR.
+ */
+export interface CalibrationData {
+  method: string;
+  test_run: TestRunData;
+}
+
 export interface DashboardData {
   pumps: PumpData[];
   faults: BannerItem[];
@@ -329,6 +352,7 @@ export interface DashboardData {
   hmi_mode: HmiMode;
   vsd?: VsdData;
   touch?: TouchData;
+  calibration?: CalibrationData;
   solar?: {
     battery_voltage?: number;
     battery_percentage?: number;
@@ -506,6 +530,28 @@ export function batteryWarnings(
   return out;
 }
 
+const TEST_RUN_RESULTS = ["completed", "cancelled", "faulted"] as const;
+
+/** The wizard's payload, or undefined unless the method is Manual (HMI). */
+export function collectCalibration(get: TagReader, key: string): CalibrationData | undefined {
+  const method = asString(get("CalibrationMethod", key));
+  if (method !== CALIBRATION_METHOD_MANUAL) return undefined;
+  const result = asString(get("TestRunResult", key));
+  return {
+    method,
+    test_run: {
+      active: get("TestRunActive", key) === true,
+      remaining_s: optNum(get("TestRunRemaining_s", key)),
+      rate: optNum(get("TestRunRate", key)),
+      duration_s: optNum(get("TestRunDuration_s", key)),
+      elapsed_s: optNum(get("TestRunElapsed_s", key)),
+      result: (TEST_RUN_RESULTS as readonly string[]).includes(result ?? "")
+        ? (result as TestRunData["result"])
+        : null,
+    },
+  };
+}
+
 /** Saved calibration factor: the controller's ui_cmds value, else its tag. */
 function calibrationFactor(
   uiCmds: JsonRecord | undefined,
@@ -584,6 +630,8 @@ export function assembleDashboardData(inputs: AssembleInputs): DashboardData {
         calibration_min: CAL_FACTOR_MIN,
         calibration_max: CAL_FACTOR_MAX,
       };
+      const calibration = collectCalibration(get, primaryKey);
+      if (calibration) data.calibration = calibration;
     }
   }
 
@@ -648,6 +696,14 @@ export function liveTagIds(cfg: HmiConfig): string[] {
     "PumpRpm",
     "PressureUnits",
     ...VSD_FLAG_TAGS,
+    // 1min Calibration Sequence (only published with Manual (HMI)).
+    "CalibrationMethod",
+    "TestRunActive",
+    "TestRunRemaining_s",
+    "TestRunRate",
+    "TestRunDuration_s",
+    "TestRunElapsed_s",
+    "TestRunResult",
   ];
   for (const key of cfg.controllers) {
     for (const tag of controllerTags) ids.push(`${key}.${tag}`);

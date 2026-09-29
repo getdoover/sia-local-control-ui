@@ -31,6 +31,12 @@ export interface MockOptions {
   vsdMotorApp?: string;
   /** Imitate an older Techtop app without get_diagnostics. */
   legacyMotorApp?: boolean;
+  /** Controller CalibrationMethod (e.g. "Manual (HMI)"); unset = not published. */
+  calibrationMethod?: string;
+  /** A timed test already running with this many seconds left (reattach). */
+  testRunRemaining?: number;
+  /** Speed-up for the mock test run clock (1 = real time). */
+  testRunSpeed?: number;
 }
 
 export const TECHTOP = "techtop_motor_controller_1";
@@ -82,6 +88,20 @@ export function scenarioTags(opts: MockOptions): Json {
       MotorOutputHz: faulted || standby ? 0 : 42.5,
       PumpRpm: faulted || standby ? 0 : 61,
       PressureUnits: "psi",
+      ...(opts.calibrationMethod ? { CalibrationMethod: opts.calibrationMethod } : {}),
+      ...(opts.testRunRemaining != null
+        ? {
+            StateString: "pumping",
+            Running: true,
+            FlowRate: 12.1,
+            TestRunActive: true,
+            TestRunRemaining_s: opts.testRunRemaining,
+            TestRunRate: 12.5,
+            TestRunDuration_s: 60,
+            TestRunElapsed_s: 60 - opts.testRunRemaining,
+            TestRunResult: null,
+          }
+        : {}),
     },
     analog_level_sensor_1: { level_reading: 0.85, level_filled_percentage: 64, level_volume: 1284.6 },
     "4_20ma_sensor_2": { value: 350.2 },
@@ -127,6 +147,45 @@ export function createMockClient(opts: MockOptions) {
     push("tag_values");
   };
 
+  // The controller's timed test run, on a (possibly sped-up) mock clock.
+  let testTimer: ReturnType<typeof setInterval> | undefined;
+  const endTest = (result: string, elapsed: number) => {
+    clearInterval(testTimer);
+    testTimer = undefined;
+    patchTags({
+      TestRunActive: false,
+      TestRunRemaining_s: 0,
+      TestRunElapsed_s: Math.round(elapsed * 100) / 100,
+      TestRunResult: result,
+      StateString: "standby",
+      Running: false,
+      FlowRate: 0,
+    });
+  };
+  const startTest = (rate: number, duration: number) => {
+    const speed = opts.testRunSpeed ?? 1;
+    const t0 = Date.now();
+    const elapsed = () => ((Date.now() - t0) / 1000) * speed;
+    patchTags({
+      TestRunActive: true,
+      TestRunRemaining_s: duration,
+      TestRunRate: rate,
+      TestRunDuration_s: duration,
+      TestRunElapsed_s: 0,
+      TestRunResult: null,
+      StateString: "pumping",
+      Running: true,
+      FlowRate: Math.round(rate * 0.96 * 100) / 100,
+    });
+    testTimer = setInterval(() => {
+      const e = elapsed();
+      if (e >= duration) endTest("completed", duration);
+      else patchTags({ TestRunRemaining_s: Math.round((duration - e) * 10) / 10, TestRunElapsed_s: Math.round(e * 100) / 100 });
+    }, 250);
+    return elapsed;
+  };
+  let testElapsed: (() => number) | undefined;
+
   const rpcError = (code: string, message: string) =>
     Object.assign(new Error(message), { status: { code: "error", message: { code, message } } });
 
@@ -169,6 +228,20 @@ export function createMockClient(opts: MockOptions) {
         if (tags.VsdTripCode) throw rpcError("NOT_CLEARABLE", String(tags.FaultReason));
         patchTags({ Fault: false, FaultReason: null, StateString: "standby" });
         return { fault: false };
+      case "start_test_run": {
+        if (tags.CalibrationMethod !== "Manual (HMI)") {
+          throw rpcError("NOT_ENABLED", "the timed test run needs Calibration Method 'Manual (HMI)'");
+        }
+        if (tags.TestRunActive) throw rpcError("NOT_READY", "a test run is already running");
+        if (tags.Fault) throw rpcError("NOT_READY", "the pump is faulted; reset the fault first");
+        if (tags.Running) throw rpcError("NOT_READY", "the pump is pumping; stop it before a test run");
+        const r = req.request as { rate: number; duration_s: number };
+        testElapsed = startTest(Number(r.rate), Number(r.duration_s));
+        return { active: true, rate: r.rate, duration_s: r.duration_s };
+      }
+      case "cancel_test_run":
+        if (tags.TestRunActive) endTest("cancelled", testElapsed ? testElapsed() : 0);
+        return { active: false, result: "cancelled" };
       case "last_calibration_factor":
         aggregates.ui_cmds = {
           data: { [CTRL]: { last_calibration_factor: req.request } },

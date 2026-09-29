@@ -106,8 +106,10 @@ export const touchPayload = (over = {}) => ({
  * command; acks resolve immediately with `ackReply` unless `deferAcks` is set,
  * in which case `ackNext(ack)` settles the oldest pending one.
  */
-export function mountHmi(opts = {}) {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+export function mountHmi({ url, dom: existing, ...opts } = {}) {
+  // `url` gives the page an origin (and so localStorage); `dom` mounts again
+  // in an existing page, as a reload of the widget would.
+  const dom = existing ?? new JSDOM("<!doctype html><html><body></body></html>", url ? { url } : undefined);
   const document = dom.window.document;
   const root = document.createElement("div");
   document.body.appendChild(root);

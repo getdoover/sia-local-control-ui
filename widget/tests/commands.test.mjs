@@ -63,13 +63,37 @@ test("touch rejects bad values and unknown commands", () => {
 
 test("the touch command list is exactly the controller contract", () => {
   assert.deepEqual([...TOUCH_COMMANDS].sort(), [
+    "cancel_test_run",
     "last_calibration_factor",
     "nudge_rate",
     "reset_fault",
     "reset_vsd_fault",
     "set_pump_state",
     "set_target_rate",
+    "start_test_run",
   ]);
+});
+
+test("start_test_run needs a numeric rate and duration; cancel needs nothing", () => {
+  assert.equal(checkTouchCommand(true, "start_test_run", { rate: 12.5, duration_s: 60 }), null);
+  assert.equal(checkTouchCommand(true, "start_test_run", { rate: "12.5", duration_s: "60" }), null);
+  for (const bad of [null, {}, { rate: 12.5 }, { rate: "x", duration_s: 60 }]) {
+    assert.equal(checkTouchCommand(true, "start_test_run", bad)?.code, "INVALID", JSON.stringify(bad));
+  }
+  assert.equal(checkTouchCommand(true, "cancel_test_run", null), null);
+  assert.equal(checkTouchCommand(false, "start_test_run", { rate: 1, duration_s: 60 })?.code, "READ_ONLY");
+  assert.equal(checkTouchCommand(false, "cancel_test_run", null)?.code, "READ_ONLY");
+});
+
+test("test run RPC bodies: {rate, duration_s} as numbers, cancel sends {}", () => {
+  const actor = { name: "Local HMI" };
+  assert.deepEqual(buildRpcRequest("start_test_run", { rate: "12.5", duration_s: 60 }, CTRL, actor), {
+    method: "start_test_run",
+    request: { rate: 12.5, duration_s: 60 },
+    app_key: CTRL,
+    actor,
+  });
+  assert.deepEqual(buildRpcRequest("cancel_test_run", null, CTRL, actor).request, {});
 });
 
 // --- RPC body -----------------------------------------------------------------------
