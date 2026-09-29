@@ -110,30 +110,40 @@
     padding: clamp(15px, 2vw, 30px);
     margin-bottom: clamp(10px, 2vh, 20px);
     box-shadow: inset 0 0 0 1px var(--hmi-edge), 0 3px 0 #090e11;
-    display: flex;
-    justify-content: space-between;
+    /* Logo | title | status: equal outer columns keep the title centred on
+       the screen, not in the space the logo and status leave. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
+}
+
+.sia-hmi .header-brand {
+    justify-self: start;
+    display: flex;
+    align-items: center;
+    min-width: 0;
 }
 
 .sia-hmi .dashboard-header h1 {
     color: var(--hmi-text);
     font-size: clamp(1.5rem, 4vw, 2.2rem);
     font-weight: 600;
-    display: flex;
-    align-items: center;
+    text-align: center;
+    justify-self: center;
     min-width: 0;
 }
 
 .sia-hmi .header-logo {
-    height: 1.2em;
+    /* The logo sits outside the h1 now, so size it from the title's font. */
+    height: clamp(1.8rem, 4.8vw, 2.64rem);
     width: auto;
-    margin-right: 15px;
     flex-shrink: 0;
 }
 
 .sia-hmi .header-info {
+    justify-self: end;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -554,7 +564,6 @@
     text-transform: uppercase;
 }
 
-.sia-hmi .touch-step { flex: 0 0 64px; font-size: 1.8rem; }
 .sia-hmi .touch-rate-group { flex: 1.4 1 auto; }
 .sia-hmi .touch-value { flex: 1.6 1 0; }
 
@@ -653,6 +662,15 @@
     border-radius: 3px;
     background: var(--hmi-instrument);
 }
+
+.sia-hmi .keypad-entry-row {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.sia-hmi .keypad-entry-row .keypad-display { flex: 1; min-width: 0; }
+.sia-hmi .keypad-step { flex: 0 0 56px; font-size: 1.8rem; }
 
 .sia-hmi .keypad-entry { font-size: 2rem; font-weight: 700; color: var(--hmi-text); }
 .sia-hmi .keypad-entry.placeholder { color: var(--hmi-muted); }
@@ -1038,7 +1056,6 @@
    Width: container queries, so they follow the widget's width.
    ------------------------------------------------------------------ */
 @container hmi (max-width: 768px) {
-    .sia-hmi .dashboard-header { flex-wrap: wrap; }
     .sia-hmi .pump-skid-row { grid-template-columns: 1fr; }
     .sia-hmi .secondary-controls-row { flex-direction: column; flex-wrap: nowrap; }
     .sia-hmi .secondary-controls-row > .control-section,
@@ -1047,13 +1064,16 @@
 
 @container hmi (max-width: 600px) {
     .sia-hmi .dashboard-header h1 { font-size: 1.35rem; }
-    .sia-hmi .header-info { align-items: flex-start; }
+    /* Too narrow for three columns: title across the top, logo and status
+       under it. */
+    .sia-hmi .dashboard-header { grid-template-columns: 1fr auto; }
+    .sia-hmi .dashboard-header h1 { grid-column: 1 / -1; grid-row: 1; }
     .sia-hmi .controls-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
     .sia-hmi .value { font-size: 1.5rem; }
     .sia-hmi .control-section h2 { font-size: 1.15rem; }
     .sia-hmi .control-card h3 { font-size: 0.85rem; }
     /* Touch bar in a narrow column: Start / Stop / Reset / Cal on one row,
-       the rate stepper full width underneath. */
+       the target rate full width underneath. */
     .sia-hmi .touch-bar { flex-wrap: wrap; gap: 6px; padding: 6px; }
     .sia-hmi .touch-group { flex: 1 1 40%; }
     .sia-hmi .touch-rate-group { order: 2; flex: 1 1 100%; }
@@ -1080,6 +1100,7 @@
     border-radius: 3px;
 }
 .sia-hmi.kiosk .dashboard-header h1 { font-size: clamp(1.15rem, 5cqh, 2rem); }
+.sia-hmi.kiosk .header-logo { height: clamp(1.38rem, 6cqh, 2.4rem); }
 .sia-hmi.kiosk .header-info { gap: 0.2cqh; }
 .sia-hmi.kiosk .header-info .timestamp,
 .sia-hmi.kiosk .connection-status { font-size: clamp(0.72rem, 2.1cqh, 0.95rem); }

@@ -5,7 +5,7 @@
 // a fault banner, a warning banner and a solar card:
 //   - no vertical or horizontal overflow of the page or the content area;
 //   - every visible tile ends above the touch bar (or the screen edge);
-//   - Start / Stop / step / keypad targets are at least 56 px;
+//   - Start / Stop / Target / Reset / Cal and keypad targets are at least 56 px;
 //   - Tank and VSD share a row, and Tank spans the row without a VSD;
 //   - readings stay readable (value text >= 16 px, labels >= 11 px);
 //   - no VSD commissioning gear unless it is configured.
@@ -195,11 +195,37 @@ for (const [w, h] of SIZES) {
           }
           // Touch targets.
           if (mode === "Touch") {
-            assert.ok(m.targets.length >= 7, ctx);
+            // Start, Stop, Target, Reset, Cal (the rate steps live in the popover).
+            assert.ok(m.targets.length >= 5, ctx);
             for (const t of m.targets) assert.ok(t.h >= 56 && t.w >= 56, `${t.id} ${t.w}x${t.h} < 56px`);
+            // The rate popover, with its - / + steps, fits and keeps touch-sized keys.
+            await page.click('.sia-hmi [data-id="touch-rate"]');
+            const k = await page.evaluate(() => {
+              const box = (sel) => {
+                const r = document.querySelector(sel).getBoundingClientRect();
+                return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, w: r.width, h: r.height };
+              };
+              return {
+                pad: box(".sia-hmi .keypad"),
+                down: box('.sia-hmi [data-id="keypad-step-down"]'),
+                up: box('.sia-hmi [data-id="keypad-step-up"]'),
+                doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+              };
+            });
+            const kctx = JSON.stringify(k);
+            assert.ok(k.pad.top >= 0 && k.pad.bottom <= h && k.pad.left >= 0 && k.pad.right <= w, `rate popover off screen: ${kctx}`);
+            assert.ok(k.doc[0] <= w && k.doc[1] <= h, `rate popover scrolls: ${kctx}`);
+            for (const b of [k.down, k.up]) assert.ok(b.w >= 56 && b.h >= 56, `rate step key < 56px: ${kctx}`);
+            await page.click('.sia-hmi [data-id="keypad-cancel"]');
           } else {
             assert.equal(m.targets.length, 0);
           }
+          // Header title centred on the screen.
+          const title = await page.evaluate(() => {
+            const r = document.querySelector('.sia-hmi [data-id="header-title"]').getBoundingClientRect();
+            return (r.left + r.right) / 2;
+          });
+          assert.ok(Math.abs(title - w / 2) <= 2, `header title centre ${title} is not the screen centre ${w / 2}`);
           // Tank beside VSD on one row; alone it spans the row.
           assert.ok(m.tank, "tank tile shown");
           if (m.vsd) {

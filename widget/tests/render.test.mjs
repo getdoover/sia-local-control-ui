@@ -4,7 +4,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { keypadInput, rateNeedsConfirm, validateKeypadEntry } from "../src/core/hmi-core.js";
+import {
+  DEFAULT_TITLE,
+  keypadInput,
+  keypadStep,
+  rateNeedsConfirm,
+  rateStep,
+  validateKeypadEntry,
+} from "../src/core/hmi-core.js";
 import {
   flush,
   isHidden,
@@ -154,7 +161,7 @@ test("read only: status cards show but no on-screen control sends anything", asy
   assert.ok(isHidden(m.byId("touch-bar")));
   assert.ok(m.byId("container").classList.contains("readonly"));
   assert.ok(!isHidden(m.byId("vsd-section")));
-  for (const id of ["reset-vsd-btn", "touch-reset", "touch-start", "touch-stop", "touch-rate-up"]) {
+  for (const id of ["reset-vsd-btn", "touch-reset", "touch-start", "touch-stop"]) {
     m.click(id);
   }
   m.click("touch-rate");
@@ -186,20 +193,94 @@ test("touch: bar renders with target, units and calibration factor", () => {
   assert.ok(m.byId("container").classList.contains("touch-mode"));
 });
 
-test("touch: start, stop, step and reset send the controller commands", async () => {
+test("touch: start, stop and reset send the controller commands", async () => {
   const m = mountHmi();
   m.render(touchPayload());
-  for (const id of ["touch-start", "touch-stop", "touch-rate-up", "touch-rate-down", "touch-reset"]) {
+  for (const id of ["touch-start", "touch-stop", "touch-reset"]) {
     m.click(id);
   }
   await flush();
   assert.deepEqual(m.state.sent, [
     { cmd: "set_pump_state", value: "start" },
     { cmd: "set_pump_state", value: "stop" },
-    { cmd: "nudge_rate", value: "+1" },
-    { cmd: "nudge_rate", value: "-1" },
     { cmd: "reset_fault", value: null },
   ]);
+});
+
+test("touch: the bar has no rate steppers; the rate changes only in its popover", async () => {
+  const m = mountHmi();
+  m.render(touchPayload());
+  assert.equal(m.byId("touch-rate-up"), null);
+  assert.equal(m.byId("touch-rate-down"), null);
+  m.click("touch-rate");
+  assert.ok(!isHidden(m.byId("keypad")));
+  assert.ok(!isHidden(m.byId("keypad-step-up")));
+  assert.ok(!isHidden(m.byId("keypad-step-down")));
+  await flush();
+  assert.deepEqual(m.state.sent, []);
+});
+
+test("touch: popover +/- step from the current rate, then OK sends set_target_rate", async () => {
+  const m = mountHmi();
+  m.render(touchPayload());
+  m.click("touch-rate");
+  // 12.5, max 92.16: each step is 4.608 (the controller's 5% nudge).
+  m.click("keypad-step-up");
+  assert.equal(m.byId("keypad-entry").textContent, "17.11");
+  m.click("keypad-step-down");
+  m.click("keypad-step-down");
+  assert.equal(m.byId("keypad-entry").textContent, "7.89");
+  await flush();
+  assert.deepEqual(m.state.sent, [], "nothing is sent until OK");
+  m.click("keypad-ok");
+  // 12.5 -> 7.89 is over the 20% threshold: confirm first.
+  assert.ok(!isHidden(m.byId("confirm")));
+  m.click("confirm-ok");
+  await flush();
+  assert.deepEqual(m.state.sent, [{ cmd: "set_target_rate", value: 7.89 }]);
+});
+
+test("touch: popover steps stay inside the rate range and continue from a typed entry", () => {
+  const m = mountHmi();
+  m.render(touchPayload());
+  m.click("touch-rate");
+  typeKeys(m, ["9", "0"]);
+  m.click("keypad-step-up");
+  assert.equal(m.byId("keypad-entry").textContent, "92.16");
+  m.click("keypad-cancel");
+  m.click("touch-rate");
+  typeKeys(m, ["3"]);
+  m.click("keypad-step-down");
+  assert.equal(m.byId("keypad-entry").textContent, "2.00");
+});
+
+test("touch: the calibration keypad has no step buttons", () => {
+  const m = mountHmi();
+  m.render(touchPayload());
+  m.click("touch-cal");
+  assert.ok(isHidden(m.byId("keypad-step-up")));
+  assert.ok(isHidden(m.byId("keypad-step-down")));
+});
+
+test("rate step is the controller's 5% nudge; keypad steps clamp", () => {
+  assert.equal(rateStep(92.16), 4.608);
+  assert.equal(rateStep(0), 0);
+  assert.equal(rateStep(null), 0);
+  const range = { step: 4.608, min: 2, max: 92.16, decimals: 2 };
+  assert.equal(keypadStep("12.50", 1, range), "17.11");
+  assert.equal(keypadStep("12.50", -1, range), "7.89");
+  assert.equal(keypadStep("90", 1, range), "92.16");
+  assert.equal(keypadStep("3", -1, range), "2.00");
+  assert.equal(keypadStep("", 1, range), "6.61");
+});
+
+test("header: title defaults, is set later, and falls back when cleared", () => {
+  const m = mountHmi();
+  assert.equal(m.byId("header-title").textContent, DEFAULT_TITLE);
+  m.hmi.setTitle("CI-24101-A");
+  assert.equal(m.byId("header-title").textContent, "CI-24101-A");
+  m.hmi.setTitle("");
+  assert.equal(m.byId("header-title").textContent, DEFAULT_TITLE);
 });
 
 test("touch: pending, success and error feedback on the control", async () => {
