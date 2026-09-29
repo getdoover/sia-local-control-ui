@@ -529,6 +529,38 @@
                     "default": 20.0,
                     "x-position": 39,
                     "minimum": 1.0
+                },
+                "vsd_motor_app": {
+                    "title": "VSD Motor App",
+                    "x-name": "vsd_motor_app",
+                    "x-hidden": false,
+                    "format": "doover-resource-application",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "(Optional) the Techtop motor controller app driving this pump's VSD, e.g. techtop_motor_controller_1. The HMI widget's VSD commissioning panel talks to it; unset hides the panel.",
+                    "default": null,
+                    "x-position": 40
+                },
+                "vsd_commissioning": {
+                    "enum": [
+                        "Hidden",
+                        "Local only",
+                        "Local and cloud"
+                    ],
+                    "title": "VSD Commissioning",
+                    "x-name": "vsd_commissioning",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "VSD commissioning panel on the HMI widget (gear on the VSD tile). Hidden: no gear. Local only: diagnostics everywhere the gear shows, drive parameter changes only from the local panel. Local and cloud: parameter changes from the local panel and the cloud UI.",
+                    "default": "Hidden",
+                    "x-position": 41
                 }
             },
             "additionalElements": true,

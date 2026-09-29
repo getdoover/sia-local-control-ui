@@ -168,3 +168,118 @@ for (const host of ["local", "cloud"]) {
     }
   });
 }
+
+// --- VSD commissioning panel: straight to the Techtop app on dv-rpc -----------
+
+const TECHTOP = "techtop_motor_controller_1";
+const vsdLog = (page) => page.evaluate(() => window.__vsdLog ?? []);
+
+async function openPanel(page) {
+  await click(page, "vsd-gear");
+  await page.waitForSelector('.sia-hmi .vsd-param', { state: "visible" });
+}
+
+async function writeParam(page, id, keys) {
+  await page.click(`.sia-hmi [data-param="${id}"]`);
+  await page.click('.sia-hmi [data-key="clear"]');
+  for (const k of keys) await page.click(`.sia-hmi [data-key="${k}"]`);
+  await click(page, "keypad-ok");
+  await click(page, "confirm-ok");
+  await page.waitForFunction(
+    (pid) => {
+      const row = document.querySelector(`.sia-hmi [data-param="${pid}"]`);
+      return row && (row.classList.contains("ok") || row.classList.contains("error"));
+    },
+    id,
+  );
+}
+
+for (const [host, commission] of [["local", "Local only"], ["cloud", "Local and cloud"]]) {
+  test(`${host} host, ${commission}: diagnostics, parameters and a write go to the Techtop app`, async () => {
+    const page = await open(
+      `host=${host}&mode=Touch&scenario=standby&control=cloud&commission=${encodeURIComponent(commission)}`,
+    );
+    try {
+      await openPanel(page);
+      await writeParam(page, "P-01", ["5", "5"]);
+      const row = await page.textContent('.sia-hmi [data-param="P-01"]');
+      assert.match(row, /55\.0/);
+      assert.match(row, /drive reads 55\.0 Hz/);
+      const log = await vsdLog(page);
+      for (const body of log) {
+        assert.equal(body.channel, "dv-rpc");
+        assert.equal(body.app_key, TECHTOP);
+        assert.deepEqual(body.actor, ACTORS[host]);
+      }
+      const methods = log.map((b) => b.method);
+      assert.ok(methods.includes("get_diagnostics") && methods.includes("read_parameters"), methods.join());
+      const writes = log.filter((b) => b.method === "write_parameter");
+      assert.deepEqual(writes.map((b) => b.request), [{ parameter: "P-01", value: 55 }]);
+      // Nothing about the panel reached the pump controller.
+      assert.deepEqual(await posted(page), []);
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+test("cloud host, Local only: diagnostics shown, writes blocked, nothing written", async () => {
+  const page = await open(`host=cloud&mode=Touch&scenario=running&commission=${encodeURIComponent("Local only")}`);
+  try {
+    await openPanel(page);
+    await page.click('.sia-hmi [data-param="P-01"]');
+    assert.equal(await page.isVisible('.sia-hmi [data-id="keypad"]'), false);
+    await page.waitForFunction(() =>
+      /local panel only/.test(document.querySelector('.sia-hmi [data-id="command-toast"]')?.textContent ?? ""),
+    );
+    const log = await vsdLog(page);
+    assert.ok(log.some((b) => b.method === "get_diagnostics"));
+    assert.ok(!log.some((b) => b.method === "write_parameter"), JSON.stringify(log));
+  } finally {
+    await page.close();
+  }
+});
+
+test("local host: a stop-only parameter while running shows the DRIVE_RUNNING message", async () => {
+  const page = await open(`host=local&mode=Touch&scenario=running&commission=${encodeURIComponent("Local only")}`);
+  try {
+    await openPanel(page);
+    await writeParam(page, "P-09", ["6", "0"]);
+    const row = await page.textContent('.sia-hmi [data-param="P-09"]');
+    assert.match(row, /Stop the pump first/);
+  } finally {
+    await page.close();
+  }
+});
+
+test("local host: Reset VSD Fault in the popover is the controller's reset_vsd_fault", async () => {
+  const page = await open(`host=local&mode=Touch&scenario=faulted&commission=${encodeURIComponent("Local only")}`);
+  try {
+    await openPanel(page);
+    await act(page, 1, [() => click(page, "vsd-panel-reset")]);
+    assert.deepEqual(await posted(page), [
+      { method: "reset_vsd_fault", request: {}, app_key: CTRL, actor: ACTORS.local },
+    ]);
+    assert.ok(!(await vsdLog(page)).some((b) => b.method === "reset_fault"));
+  } finally {
+    await page.close();
+  }
+});
+
+test("older Techtop app: the popover falls back to get_status", async () => {
+  const page = await open(`host=local&mode=Touch&scenario=running&commission=${encodeURIComponent("Local only")}&legacy=1`);
+  try {
+    await openPanel(page);
+    await page.waitForFunction(() =>
+      /basic status/.test(document.querySelector('.sia-hmi [data-id="vsd-diag-status"]')?.textContent ?? ""),
+    );
+    const methods = (await vsdLog(page)).map((b) => b.method);
+    assert.ok(methods.includes("get_status"), methods.join());
+    assert.equal(
+      await page.textContent('.sia-hmi [data-diag="output_hz"] .diag-number'),
+      "42.5",
+    );
+  } finally {
+    await page.close();
+  }
+});

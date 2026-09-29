@@ -96,6 +96,8 @@ key it reads exists here). Runtime keys derive from the display names.
 | `dashboard_port` / `dashboard_secret_key` | `8091` / ... | legacy dashboard | Flask server |
 | `display_refresh_period_s` | `0.5` | container | Dashboard / lamp refresh |
 | `rpc_timeout_s` | `20` | both | How long a command waits for the controller |
+| `vsd_motor_app` | unset | widget | Techtop motor controller install the VSD commissioning panel calls (e.g. `techtop_motor_controller_1`); unset = no gear |
+| `vsd_commissioning` | `Hidden` | widget | `Hidden` / `Local only` / `Local and cloud`: whether the gear shows and where drive parameters may be changed (see below) |
 
 The two battery keys keep the (odd) names already deployed on the Kuwait skids.
 
@@ -104,6 +106,104 @@ computes volume. `L` shows the tank app's `level_volume`, which it computes from
 **Volume Curve** (or, without one, **Max Volume** linear between Empty and Full Level) in
 its **Volume Units** (default `L`): set those on the tank app, in litres, before choosing
 `L`. The legacy dashboard ignores both keys and always shows mm.
+
+## VSD commissioning panel
+
+A gear button in the top-right corner of the widget's VSD tile opens a popover with live
+drive diagnostics and the drive's parameters. It shows only when the controller has a VSD
+(the VSD tile is shown), `vsd_motor_app` is set and `vsd_commissioning` is not `Hidden`,
+so existing configs show no gear.
+
+| `vsd_commissioning` | Gear + diagnostics | Parameter writes |
+| --- | --- | --- |
+| `Hidden` (default) | nowhere | nowhere |
+| `Local only` | local panel and cloud | local panel only (the cloud sees them locked) |
+| `Local and cloud` | local panel and cloud | local panel and cloud |
+
+"Local" is decided exactly as for the RPC actor (the injected data client, failing safe to
+cloud). Writes are governed by `vsd_commissioning`, not by HMI Control Mode, so a Read Only
+panel can still be commissioned when it is turned on.
+
+The popover:
+
+1. **Diagnostics** (top), re-read every 2 s while it is open (the next read starts 2 s
+   after the previous answer; nothing is polled once it is closed). Any missing value
+   shows `—`.
+2. **Drive parameters** (below; the only part that scrolls). Each row shows the id, name,
+   value, units and range; `Stopped only` / `Read only` tags come from the drive. Tapping a
+   writable row opens the numeric keypad (limited to the parameter's range), then a
+   confirmation `old → new`, then `write_parameter`; the row shows pending, then the
+   drive's read-back value, or the error.
+3. **Reset VSD Fault**: the pump controller's `reset_vsd_fault` on `ui_cmds`, the same path
+   as the VSD tile's button, so the controller stays in the loop (Touch mode only).
+
+It closes with the X, by tapping outside it, or with Escape.
+
+### RPC contract (Techtop motor controller)
+
+Diagnostics and parameters go **straight to the Techtop app**, not through the pump
+controller: an RPC on the device's **`dv-rpc`** channel (pydoover `rpc.DEFAULT_CHANNEL`,
+the Techtop app's `RPC_CHANNEL`) with `app_key` = `vsd_motor_app` and the same actor as
+every other widget command (`{"name": "Local HMI"}` on the panel, the signed-in user in the
+cloud). The message is the standard pydoover RPC body:
+
+```json
+{"type": "rpc", "method": "<method>", "request": {...}, "app_key": "techtop_motor_controller_1",
+ "actor": {"name": "Local HMI"}}
+```
+
+The Techtop app answers with `status: {"code": "success"}` and the result as `response`, or
+raises `RPCError(code, message)`.
+
+**`get_diagnostics`** `{}` →
+
+```json
+{"output_hz": 42.5, "output_current_a": 2.8, "motor_rpm": 1224, "dc_bus_v": 562,
+ "heatsink_c": 38, "drive_state": "Running", "trip_code": 0, "trip_description": null,
+ "run_hours": 1287, "recent_trips": [3, 21], "comms_ok": true}
+```
+
+Any field may be `null` (shown as `—`). `trip_code` 0 with no description shows "None";
+`recent_trips` is a list of trip codes, most recent first (`[]` = none, `null` = unknown).
+`drive_state` is shown as given. Use at most one Modbus read cycle per request.
+
+**`read_parameters`** `{}` →
+
+```json
+{"parameters": [
+  {"id": "P-09", "name": "Motor rated frequency", "value": 50, "units": "Hz",
+   "min": 25, "max": 500, "step": 1, "writable": true, "stop_required": true,
+   "description": "Motor nameplate frequency."}
+]}
+```
+
+Values are in engineering units (already scaled). `step` sets the decimals shown and the
+rounding of a write (0.1 → one decimal). A row is editable only when `writable` is true and
+`min` and `max` are both numbers. Include read-only parameters (P-12, comms settings) with
+`writable: false` if they are useful to see; the widget never offers to write them.
+
+**`write_parameter`** `{"parameter": "P-09", "value": 60}` → `{"parameter": "P-09",
+"value": 60}`, where `value` is the value **read back from the drive** after the write.
+Or an `RPCError` with one of these codes (the widget shows its own operator text for each):
+
+| Code | When | Operator sees |
+| --- | --- | --- |
+| `DRIVE_RUNNING` | a stop-only parameter while the drive runs | Stop the pump first: the drive only accepts this change while stopped. |
+| `OUT_OF_RANGE` | value outside `min`..`max` | The drive refused the value: it is outside the allowed range. |
+| `NOT_ALLOWED` | not on the write allowlist | This parameter cannot be changed from the HMI. |
+| `READBACK_MISMATCH` | the read-back differs from the value written | The drive did not keep the new value (read-back differs). Check the drive and try again. |
+| `COMMS_ERROR` | Modbus read/write failed | No answer from the VSD over Modbus. Check the drive and its comms cable. |
+
+The widget also range-checks before sending (nothing is sent out of range), refuses a cloud
+write under `Local only` without sending, and treats a successful answer whose `value`
+differs from the request (to within half a `step`) as `READBACK_MISMATCH`. Log the actor of
+every write on the Techtop side.
+
+**Older Techtop apps** have no `get_diagnostics`. pydoover drops a request for a method with
+no handler without answering, so the first read waits at most 5 s (or gets an explicit
+`METHOD_NOT_FOUND` / `UNKNOWN_METHOD` / `NOT_IMPLEMENTED`), then the panel switches to
+`get_status` for as long as it is open and shows what that has (output Hz, current, DC bus,
+drive state, trip, comms), marked "basic status (older motor app)".
 
 ## Architecture
 
@@ -117,7 +217,8 @@ src/sia_local_control_ui/      DEV container
 widget/                        the HMI screen (Module Federation remote, one .js file)
   src/SiaHmiWidget.tsx         React shell: reads channels, detects host, sends commands
   src/core/hmi-core.js/.css    framework-free render core
-  src/lib/                     data adapter, commands, host/actor, app key, live tags
+  src/lib/                     data adapter, commands, host/actor, app key, live tags,
+                               VSD commissioning panel RPCs (vsdPanel.ts)
   tests/                       node --test suites (jsdom)
   mock-host/                   mock host for screenshots / checks (not shipped)
   layout/                      kiosk one-screen check + end-to-end command/actor check
@@ -163,7 +264,11 @@ drift). The widget must stay one file (`chunkSplit: all-in-one`, inlined CSS and
 **Mock host.** Serve `widget/mock-host/dist` and open e.g.
 `index.html?host=local&mode=Touch` (kiosk) or `index.html?host=cloud&mode=Touch&control=dcs&width=480&click=touch-start`
 (cloud card, showing a refusal). Parameters: `host`, `mode`, `scenario`
-(`running`/`faulted`/`standby`), `control`, `vsd=0`, `warning=1`, `solar=1`, `width`, `click`.
+(`running`/`faulted`/`standby`), `control`, `vsd=0`, `warning=1`, `solar=1`, `width`, `click`,
+`commission` (`vsd_commissioning`, e.g. `Local%20only`; also sets `vsd_motor_app`),
+`vsdapp`, `legacy=1` (an older Techtop app without `get_diagnostics`), e.g.
+`index.html?host=local&mode=Touch&commission=Local%20only&click=vsd-gear`.
+`VSD_SHOTS=dir npm --prefix widget run test:layout` saves `vsd-panel-<w>x<h>.png`.
 
 ## Publishing
 
@@ -185,13 +290,17 @@ channel at `https://localhost:49100/widget/<install>_widget`.
      "local_dashboard_enabled": false,
      "pump_controllers": ["sia_injection_controller_1"],
      "run_lamp_pin": null,
-     "trip_lamp_pin": null
+     "trip_lamp_pin": null,
+     "vsd_motor_app": "techtop_motor_controller_1",
+     "vsd_commissioning": "Local only"
    }
    ```
 
    plus the skid's `pressure_sensor_app` / `tank_level_app` / `solar_controllers`. Leave
    the button keys out (they load as Disabled). With no buttons and no lamps the container
-   only idles.
+   only idles. The two `vsd_*` keys turn on the VSD commissioning gear: parameters can be
+   changed from the panel, and the cloud sees diagnostics only. The Techtop app must
+   implement the RPC contract above (older versions show basic status only).
 2. Install **HMI Display Engine** (`hmi_engine`) with `url = sia_local_control_ui_1`, which
    opens `https://localhost:49100/widget/sia_local_control_ui_1_widget?app_key=sia_local_control_ui_1`.
    Keep `ignore_tls_errors = true` and `hide_cursor = true`; set `mode` / `rotation` /

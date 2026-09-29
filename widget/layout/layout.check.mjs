@@ -7,10 +7,17 @@
 //   - every visible tile ends above the touch bar (or the screen edge);
 //   - Start / Stop / step / keypad targets are at least 56 px;
 //   - Tank and VSD share a row, and Tank spans the row without a VSD;
-//   - readings stay readable (value text >= 16 px, labels >= 11 px).
+//   - readings stay readable (value text >= 16 px, labels >= 11 px);
+//   - no VSD commissioning gear unless it is configured.
+//
+// VSD commissioning (vsd_commissioning set): the gear is a >= 44 px target in
+// the VSD tile's top-right corner, clear of every other control, and the
+// popover (diagnostics + parameter list) fits the screen with no page
+// scroll; only the parameter list may scroll, inside the popover.
 //
 // Run: npm run test:layout   (builds the mock host first)
 // Screenshots: SHOTS=<dir> npm run test:layout
+// Popover screenshots: VSD_SHOTS=<dir> npm run test:layout  (vsd-panel-<w>x<h>.png)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -41,6 +48,7 @@ const CASES = [
   { name: "tank L + mm, solar, faulted + warning", q: "scenario=faulted&warning=1&solar=1&tank=L,mm" },
 ];
 const SHOTS = process.env.SHOTS;
+const VSD_SHOTS = process.env.VSD_SHOTS;
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
 
@@ -85,6 +93,7 @@ function measure() {
   const tank = document.querySelector('.sia-hmi [data-id="tank-section"]');
   const vsd = document.querySelector('.sia-hmi [data-id="vsd-section"]');
   const row = tank && tank.parentElement;
+  const gear = document.querySelector('.sia-hmi [data-id="vsd-gear"]');
   const sec = document.querySelector('.sia-hmi [data-id="tank-level-secondary"]');
   const card = sec && sec.closest(".control-card");
   return {
@@ -96,6 +105,7 @@ function measure() {
           text: sec.textContent,
         }
       : null,
+    gear: vis(gear) ? true : null,
     inner: [innerWidth, innerHeight],
     doc: [doc.scrollWidth, doc.scrollHeight],
     content: content && [content.scrollWidth, content.clientWidth, content.scrollHeight, content.clientHeight],
@@ -122,6 +132,7 @@ test.before(async () => {
   base = `http://127.0.0.1:${server.address().port}/index.html`;
   browser = await chromium.launch();
   if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
+  if (VSD_SHOTS) fs.mkdirSync(VSD_SHOTS, { recursive: true });
 });
 
 test.after(async () => {
@@ -182,9 +193,162 @@ for (const [w, h] of SIZES) {
           } else {
             assert.equal(m.secondary, null, "no secondary reading by default");
           }
+          // No commissioning configured: no gear.
+          assert.equal(m.gear, null, "gear shown without vsd_commissioning");
           // Readable at arm's length.
           assert.ok(Math.min(...m.valueFonts) >= 16, `value text ${Math.min(...m.valueFonts)}px`);
           assert.ok(Math.min(...m.labelFonts) >= 11, `label text ${Math.min(...m.labelFonts)}px`);
+        } finally {
+          await page.close();
+        }
+      });
+    }
+  }
+}
+
+// --- VSD commissioning gear + popover ------------------------------------------
+
+/** The gear and every other visible control, for the overlap check. */
+function measureGear() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const gear = document.querySelector('.sia-hmi [data-id="vsd-gear"]');
+  const section = document.querySelector('.sia-hmi [data-id="vsd-section"]');
+  const others = [...document.querySelectorAll(".sia-hmi .dashboard-container button")]
+    .filter((b) => b !== gear && vis(b))
+    .map((b) => ({ id: b.dataset.id, ...box(b) }));
+  const heading = section && section.querySelector("h2");
+  return {
+    gear: vis(gear) ? box(gear) : null,
+    section: section && vis(section) ? box(section) : null,
+    heading: heading ? box(heading) : null,
+    others,
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+  };
+}
+
+/** The open popover: overflow, clipping and target sizes. */
+function measurePanel() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const panel = q("vsd-panel-box");
+  const list = q("vsd-params");
+  const rows = [...document.querySelectorAll(".sia-hmi .vsd-param")].filter(vis);
+  const diag = [...document.querySelectorAll(".sia-hmi .diag-cell")].filter(vis);
+  return {
+    open: vis(q("vsd-panel")),
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    panel: panel && { ...box(panel), sh: panel.scrollHeight, ch: panel.clientHeight, sw: panel.scrollWidth, cw: panel.clientWidth },
+    list: list && { ...box(list), sh: list.scrollHeight, ch: list.clientHeight, sw: list.scrollWidth, cw: list.clientWidth },
+    close: box(q("vsd-panel-close")),
+    reset: box(q("vsd-panel-reset")),
+    diag: diag.map((d) => ({ ...box(d), text: d.textContent, overflow: d.scrollWidth - d.clientWidth })),
+    diagNumbers: [...document.querySelectorAll(".sia-hmi .diag-number")].map((e) => e.textContent),
+    rows: rows.map((r) => ({ id: r.dataset.param, ...box(r), overflowX: r.scrollWidth - r.clientWidth })),
+    rowCount: rows.length,
+  };
+}
+
+const VSD_CASES = [
+  { name: "running", q: "scenario=running" },
+  { name: "faulted + warning + solar", q: "scenario=faulted&warning=1&solar=1" },
+  { name: "tank L + mm, faulted + warning", q: "scenario=faulted&warning=1&tank=L,mm" },
+];
+
+for (const [w, h] of SIZES) {
+  for (const mode of MODES) {
+    for (const c of VSD_CASES) {
+      test(`${w}x${h} ${mode}, ${c.name}, VSD commissioning: gear and popover fit`, async () => {
+        const page = await browser.newPage({ viewport: { width: w, height: h } });
+        try {
+          await page.goto(
+            `${base}?host=local&mode=${encodeURIComponent(mode)}&commission=${encodeURIComponent("Local only")}&${c.q}`,
+          );
+          await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+          await page.waitForTimeout(150);
+
+          // The tiles still fit with the gear in.
+          const m = await page.evaluate(measure);
+          assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${m.doc}`);
+          for (const [label, v] of [["content", m.content], ["body", m.body]]) {
+            assert.ok(v[2] <= v[3] + 1, `${label} overflows vertically with the gear: ${v}`);
+          }
+          for (const t of m.tiles) assert.ok(t.bottom <= m.barTop + 0.5, `${t.name} under the bar`);
+
+          // Gear: top-right of the VSD tile, >= 44 px, clear of other controls.
+          const g = await page.evaluate(measureGear);
+          const ctx = JSON.stringify(g);
+          assert.ok(g.gear && g.section, `gear not shown: ${ctx}`);
+          assert.ok(g.gear.w >= 44 && g.gear.h >= 44, `gear ${g.gear.w}x${g.gear.h} < 44px`);
+          assert.ok(g.gear.top >= g.section.top - 0.5 && g.gear.right <= g.section.right + 0.5, `gear outside the tile: ${ctx}`);
+          assert.ok(g.gear.right >= g.section.right - 20, `gear not at the right edge: ${ctx}`);
+          assert.ok(g.gear.top <= g.section.top + 20, `gear not at the top: ${ctx}`);
+          for (const o of g.others) {
+            const overlap = g.gear.left < o.right && o.left < g.gear.right && g.gear.top < o.bottom && o.top < g.gear.bottom;
+            assert.ok(!overlap, `gear overlaps ${o.id}: ${ctx}`);
+          }
+
+          // Popover.
+          await page.click('.sia-hmi [data-id="vsd-gear"]');
+          await page.waitForSelector('.sia-hmi .vsd-param', { state: "visible" });
+          await page.waitForFunction(() =>
+            document.querySelector('.sia-hmi [data-diag="output_hz"] .diag-number')?.textContent !== "—",
+          );
+          const p = await page.evaluate(measurePanel);
+          const pctx = JSON.stringify(p);
+          if (VSD_SHOTS && mode === "Touch" && c.name === "running") {
+            await page.screenshot({ path: path.join(VSD_SHOTS, `vsd-panel-${w}x${h}.png`) });
+          }
+          assert.ok(p.open, "popover open");
+          // No page scroll with it open, either axis.
+          assert.ok(p.doc[0] <= w && p.doc[1] <= h, `page scrolls with the popover: ${p.doc}`);
+          // The popover is fully on screen and does not itself scroll.
+          assert.ok(p.panel.left >= 0 && p.panel.top >= 0 && p.panel.right <= w && p.panel.bottom <= h, `popover off screen: ${pctx}`);
+          assert.ok(p.panel.sh <= p.panel.ch + 1 && p.panel.sw <= p.panel.cw + 1, `popover overflows: ${pctx}`);
+          // Only the parameter list scrolls, vertically, inside the popover.
+          assert.ok(p.list.sw <= p.list.cw + 1, `parameter list scrolls sideways: ${pctx}`);
+          assert.ok(p.list.bottom <= p.panel.bottom + 0.5, `parameter list spills out: ${pctx}`);
+          assert.ok(p.list.h >= 100, `parameter list too short to use: ${p.list.h}px`);
+          assert.ok(p.rowCount >= 8, `parameters not rendered: ${pctx}`);
+          for (const r of p.rows) {
+            assert.ok(r.h >= 44, `${r.id} row ${r.h}px < 44`);
+            assert.ok(r.overflowX <= 1, `${r.id} row overflows: ${pctx}`);
+          }
+          // Diagnostics: all ten, above the list, no clipped cell.
+          assert.equal(p.diag.length, 10, pctx);
+          for (const d of p.diag) {
+            assert.ok(d.bottom <= p.list.top + 0.5, `diagnostics overlap the list: ${pctx}`);
+            assert.ok(d.overflow <= 1, `diagnostic cell overflows: ${d.text}`);
+          }
+          assert.ok(!p.diagNumbers.includes("—"), `diagnostics missing: ${p.diagNumbers}`);
+          // Targets.
+          for (const [label, b] of [["close", p.close], ["reset", p.reset]]) {
+            assert.ok(b.w >= 44 && b.h >= 44, `${label} ${b.w}x${b.h} < 44px`);
+          }
+
+          // Keypad and confirmation open above the popover and fit too.
+          if (mode === "Touch" && c.name === "running") {
+            await page.click('.sia-hmi [data-param="P-01"]');
+            const k = await page.evaluate(() => {
+              const r = document.querySelector('.sia-hmi .keypad').getBoundingClientRect();
+              const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 10);
+              return { top: r.top, bottom: r.bottom, onTop: !!hit?.closest(".keypad"), doc: document.documentElement.scrollHeight };
+            });
+            assert.ok(k.onTop, "keypad is above the popover");
+            assert.ok(k.top >= 0 && k.bottom <= h && k.doc <= h, `keypad does not fit: ${JSON.stringify(k)}`);
+            await page.click('.sia-hmi [data-id="keypad-cancel"]');
+          }
+
+          // Close by tapping outside the panel.
+          await page.mouse.click(2, 2);
+          assert.equal(await page.isVisible('.sia-hmi [data-id="vsd-panel"]'), false, "tap outside closes");
         } finally {
           await page.close();
         }

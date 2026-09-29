@@ -689,6 +689,271 @@
 .sia-hmi .command-toast.error { background: #c0392b; }
 .sia-hmi .command-toast.ok { background: #185c3b; }
 
+/* ------------------------------------------------------------------
+   VSD commissioning: the gear on the VSD tile and its popover (same
+   overlay, panel and key styling as the keypad and confirmation).
+   ------------------------------------------------------------------ */
+.sia-hmi .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 2px solid var(--hmi-edge);
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
+    cursor: pointer;
+    box-shadow: inset 0 1px 0 #ffffff26, 0 3px 0 #090e11;
+}
+
+.sia-hmi .icon-btn svg { width: 24px; height: 24px; }
+
+/* The gear sits at the right end of the VSD heading, inside the tile: its
+   44px target overhangs only the tile's own padding (4px each way), never
+   the Reset VSD button below or the tile above. */
+.sia-hmi .control-section h2.vsd-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sia-hmi .vsd-gear {
+    margin: -4px -4px -4px 0;
+    color: var(--hmi-muted);
+}
+
+.sia-hmi .vsd-panel-overlay { align-items: stretch; }
+
+.sia-hmi .vsd-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(980px, 100%);
+    max-height: min(720px, 100%);
+    margin: auto;
+    padding: 12px 14px;
+    background: var(--hmi-panel);
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px var(--hmi-edge), 0 12px 40px #0009;
+    overflow: hidden;
+}
+
+.sia-hmi .vsd-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--hmi-edge);
+}
+
+.sia-hmi .vsd-panel-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--hmi-text);
+    white-space: nowrap;
+}
+
+.sia-hmi .vsd-panel-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--hmi-green);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sia-hmi .vsd-panel-status.error { color: var(--hmi-red); text-transform: none; letter-spacing: 0; }
+.sia-hmi .vsd-panel-reset { flex: 0 0 auto; }
+
+.sia-hmi .vsd-diag {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.sia-hmi .vsd-diag.stale { opacity: 0.55; }
+
+.sia-hmi .diag-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 5px 8px;
+    background: var(--hmi-instrument);
+    border: 2px solid #39464f;
+    border-radius: 3px;
+    box-shadow: inset 0 2px 4px #090e11;
+}
+
+.sia-hmi .diag-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--hmi-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.sia-hmi .diag-value {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+}
+
+.sia-hmi .diag-number {
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--hmi-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sia-hmi .diag-unit { font-size: 0.72rem; font-weight: 600; color: var(--hmi-muted); }
+.sia-hmi .diag-cell.bad { border-color: #922c29; }
+.sia-hmi .diag-cell.bad .diag-number { color: var(--hmi-red); }
+.sia-hmi .diag-cell.good .diag-number { color: var(--hmi-green); }
+
+.sia-hmi .vsd-params-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.sia-hmi .vsd-params-head h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--hmi-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sia-hmi .vsd-params-note { font-size: 0.78rem; font-weight: 600; color: var(--hmi-muted); text-align: right; }
+
+/* The one part of the panel that scrolls. */
+.sia-hmi .vsd-params {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 2px 2px 4px;
+}
+
+.sia-hmi .vsd-params-message { padding: 10px 4px; color: var(--hmi-muted); font-weight: 600; }
+.sia-hmi .vsd-params-message.error { color: var(--hmi-red); }
+.sia-hmi .vsd-params-retry { flex: 0 0 auto; align-self: flex-start; min-width: 120px; }
+
+.sia-hmi .vsd-param {
+    display: grid;
+    grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.1fr) minmax(0, 1.5fr) minmax(0, 1.7fr);
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    width: 100%;
+    min-height: 48px;
+    padding: 4px 10px;
+    border: 2px solid #39464f;
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
+    font-size: 0.9rem;
+    text-align: left;
+}
+
+.sia-hmi .vsd-param.editable {
+    border-color: var(--hmi-edge);
+    box-shadow: inset 3px 0 0 var(--hmi-blue), inset 0 1px 0 #ffffff26, 0 3px 0 #090e11;
+    cursor: pointer;
+}
+
+.sia-hmi .vsd-param.locked .param-number { color: var(--hmi-muted); }
+/* The generic pending ellipsis would become a fifth grid cell. */
+.sia-hmi .vsd-param.pending::after { content: none; }
+.sia-hmi .vsd-param.ok { box-shadow: 0 0 0 3px #27ae60; }
+.sia-hmi .vsd-param.error { box-shadow: 0 0 0 3px #e74c3c; }
+
+.sia-hmi .param-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.sia-hmi .param-id {
+    flex: 0 0 auto;
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-weight: 700;
+    color: var(--hmi-blue);
+}
+.sia-hmi .param-label { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sia-hmi .param-value { display: flex; align-items: baseline; gap: 4px; justify-content: flex-end; }
+.sia-hmi .param-number {
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+.sia-hmi .param-units { font-size: 0.75rem; font-weight: 600; color: var(--hmi-muted); }
+.sia-hmi .param-range { font-size: 0.78rem; font-weight: 600; color: var(--hmi-muted); white-space: nowrap; }
+.sia-hmi .param-state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; }
+.sia-hmi .param-tag {
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--hmi-amber);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+.sia-hmi .vsd-param.locked .param-tag { color: var(--hmi-muted); }
+.sia-hmi .param-note {
+    max-width: 100%;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--hmi-muted);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sia-hmi .param-note:empty { display: none; }
+.sia-hmi .vsd-param.ok .param-note { color: var(--hmi-green); }
+.sia-hmi .vsd-param.error .param-note { color: var(--hmi-red); white-space: normal; }
+
+/* 800x480: tighter, so the diagnostics leave the parameter list room. */
+@media (max-height: 560px) {
+    .sia-hmi .vsd-panel { gap: 6px; padding: 8px 10px; }
+    .sia-hmi .vsd-panel-head { padding-bottom: 6px; }
+    .sia-hmi .vsd-panel-title { font-size: 1rem; }
+    .sia-hmi .diag-cell { padding: 3px 6px; gap: 0; }
+    .sia-hmi .diag-number { font-size: 1rem; }
+    .sia-hmi .vsd-param { min-height: 46px; }
+}
+
+/* Narrow (a phone on the cloud UI): three diagnostics per row, and each
+   parameter on two lines. */
+@media (max-width: 640px) {
+    .sia-hmi .vsd-panel-title { display: none; }
+    .sia-hmi .vsd-diag { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .sia-hmi .vsd-param { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+    .sia-hmi .param-range { grid-column: 1; }
+}
+
 /* Generic visibility toggle. */
 .sia-hmi .hidden { display: none !important; }
 

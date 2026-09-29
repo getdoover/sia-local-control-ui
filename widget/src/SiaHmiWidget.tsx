@@ -24,6 +24,7 @@ import { resolveAppKey, type UiRemoteComponent } from "./lib/appKey.ts";
 import { detectHost, hostLabel, resolveActor, type CloudUser } from "./lib/host.ts";
 import { overlayLiveValues } from "./lib/liveTags.ts";
 import { useLiveTags } from "./lib/useLiveTags.ts";
+import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
 
 /**
  * SIA HMI widget: one bundle for the Doovit's local widget host and the
@@ -41,6 +42,8 @@ import { useLiveTags } from "./lib/useLiveTags.ts";
  *   - the RPC actor: `{name: "Local HMI"}` only on the local host, the
  *     signed-in user (or none) in the cloud, so control authority holds;
  *   - the layout: full-screen kiosk vs natural height in the cloud column;
+ *   - the VSD commissioning panel: `vsd_commissioning` "Local only" allows
+ *     drive parameter writes from the local host only (lib/vsdPanel.ts);
  *   - live tags: the cloud claims the tags it renders so they stream in
  *     seconds rather than every 15 minutes; the local host already reads the
  *     device's own state and skips it.
@@ -133,6 +136,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   const connected = useConnected(client);
   const user = useCloudUser(client, host.kind === "cloud");
   const actor = useMemo(() => resolveActor(host.kind, user), [host.kind, user]);
+  const vsdAccess = useMemo(
+    () => vsdPanelAccess(cfg.vsdCommissioning, host.kind, cfg.vsdMotorApp),
+    [cfg.vsdCommissioning, cfg.vsdMotorApp, host.kind],
+  );
 
   const data = useMemo(() => {
     if (tagValues === undefined) return null;
@@ -153,8 +160,8 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
 
   // The render core is mounted once; the command handler reads the latest
   // render state through this ref.
-  const latest = useRef({ cfg, actor, agentId, client });
-  latest.current = { cfg, actor, agentId, client };
+  const latest = useRef({ cfg, actor, agentId, client, vsdAccess });
+  latest.current = { cfg, actor, agentId, client, vsdAccess };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hmiRef = useRef<HmiHandle | null>(null);
@@ -178,12 +185,27 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
       if (ack.ok) return ack;
       return explainRpcError(ack.code ?? "ERROR", ack.message ?? "");
     };
+    // VSD commissioning: straight to the Techtop app (vsd_motor_app) on
+    // dv-rpc, with the same actor as every other command.
+    const vsdPanel = createVsdPanelApi(() => {
+      const now = latest.current;
+      return {
+        client: now.client,
+        agentId: now.agentId,
+        appKey: now.cfg.vsdMotorApp,
+        actor: now.actor,
+        timeoutMs: now.cfg.rpcTimeoutMs,
+        access: now.vsdAccess,
+      };
+    });
     hmiRef.current = createHmi(rootRef.current, {
       layout: host.kind === "local" ? "kiosk" : "embedded",
       hostLabel: hostLabel(host.kind),
       sendCommand: run,
       logos: { remoteCommand: remoteCommandLogo, doover: dooverLogo },
+      vsdPanel,
     });
+    hmiRef.current.setVsdPanel(latest.current.vsdAccess);
     return () => {
       hmiRef.current?.destroy();
       hmiRef.current = null;
@@ -193,6 +215,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.update(data, { connected });
   }, [data, connected]);
+
+  useEffect(() => {
+    hmiRef.current?.setVsdPanel(vsdAccess);
+  }, [vsdAccess]);
 
   return <div ref={rootRef} />;
 }
