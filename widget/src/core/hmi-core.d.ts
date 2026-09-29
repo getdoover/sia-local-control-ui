@@ -14,10 +14,18 @@ export interface HmiOptions {
   vsdPanel?: VsdPanelApi;
 }
 
+/** Cover-plate insets (kiosk layout only; ignored when embedded). */
+export interface HmiDisplay {
+  kioskInsetMm?: number;
+  popoverInsetMm?: number;
+  pxPerMm?: number;
+}
+
 export interface HmiHandle {
   update(data: DashboardData | null, status?: { connected?: boolean }): void;
   notify(message: string, level?: "ok" | "error"): void;
   setVsdPanel(access: VsdPanelAccess): void;
+  setDisplay(display: HmiDisplay): void;
   destroy(): void;
 }
 
@@ -39,4 +47,11 @@ export declare function validateKeypadEntry(
   max: number | null,
 ): { ok: true; value: number } | { ok: false; error: string };
 export declare function rateNeedsConfirm(current: number | null, value: number): boolean;
+export declare function mmToPx(mm: number | null | undefined, pxPerMm: number | null | undefined): number;
+export declare function scrollState(el: { scrollTop: number; scrollHeight: number; clientHeight: number }): {
+  overflow: boolean;
+  atTop: boolean;
+  atBottom: boolean;
+};
+export declare function scrollPageStep(clientHeight: number): number;
 export declare function createHmi(root: HTMLElement, opts: HmiOptions): HmiHandle;

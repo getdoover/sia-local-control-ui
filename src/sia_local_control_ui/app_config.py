@@ -362,6 +362,38 @@ class SiaLocalControlUiConfig(config.Schema):
         description="Units label shown against the skid pressure figure.",
     )
 
+    # --- Kiosk display (widget, local panel only) ----------------------------
+    # A cover plate over the panel's edges hides the outer few millimetres of
+    # the screen. The local (kiosk) layout pads the whole HMI inward by
+    # Kiosk Inset, and keeps every popover a further Popover Inset from that.
+    # CSS millimetres are not physical on these panels, so the widget converts
+    # with Kiosk px per mm. The cloud UI ignores all three. 0 = no inset, so
+    # existing installs are unchanged.
+    kiosk_inset_mm = config.Number(
+        "Kiosk Inset (mm)", default=0.0, minimum=0.0, maximum=30.0,
+        description=(
+            "Gap on all four sides of the local panel's HMI (header, banners, "
+            "tiles and the touch bar all move inward), for a cover plate over "
+            "the screen edges. Try 2 for the J5261 plate. 0 = none."
+        ),
+    )
+    popover_inset_mm = config.Number(
+        "Popover Inset (mm)", default=0.0, minimum=0.0, maximum=40.0,
+        description=(
+            "Minimum gap between a popover (VSD commissioning, calibration "
+            "wizard, keypad, confirmation) and the screen edge, on top of the "
+            "Kiosk Inset. Local panel only. 0 = the normal small margin."
+        ),
+    )
+    kiosk_px_per_mm = config.Number(
+        "Kiosk px per mm", default=5.8, minimum=1.0, maximum=20.0,
+        description=(
+            "Screen pixels per millimetre on the local panel, to turn the insets "
+            "into pixels. Default: the J5261 Xenarc 892 (177.6 mm active width "
+            "shown at 1024 px = 5.8 px/mm)."
+        ),
+    )
+
     # --- Legacy local dashboard (Flask/SocketIO on 8091) ---------------------
     # FROZEN: kept only so existing kiosks (Kuwait, doover-kiosk -> :8091)
     # redeploy unchanged. The screen is the widget (widget/); new features go

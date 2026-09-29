@@ -102,7 +102,7 @@ def test_lamp_pins_stay_visible_in_every_mode():
 def test_config_keys_unchanged_from_the_deployed_schema():
     """Same keys as before: the deployed schema plus the new settings, all
     defaulting to the old behaviour (Read Only, dashboard on, tank mm only,
-    no VSD commissioning gear)."""
+    no VSD commissioning gear, no cover-plate insets)."""
     schema = _schema()
     keys = set(schema["properties"]) | set(schema["allOf"][0]["then"]["properties"])
     deployed = set(_kuwait())
@@ -113,8 +113,29 @@ def test_config_keys_unchanged_from_the_deployed_schema():
         "tank_secondary_reading",
         "vsd_motor_app",
         "vsd_commissioning",
+        "kiosk_inset_mm",
+        "popover_inset_mm",
+        "kiosk_px_per_mm",
     }
     assert deployed - keys == set()
+
+
+def test_kuwait_config_loads_with_no_insets():
+    """An existing config has none of the kiosk display keys: no inset, and
+    the J5261 panel's px/mm (widget/src/lib/assembleDashboardData.ts
+    DEFAULT_KIOSK_PX_PER_MM)."""
+    cfg = _load(_kuwait())
+    assert cfg.kiosk_inset_mm.value == 0
+    assert cfg.popover_inset_mm.value == 0
+    assert cfg.kiosk_px_per_mm.value == 5.8
+    adapter = (
+        Path(__file__).parents[1]
+        / "widget"
+        / "src"
+        / "lib"
+        / "assembleDashboardData.ts"
+    ).read_text()
+    assert "export const DEFAULT_KIOSK_PX_PER_MM = 5.8;" in adapter
 
 
 def test_kuwait_config_loads_with_no_vsd_commissioning():

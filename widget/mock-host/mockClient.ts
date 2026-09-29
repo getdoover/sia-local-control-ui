@@ -37,6 +37,10 @@ export interface MockOptions {
   testRunRemaining?: number;
   /** Speed-up for the mock test run clock (1 = real time). */
   testRunSpeed?: number;
+  /** kiosk_inset_mm / popover_inset_mm / kiosk_px_per_mm (unset = app defaults). */
+  kioskInsetMm?: number;
+  popoverInsetMm?: number;
+  kioskPxPerMm?: number;
 }
 
 export const TECHTOP = "techtop_motor_controller_1";
@@ -126,6 +130,9 @@ export function createMockClient(opts: MockOptions) {
             ...(opts.tankSecondary ? { tank_secondary_reading: opts.tankSecondary } : {}),
             ...(opts.commissioning ? { vsd_commissioning: opts.commissioning } : {}),
             ...(opts.vsdMotorApp ? { vsd_motor_app: opts.vsdMotorApp } : {}),
+            ...(opts.kioskInsetMm != null ? { kiosk_inset_mm: opts.kioskInsetMm } : {}),
+            ...(opts.popoverInsetMm != null ? { popover_inset_mm: opts.popoverInsetMm } : {}),
+            ...(opts.kioskPxPerMm != null ? { kiosk_px_per_mm: opts.kioskPxPerMm } : {}),
           },
         },
       },

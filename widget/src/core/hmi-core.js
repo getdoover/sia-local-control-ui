@@ -23,8 +23,9 @@
  * controller; the HMI offers no mode switch. In "Read Only"
  * (the default) and "Button" (reserved) the screen is display only.
  *
- * Layouts: "kiosk" fills the viewport (the Doovit panel, 800x480 or
- * 1024x768) with the touch bar pinned to the bottom edge; "embedded" flows at
+ * Layouts: "kiosk" fills the viewport (the Doovit panel, 800x480, 1024x600
+ * or 1024x768), less the cover-plate inset, with the touch bar pinned to the
+ * bottom edge; "embedded" flows at
  * its natural height inside the cloud UI with the bar sticky at the bottom of
  * the widget. Same markup, same rules, same payload in both.
  */
@@ -100,6 +101,9 @@ export const CAL_TITLE = "1min Calibration Sequence";
 export const CAL_STORE_KEY = "sia-hmi-calwiz";
 const CAL_STORE_MAX_AGE_MS = 30 * 60 * 1000;
 
+const UP_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg>`;
+const DOWN_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg>`;
+
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 
 // VSD panel diagnostics, in display order: [field, label, unit, decimals].
@@ -167,6 +171,39 @@ function stepDp(step) {
 export function formatParameter(p, value = p.value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return EMPTY_VALUE;
   return Number(value).toFixed(stepDp(p.step));
+}
+
+// Up / down buttons beside a scroll area (no scrollbars on the panel): each
+// moves about one visible page, disables at its end, and both hide when the
+// content fits. Wired by Hmi.bindScroller(id).
+function scrollRail(id) {
+  return `<div class="scroll-rail hidden" data-id="${id}-rail">` +
+    `<button type="button" class="scroll-btn" data-id="${id}-up" aria-label="Scroll up">${UP_ICON}</button>` +
+    `<button type="button" class="scroll-btn" data-id="${id}-down" aria-label="Scroll down">${DOWN_ICON}</button>` +
+    `</div>`;
+}
+
+/** Where a scroll area is (pure, unit-tested): 1 px tolerance for rounding. */
+export function scrollState(el) {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  return {
+    overflow: max > 1,
+    atTop: el.scrollTop <= 1,
+    atBottom: el.scrollTop >= max - 1,
+  };
+}
+
+/** One button press: most of a visible page, keeping a row of context. */
+export function scrollPageStep(clientHeight) {
+  return Math.max(40, Math.round(clientHeight * 0.85));
+}
+
+/** Millimetres to whole pixels at pxPerMm (pure): bad input is 0. */
+export function mmToPx(mm, pxPerMm) {
+  const m = Number(mm);
+  const k = Number(pxPerMm);
+  if (!Number.isFinite(m) || !Number.isFinite(k) || m <= 0 || k <= 0) return 0;
+  return Math.round(m * k * 10) / 10;
 }
 
 /**
@@ -374,7 +411,10 @@ function template(opts) {
       <h3>Drive Parameters</h3>
       <span class="vsd-params-note" data-id="vsd-params-note"></span>
     </div>
-    <div class="vsd-params" data-id="vsd-params" role="list"></div>
+    <div class="scroll-area vsd-params-area" data-id="vsd-params-area">
+      <div class="vsd-params" data-id="vsd-params" role="list"></div>
+      ${scrollRail("vsd-params")}
+    </div>
   </div>
 </div>
 
@@ -478,6 +518,7 @@ class Hmi {
     // Invariant: set only while the calwiz popover is on screen; a session
     // without it is stale and is dropped (calwizDropStale).
     this.cal = null;
+    this.resizeObserver = null;
 
     root.classList.add("sia-hmi", this.opts.layout === "kiosk" ? "kiosk" : "embedded");
     root.innerHTML = template(this.opts);
@@ -558,6 +599,7 @@ class Hmi {
         if (row) this.vsdEditParameter(row.getAttribute("data-param"), row);
       });
     }
+    this.bindScroller("vsd-params");
     this.onKey = (e) => {
       if (e.key !== "Escape") return;
       if (this.keypadIsOpen() || this.confirmOk) return;
@@ -567,6 +609,58 @@ class Hmi {
       else if (this.vsdOpen) this.vsdPanelClose();
     };
     this.root.ownerDocument.addEventListener("keydown", this.onKey);
+  }
+
+  // -- scroll areas: no scrollbars, big up / down buttons ---------------------
+  bindScroller(id) {
+    const list = this.$(id);
+    if (!list) return;
+    const go = (dir) => {
+      if (!scrollState(list).overflow) return;
+      const max = list.scrollHeight - list.clientHeight;
+      const top = list.scrollTop + dir * scrollPageStep(list.clientHeight);
+      list.scrollTop = Math.max(0, Math.min(max, top));
+      this.updateScroller(id);
+    };
+    const up = this.$(`${id}-up`);
+    const down = this.$(`${id}-down`);
+    if (up) up.addEventListener("click", () => go(-1));
+    if (down) down.addEventListener("click", () => go(1));
+    // Touch-drag still scrolls; the buttons follow it.
+    list.addEventListener("scroll", () => this.updateScroller(id), { passive: true });
+    const win = this.root.ownerDocument.defaultView;
+    if (win && typeof win.ResizeObserver === "function") {
+      this.resizeObserver = new win.ResizeObserver(() => this.updateScroller(id));
+      this.resizeObserver.observe(list);
+    }
+  }
+
+  updateScroller(id) {
+    const list = this.$(id);
+    if (!list) return;
+    const st = scrollState(list);
+    this.toggle(this.$(`${id}-rail`), st.overflow);
+    const up = this.$(`${id}-up`);
+    const down = this.$(`${id}-down`);
+    if (up) up.disabled = !st.overflow || st.atTop;
+    if (down) down.disabled = !st.overflow || st.atBottom;
+  }
+
+  // -- cover-plate insets (kiosk only) ------------------------------------------
+  // kiosk_inset_mm pads the whole HMI (header, banners, tiles, touch bar);
+  // popover_inset_mm keeps every popover that much further in. The embedded
+  // (cloud) layout ignores both.
+  setDisplay(display) {
+    const d = display || {};
+    const style = this.root.style;
+    if (this.opts.layout !== "kiosk") {
+      style.removeProperty("--hmi-kiosk-inset");
+      style.removeProperty("--hmi-popover-inset");
+      return;
+    }
+    style.setProperty("--hmi-kiosk-inset", `${mmToPx(d.kioskInsetMm, d.pxPerMm)}px`);
+    style.setProperty("--hmi-popover-inset", `${mmToPx(d.popoverInsetMm, d.pxPerMm)}px`);
+    this.updateScroller("vsd-params");
   }
 
   // -- keypad ---------------------------------------------------------------
@@ -1491,7 +1585,7 @@ class Hmi {
       case 1:
         html =
           `<p class="calwiz-text calwiz-lead">Please confirm the tank valve is shut off and the site glass is open</p>` +
-          `<button type="button" class="calwiz-link" data-act="manual" data-id="calwiz-manual">Set factor manually</button>`;
+          `<button type="button" class="key calwiz-manual" data-act="manual" data-id="calwiz-manual">Enter calibration factor manually</button>`;
         break;
       case 2:
         html =
@@ -1682,6 +1776,9 @@ class Hmi {
     this.renderParameters("Reading parameters\u2026");
     this.renderVsdReset();
     this.show(this.$("vsd-panel"));
+    const params = this.$("vsd-params");
+    if (params) params.scrollTop = 0;
+    this.updateScroller("vsd-params");
     const close = this.$("vsd-panel-close");
     if (close && close.focus) close.focus();
     this.vsdPoll(gen);
@@ -1790,9 +1887,13 @@ class Hmi {
         });
         list.appendChild(retry);
       }
-      if (!this.vsdParams) return;
+      if (!this.vsdParams) {
+        this.updateScroller("vsd-params");
+        return;
+      }
     }
     for (const p of this.vsdParams) list.appendChild(this.parameterRow(p));
+    this.updateScroller("vsd-params");
   }
 
   parameterRow(p) {
@@ -1952,6 +2053,9 @@ class Hmi {
     this.destroyed = true;
     this.vsdOpen = false;
     if (this.onKey) this.root.ownerDocument.removeEventListener("keydown", this.onKey);
+    if (this.resizeObserver) this.resizeObserver.disconnect();
+    this.root.style.removeProperty("--hmi-kiosk-inset");
+    this.root.style.removeProperty("--hmi-popover-inset");
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
     this.root.innerHTML = "";
@@ -1974,7 +2078,9 @@ class Hmi {
  *                                // VSD commissioning RPCs (lib/vsdPanel.ts);
  *                                // the gear also needs setVsdPanel(access)
  * }
-
+ *
+ * setDisplay({kioskInsetMm, popoverInsetMm, pxPerMm}): the cover-plate
+ * insets, applied in the kiosk layout only.
  */
 export function createHmi(root, opts) {
   const hmi = new Hmi(root, opts);
@@ -1982,6 +2088,7 @@ export function createHmi(root, opts) {
     update: (data, status) => hmi.update(data, status),
     notify: (message, level) => hmi.showToast(message, level),
     setVsdPanel: (access) => hmi.setVsdPanel(access),
+    setDisplay: (display) => hmi.setDisplay(display),
     destroy: () => hmi.destroy(),
     /** For tests: the underlying instance. */
     _hmi: hmi,

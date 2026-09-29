@@ -57,12 +57,18 @@
     pointer-events: none;
 }
 
-/* Kiosk: take the whole panel, whatever padding the host page has. */
+/* Kiosk: take the whole panel, whatever padding the host page has, less the
+   cover-plate inset (kiosk_inset_mm, set by setDisplay() as
+   --hmi-kiosk-inset) on all four sides. It is a size container, so the kiosk
+   rules below scale with the inset area (cqh / cqw) rather than the raw
+   viewport (vh / vw): with no inset the two are the same. */
 .sia-hmi.kiosk {
     position: fixed;
     inset: 0;
     z-index: 10;
     overflow: hidden;
+    padding: var(--hmi-kiosk-inset, 0px);
+    container: hmi-screen / size;
 }
 
 .sia-hmi.embedded {
@@ -600,6 +606,16 @@
     justify-content: center;
     background: rgba(0, 0, 0, 0.5);
     padding: 8px;
+    /* The popovers size to the room left inside the padding (container
+       queries / cqh), so the insets below never push them off screen. */
+    container: hmi-pop / size;
+}
+
+/* Kiosk: every popover (VSD commissioning, calibration wizard, keypad,
+   confirmation) sits the cover-plate inset plus popover_inset_mm
+   (--hmi-popover-inset, at least the usual 8px) from the screen edge. */
+.sia-hmi.kiosk .modal-overlay {
+    padding: calc(var(--hmi-kiosk-inset, 0px) + max(8px, var(--hmi-popover-inset, 0px)));
 }
 
 .sia-hmi .keypad,
@@ -857,17 +873,63 @@
 
 .sia-hmi .vsd-params-note { font-size: 0.78rem; font-weight: 600; color: var(--hmi-muted); text-align: right; }
 
-/* The one part of the panel that scrolls. */
+/* The one part of the panel that scrolls: no scrollbar, the up / down
+   buttons beside it instead (touch-drag still works). */
+.sia-hmi .scroll-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    gap: 8px;
+}
+
+.sia-hmi .scroll-rail {
+    flex: 0 0 64px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sia-hmi .scroll-btn {
+    flex: 1 1 0;
+    width: 64px;
+    min-height: 48px;
+    max-height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 2px solid var(--hmi-edge);
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
+    cursor: pointer;
+    box-shadow: inset 0 1px 0 #ffffff26, 0 3px 0 #090e11;
+}
+
+.sia-hmi .scroll-btn svg { width: 30px; height: 30px; }
+.sia-hmi .scroll-btn:disabled { opacity: 0.35; cursor: default; }
+
 .sia-hmi .vsd-params {
     flex: 1 1 auto;
+    min-width: 0;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+    scrollbar-width: none;
     display: flex;
     flex-direction: column;
     gap: 5px;
     padding: 2px 2px 4px;
 }
+
+.sia-hmi .vsd-params::-webkit-scrollbar { display: none; }
+
+/* No scrollbars anywhere on the panel. */
+.sia-hmi.kiosk,
+.sia-hmi.kiosk * { scrollbar-width: none; }
+.sia-hmi.kiosk::-webkit-scrollbar,
+.sia-hmi.kiosk *::-webkit-scrollbar { display: none; }
 
 .sia-hmi .vsd-params-message { padding: 10px 4px; color: var(--hmi-muted); font-weight: 600; }
 .sia-hmi .vsd-params-message.error { color: var(--hmi-red); }
@@ -943,8 +1005,9 @@
 .sia-hmi .vsd-param.ok .param-note { color: var(--hmi-green); }
 .sia-hmi .vsd-param.error .param-note { color: var(--hmi-red); white-space: normal; }
 
-/* 800x480: tighter, so the diagnostics leave the parameter list room. */
-@media (max-height: 560px) {
+/* 800x480 (or a short room inside the insets): tighter, so the diagnostics
+   leave the parameter list room. */
+@container hmi-pop (max-height: 544px) {
     .sia-hmi .vsd-panel { gap: 6px; padding: 8px 10px; }
     .sia-hmi .vsd-panel-head { padding-bottom: 6px; }
     .sia-hmi .vsd-panel-title { font-size: 1rem; }
@@ -999,30 +1062,31 @@
 /* ------------------------------------------------------------------
    Kiosk: EVERYTHING on one screen, no scrolling, at 800x480 and
    1024x768 (checked by layout/layout.check.mjs). Sizes scale with the
-   panel height (vh), so the same rules fill both panels. Touch targets
-   stay >= 56px.
+   room inside the cover-plate inset (cqh / cqw of .sia-hmi.kiosk; the
+   same as vh / vw with no inset), so the same rules fill every panel.
+   Touch targets stay >= 56px.
    ------------------------------------------------------------------ */
-.sia-hmi.kiosk .hmi-body { padding: 1vh 1vw 0.8vh; }
+.sia-hmi.kiosk .hmi-body { padding: 1cqh 1cqw 0.8cqh; }
 .sia-hmi.kiosk .dashboard-content {
     overflow: hidden;
-    gap: 1.1vh;
+    gap: 1.1cqh;
     padding-bottom: 0;
 }
 .sia-hmi.kiosk .dashboard-header {
-    padding: 0.8vh 1.4vw;
-    margin-bottom: 1.1vh;
+    padding: 0.8cqh 1.4cqw;
+    margin-bottom: 1.1cqh;
     border-radius: 3px;
 }
-.sia-hmi.kiosk .dashboard-header h1 { font-size: clamp(1.15rem, 5vh, 2rem); }
-.sia-hmi.kiosk .header-info { gap: 0.2vh; }
+.sia-hmi.kiosk .dashboard-header h1 { font-size: clamp(1.15rem, 5cqh, 2rem); }
+.sia-hmi.kiosk .header-info { gap: 0.2cqh; }
 .sia-hmi.kiosk .header-info .timestamp,
-.sia-hmi.kiosk .connection-status { font-size: clamp(0.72rem, 2.1vh, 0.95rem); }
-.sia-hmi.kiosk .host-badge { font-size: clamp(0.62rem, 1.7vh, 0.75rem); }
+.sia-hmi.kiosk .connection-status { font-size: clamp(0.72rem, 2.1cqh, 0.95rem); }
+.sia-hmi.kiosk .host-badge { font-size: clamp(0.62rem, 1.7cqh, 0.75rem); }
 .sia-hmi.kiosk .fault-banner,
 .sia-hmi.kiosk .warning-banner {
-    padding: 0.6vh 1.4vw;
-    margin-bottom: 1.1vh;
-    gap: 0.4vh 1.2vw;
+    padding: 0.6cqh 1.4cqw;
+    margin-bottom: 1.1cqh;
+    gap: 0.4cqh 1.2cqw;
     border-radius: 3px;
     flex-wrap: nowrap;
 }
@@ -1031,7 +1095,7 @@
 .sia-hmi.kiosk .fault-banner-list,
 .sia-hmi.kiosk .warning-banner-list,
 .sia-hmi.kiosk .fault-banner-icon,
-.sia-hmi.kiosk .warning-banner-icon { font-size: clamp(0.85rem, 2.7vh, 1.2rem); }
+.sia-hmi.kiosk .warning-banner-icon { font-size: clamp(0.85rem, 2.7cqh, 1.2rem); }
 .sia-hmi.kiosk .fault-banner-list,
 .sia-hmi.kiosk .warning-banner-list {
     min-width: 0;
@@ -1044,67 +1108,68 @@
     text-overflow: ellipsis;
 }
 .sia-hmi.kiosk .control-section {
-    padding: 0.9vh 1.2vw;
+    padding: 0.9cqh 1.2cqw;
     border-radius: 3px;
 }
 .sia-hmi.kiosk .control-section h2 {
-    font-size: clamp(0.85rem, 2.8vh, 1.3rem);
-    margin-bottom: 0.7vh;
-    padding-bottom: 0.3vh;
+    font-size: clamp(0.85rem, 2.8cqh, 1.3rem);
+    margin-bottom: 0.7cqh;
+    padding-bottom: 0.3cqh;
 }
 .sia-hmi.kiosk .controls-grid {
-    gap: 0.8vw;
+    gap: 0.8cqw;
     grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
 }
 .sia-hmi.kiosk .control-card {
-    padding: 0.7vh 0.8vw;
+    padding: 0.7cqh 0.8cqw;
     border-radius: 3px;
 }
 .sia-hmi.kiosk .control-card h3 {
-    font-size: clamp(0.72rem, 2.3vh, 1rem);
-    margin-bottom: 0.3vh;
+    font-size: clamp(0.72rem, 2.3cqh, 1rem);
+    margin-bottom: 0.3cqh;
 }
-.sia-hmi.kiosk .value-display { gap: 0.2vh; }
+.sia-hmi.kiosk .value-display { gap: 0.2cqh; }
 .sia-hmi.kiosk .value {
-    font-size: clamp(1.1rem, 5vh, 2.1rem);
+    font-size: clamp(1.1rem, 5cqh, 2.1rem);
     line-height: 1.1;
 }
-.sia-hmi.kiosk .unit { font-size: clamp(0.68rem, 1.9vh, 0.85rem); }
+.sia-hmi.kiosk .unit { font-size: clamp(0.68rem, 1.9cqh, 0.85rem); }
 .sia-hmi.kiosk .tank-level-secondary { margin-top: 0; }
-.sia-hmi.kiosk .tank-level-secondary .value { font-size: clamp(1rem, 3vh, 1.3rem); line-height: 1.1; }
-.sia-hmi.kiosk .state-display { margin-bottom: 0.4vh; }
+.sia-hmi.kiosk .tank-level-secondary .value { font-size: clamp(1rem, 3cqh, 1.3rem); line-height: 1.1; }
+.sia-hmi.kiosk .state-display { margin-bottom: 0.4cqh; }
 .sia-hmi.kiosk .state-value {
-    font-size: clamp(0.72rem, 2.2vh, 0.95rem);
-    padding: 0.5vh 1.4vw;
+    font-size: clamp(0.72rem, 2.2cqh, 0.95rem);
+    padding: 0.5cqh 1.4cqw;
 }
-.sia-hmi.kiosk .secondary-line { margin-top: 0.5vh; padding-top: 0.5vh; }
-.sia-hmi.kiosk .secondary-value { font-size: clamp(0.85rem, 2.6vh, 1.15rem); }
+.sia-hmi.kiosk .secondary-line { margin-top: 0.5cqh; padding-top: 0.5cqh; }
+.sia-hmi.kiosk .secondary-value { font-size: clamp(0.85rem, 2.6cqh, 1.15rem); }
 .sia-hmi.kiosk .secondary-label,
-.sia-hmi.kiosk .secondary-unit { font-size: clamp(0.62rem, 1.7vh, 0.75rem); }
-.sia-hmi.kiosk .flow-range { margin-top: 0.6vh; }
+.sia-hmi.kiosk .secondary-unit { font-size: clamp(0.62rem, 1.7cqh, 0.75rem); }
+.sia-hmi.kiosk .flow-range { margin-top: 0.6cqh; }
 .sia-hmi.kiosk .flow-range-track { height: 8px; }
-.sia-hmi.kiosk .flow-range-labels { font-size: clamp(0.62rem, 1.7vh, 0.75rem); margin-top: 0.3vh; }
-.sia-hmi.kiosk .progress-bar { margin-top: 0.6vh; }
-.sia-hmi.kiosk .secondary-controls-row { gap: 1vw; }
+.sia-hmi.kiosk .flow-range-labels { font-size: clamp(0.62rem, 1.7cqh, 0.75rem); margin-top: 0.3cqh; }
+.sia-hmi.kiosk .progress-bar { margin-top: 0.6cqh; }
+.sia-hmi.kiosk .secondary-controls-row { gap: 1cqw; }
 .sia-hmi.kiosk .status-row { flex-wrap: nowrap; }
 .sia-hmi.kiosk .status-row > .tank-section { flex: 1 1 0; min-width: 0; }
 .sia-hmi.kiosk .status-row > .vsd-section { flex: 0 0 36%; min-width: 0; }
-.sia-hmi.kiosk .vsd-body { gap: 1vw; }
-.sia-hmi.kiosk .vsd-trip { font-size: clamp(0.72rem, 2vh, 0.9rem); }
+.sia-hmi.kiosk .vsd-body { gap: 1cqw; }
+.sia-hmi.kiosk .vsd-trip { font-size: clamp(0.72rem, 2cqh, 0.9rem); }
 .sia-hmi.kiosk .action-btn { min-height: 44px; padding: 6px 12px; }
 .sia-hmi.kiosk .status-row > .solar-section { flex: 1.5 1 0; min-width: 0; }
 .sia-hmi.kiosk .status-row:has(> .solar-section:not(.hidden)) > .vsd-section { flex-basis: 23%; }
 .sia-hmi.kiosk .status-row:has(> .solar-section:not(.hidden)) .vsd-body { flex-wrap: wrap; }
 .sia-hmi.kiosk .solar-section .controls-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 /* Four narrow instruments: leave room for five-character numeric readings. */
-.sia-hmi.kiosk .solar-section .value { font-size: clamp(1rem, 4vh, 1.7rem); }
+.sia-hmi.kiosk .solar-section .value { font-size: clamp(1rem, 4cqh, 1.7rem); }
 .sia-hmi.kiosk .status-row .controls-grid { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
 .sia-hmi.kiosk .footer-logo { display: none; }
 .sia-hmi.kiosk .touch-bar { padding: 6px 8px; gap: 8px; }
-.sia-hmi.kiosk .touch-btn { min-height: max(56px, 8.4vh); }
+.sia-hmi.kiosk .touch-btn { min-height: max(56px, 8.4cqh); }
 
-/* Short screens (800x480): keypad side by side so it fits without scroll. */
-@media (max-height: 560px) {
+/* Short screens (800x480, or the insets): keypad side by side so it fits
+   without scroll. */
+@container hmi-pop (max-height: 544px) {
     .sia-hmi .keypad { flex-direction: row; width: min(640px, 98vw); }
     .sia-hmi .keypad-info { flex: 1; justify-content: space-between; }
     .sia-hmi .keypad-keys { flex: 1.2; }
@@ -1253,23 +1318,22 @@
 }
 
 .sia-hmi .calwiz-text { font-size: 1.2rem; font-weight: 600; color: var(--hmi-text); }
-.sia-hmi .calwiz-lead { font-size: clamp(1.15rem, 3.4vh, 1.5rem); line-height: 1.3; }
+.sia-hmi .calwiz-lead { font-size: clamp(1.15rem, 3.4cqh, 1.5rem); line-height: 1.3; }
 .sia-hmi .calwiz-note { font-size: 0.95rem; color: var(--hmi-muted); font-weight: 600; }
 .sia-hmi .calwiz-warn { color: var(--hmi-amber); }
 .sia-hmi .calwiz-ok { color: var(--hmi-green); }
 .sia-hmi .calwiz-ended { color: var(--hmi-amber); }
 
-.sia-hmi .calwiz-link {
-    align-self: flex-start;
-    min-height: 44px;
-    padding: 8px 4px;
-    border: 0;
-    background: none;
-    color: var(--hmi-blue);
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-decoration: underline;
-    cursor: pointer;
+/* Page 1: the manual entry is a full-width secondary key, not a link. */
+.sia-hmi .calwiz-manual {
+    flex-shrink: 0;
+    width: 100%;
+    min-height: 56px;
+    padding: 8px 14px;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: #39464f;
 }
 
 .sia-hmi .calwiz-field {
@@ -1300,7 +1364,7 @@
     grid-row: span 2;
     font-family: Consolas, 'Liberation Mono', monospace;
     font-variant-numeric: tabular-nums;
-    font-size: clamp(1.6rem, 5vh, 2.2rem);
+    font-size: clamp(1.6rem, 5cqh, 2.2rem);
     font-weight: 700;
 }
 
@@ -1330,7 +1394,7 @@
 .sia-hmi .calwiz-row-value {
     font-family: Consolas, 'Liberation Mono', monospace;
     font-variant-numeric: tabular-nums;
-    font-size: clamp(1.05rem, 3.2vh, 1.35rem);
+    font-size: clamp(1.05rem, 3.2cqh, 1.35rem);
     font-weight: 700;
     white-space: nowrap;
 }
@@ -1358,7 +1422,7 @@
 .sia-hmi .calwiz-count-value {
     font-family: Consolas, 'Liberation Mono', monospace;
     font-variant-numeric: tabular-nums;
-    font-size: clamp(3.5rem, 20vh, 7.5rem);
+    font-size: clamp(3.5rem, 20cqh, 7.5rem);
     font-weight: 700;
     line-height: 1;
     color: var(--hmi-green);
@@ -1405,8 +1469,9 @@
 .sia-hmi .calwiz-next.blocked { opacity: 0.45; filter: saturate(0.3); box-shadow: none; cursor: not-allowed; }
 .sia-hmi .calwiz-actions .key.pending { opacity: 0.6; }
 
-/* Short screens (800x480, 1024x600): tighter so every page fits. */
-@media (max-height: 620px) {
+/* Short screens (800x480, 1024x600, or the insets): tighter so every page
+   fits. */
+@container hmi-pop (max-height: 604px) {
     .sia-hmi .calwiz { gap: 6px; padding: 8px 10px; }
     .sia-hmi .calwiz-head { padding-bottom: 6px; }
     .sia-hmi .calwiz-title { font-size: 1rem; }

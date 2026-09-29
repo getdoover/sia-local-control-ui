@@ -172,6 +172,28 @@ export interface HmiConfig {
   /** Techtop motor controller app the VSD panel calls; null hides the gear. */
   vsdMotorApp: string | null;
   vsdCommissioning: VsdCommissioning;
+  /** Local panel only: gap on every side of the whole HMI (cover plate). */
+  kioskInsetMm: number;
+  /** Local panel only: popover gap from the screen edge, on top of the inset. */
+  popoverInsetMm: number;
+  /** Local panel pixels per mm, to turn the insets into pixels. */
+  kioskPxPerMm: number;
+}
+
+/**
+ * J5261 panel, a Xenarc 892: 177.6 x 100.4 mm active area shown at
+ * 1024 x 600 (1024 / 177.6 = 5.77, 600 / 100.4 = 5.98 px/mm).
+ */
+export const DEFAULT_KIOSK_PX_PER_MM = 5.8;
+
+function clampNum(value: unknown, fallback: number, min: number, max: number): number {
+  const n = optNum(value);
+  return n === null ? fallback : Math.min(max, Math.max(min, n));
+}
+
+function positiveNum(value: unknown, fallback: number): number {
+  const n = optNum(value);
+  return n !== null && n > 0 ? n : fallback;
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -260,6 +282,9 @@ export function resolveConfig(
     tags,
     vsdMotorApp: asString(c.vsd_motor_app),
     vsdCommissioning: normaliseCommissioning(c.vsd_commissioning),
+    kioskInsetMm: clampNum(c.kiosk_inset_mm, 0, 0, 30),
+    popoverInsetMm: clampNum(c.popover_inset_mm, 0, 0, 40),
+    kioskPxPerMm: positiveNum(c.kiosk_px_per_mm, DEFAULT_KIOSK_PX_PER_MM),
   };
 }
 

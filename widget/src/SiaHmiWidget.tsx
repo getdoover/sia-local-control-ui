@@ -41,7 +41,9 @@ import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
  * `detectHost(client)` (lib/host.ts):
  *   - the RPC actor: `{name: "Local HMI"}` only on the local host, the
  *     signed-in user (or none) in the cloud, so control authority holds;
- *   - the layout: full-screen kiosk vs natural height in the cloud column;
+ *   - the layout: full-screen kiosk vs natural height in the cloud column
+ *     (the cover-plate insets, kiosk_inset_mm / popover_inset_mm, apply to
+ *     the kiosk only);
  *   - the VSD commissioning panel: `vsd_commissioning` "Local only" allows
  *     drive parameter writes from the local host only (lib/vsdPanel.ts);
  *   - live tags: the cloud claims the tags it renders so they stream in
@@ -160,8 +162,18 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
 
   // The render core is mounted once; the command handler reads the latest
   // render state through this ref.
-  const latest = useRef({ cfg, actor, agentId, client, vsdAccess });
-  latest.current = { cfg, actor, agentId, client, vsdAccess };
+  // Cover-plate insets: the render core applies them in the kiosk layout only.
+  const display = useMemo(
+    () => ({
+      kioskInsetMm: cfg.kioskInsetMm,
+      popoverInsetMm: cfg.popoverInsetMm,
+      pxPerMm: cfg.kioskPxPerMm,
+    }),
+    [cfg.kioskInsetMm, cfg.popoverInsetMm, cfg.kioskPxPerMm],
+  );
+
+  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display });
+  latest.current = { cfg, actor, agentId, client, vsdAccess, display };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hmiRef = useRef<HmiHandle | null>(null);
@@ -208,6 +220,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
       vsdPanel,
     });
     hmiRef.current.setVsdPanel(latest.current.vsdAccess);
+    hmiRef.current.setDisplay(latest.current.display);
     return () => {
       hmiRef.current?.destroy();
       hmiRef.current = null;
@@ -221,6 +234,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.setVsdPanel(vsdAccess);
   }, [vsdAccess]);
+
+  useEffect(() => {
+    hmiRef.current?.setDisplay(display);
+  }, [display]);
 
   return <div ref={rootRef} />;
 }

@@ -20,6 +20,9 @@
  *                            (cal=none / cal=auto publish "None" / "Auto")
  *   &calrun=42               a timed test already running, 42 s left
  *   &calspeed=20             run the mock test clock 20x faster
+ *   &inset=2                 kiosk_inset_mm (cover plate)
+ *   &popinset=10             popover_inset_mm
+ *   &pxmm=5.8                kiosk_px_per_mm
  */
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -47,6 +50,9 @@ const opts: MockOptions = {
   ],
   testRunRemaining: q.get("calrun") != null ? Number(q.get("calrun")) : undefined,
   testRunSpeed: q.get("calspeed") != null ? Number(q.get("calspeed")) : undefined,
+  kioskInsetMm: q.get("inset") != null ? Number(q.get("inset")) : undefined,
+  popoverInsetMm: q.get("popinset") != null ? Number(q.get("popinset")) : undefined,
+  kioskPxPerMm: q.get("pxmm") != null ? Number(q.get("pxmm")) : undefined,
 };
 const client = createMockClient(opts);
 const queryClient = new QueryClient();

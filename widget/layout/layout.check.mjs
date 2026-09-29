@@ -25,6 +25,10 @@
 // Screenshots: SHOTS=<dir> npm run test:layout
 // Popover screenshots: VSD_SHOTS=<dir> npm run test:layout  (vsd-panel-<w>x<h>.png)
 // Wizard screenshots (1024x600): CAL_SHOTS=<dir> npm run test:layout  (calwiz-<page>.png)
+// Cover-plate insets (kiosk_inset_mm 2 + popover_inset_mm 10) at every size:
+// the whole HMI inside the inset, the VSD popover (with its up / down scroll
+// buttons, no scrollbar), the wizard, keypad and confirmation inside the
+// popover inset. Screenshots: INSET_SHOTS=<dir> (inset-*.png at 1024x600)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -147,6 +151,7 @@ test.before(async () => {
   if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
   if (VSD_SHOTS) fs.mkdirSync(VSD_SHOTS, { recursive: true });
   if (CAL_SHOTS) fs.mkdirSync(CAL_SHOTS, { recursive: true });
+  if (process.env.INSET_SHOTS) fs.mkdirSync(process.env.INSET_SHOTS, { recursive: true });
 });
 
 test.after(async () => {
@@ -521,6 +526,248 @@ for (const [w, h] of SIZES) {
       await page.click('.sia-hmi [data-id="calwiz-cancel"]');
       await wizardPage(page, "ended");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "cancelled");
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+// --- Cover-plate insets (kiosk_inset_mm 2 + popover_inset_mm 10) ---------------------
+//
+// At the default 5.8 px/mm: 11.6 px around the whole HMI, and every popover a
+// further 58 px in. Everything (header, banners, tiles, the touch bar) stays
+// inside the inset with no scroll, and the VSD popover (with its parameter
+// list's up / down buttons) and the calibration wizard fit inside theirs.
+// Screenshots (1024x600): INSET_SHOTS=<dir>  (inset-main.png, inset-vsd.png,
+// inset-calwiz-p1.png)
+
+const INSET_Q = "inset=2&popinset=10";
+const INSET_PX = 2 * 5.8;
+const POP_PX = INSET_PX + 10 * 5.8;
+const INSET_SHOTS = process.env.INSET_SHOTS;
+
+/** Everything visible in the kiosk view, for the inset bounds check. */
+function measureInset() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const els = [...document.querySelectorAll(
+    ".sia-hmi .dashboard-header, .sia-hmi .fault-banner, .sia-hmi .warning-banner, .sia-hmi .control-section, .sia-hmi [data-id='touch-bar'], .sia-hmi .touch-btn",
+  )].filter(vis);
+  return {
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    items: els.map((e) => ({ name: e.dataset.id || e.className.split(" ").slice(0, 2).join("."), ...box(e) })),
+  };
+}
+
+/** A popover box (and, for the VSD panel, its scroll buttons). */
+function measurePopover(boxId) {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const panel = q(boxId);
+  const list = q("vsd-params");
+  const rail = q("vsd-params-rail");
+  const scrollbar = list ? list.offsetWidth - list.clientWidth : 0;
+  return {
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    panel: { ...box(panel), sh: panel.scrollHeight, ch: panel.clientHeight },
+    rail: vis(rail) ? box(rail) : null,
+    up: vis(q("vsd-params-up")) ? { ...box(q("vsd-params-up")), disabled: q("vsd-params-up").disabled } : null,
+    down: vis(q("vsd-params-down")) ? { ...box(q("vsd-params-down")), disabled: q("vsd-params-down").disabled } : null,
+    list: list && vis(list) ? { ...box(list), sh: list.scrollHeight, ch: list.clientHeight, top: list.scrollTop, scrollbar } : null,
+  };
+}
+
+function assertInside(b, w, h, gap, label) {
+  const ctx = `${label}: ${JSON.stringify(b)}`;
+  assert.ok(b.left >= gap - 0.6, `${label} left ${b.left} < ${gap}: ${ctx}`);
+  assert.ok(b.top >= gap - 0.6, `${label} top ${b.top} < ${gap}: ${ctx}`);
+  assert.ok(b.right <= w - gap + 0.6, `${label} right ${b.right} > ${w - gap}: ${ctx}`);
+  assert.ok(b.bottom <= h - gap + 0.6, `${label} bottom ${b.bottom} > ${h - gap}: ${ctx}`);
+}
+
+const INSET_CASES = [
+  { name: "running", q: "scenario=running" },
+  { name: "faulted + warning + solar", q: "scenario=faulted&warning=1&solar=1" },
+  { name: "calibrate tile, tank L + mm, faulted + warning", q: "scenario=faulted&warning=1&cal=manual&tank=L,mm" },
+];
+
+for (const [w, h] of SIZES) {
+  for (const mode of MODES) {
+    for (const c of INSET_CASES) {
+      test(`${w}x${h} ${mode}, ${c.name}, inset 2 mm: everything inside the plate, no scroll`, async () => {
+        const page = await browser.newPage({ viewport: { width: w, height: h } });
+        try {
+          await page.goto(`${base}?host=local&mode=${encodeURIComponent(mode)}&${INSET_Q}&${c.q}`);
+          await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+          await page.waitForTimeout(150);
+          const m = await page.evaluate(measure);
+          assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${m.doc}`);
+          for (const [label, v] of [["content", m.content], ["body", m.body]]) {
+            assert.ok(v[0] <= v[1] + 1, `${label} overflows horizontally: ${v}`);
+            assert.ok(v[2] <= v[3] + 1, `${label} overflows vertically: ${v}`);
+          }
+          for (const t of m.tiles) assert.ok(t.bottom <= m.barTop + 0.5, `${t.name} under the bar`);
+          if (mode === "Touch") {
+            for (const t of m.targets) assert.ok(t.h >= 56 && t.w >= 56, `${t.id} ${t.w}x${t.h} < 56px`);
+          }
+          assert.ok(Math.min(...m.valueFonts) >= 16, `value text ${Math.min(...m.valueFonts)}px`);
+          const inset = await page.evaluate(measureInset);
+          assert.ok(inset.items.length >= 4, JSON.stringify(inset));
+          for (const it of inset.items) assertInside(it, w, h, INSET_PX, it.name);
+          if (INSET_SHOTS && w === 1024 && h === 600 && mode === "Touch" && c.name === "running") {
+            await page.screenshot({ path: path.join(INSET_SHOTS, "inset-main.png") });
+          }
+        } finally {
+          await page.close();
+        }
+      });
+    }
+  }
+
+  test(`${w}x${h} Touch, inset 2 mm + popover 10 mm: VSD popover fits, list pages with up / down`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    try {
+      await page.goto(`${base}?host=local&mode=Touch&commission=${encodeURIComponent("Local only")}&${INSET_Q}&scenario=running`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await page.waitForTimeout(150);
+      await page.click('.sia-hmi [data-id="vsd-gear"]');
+      await page.waitForSelector(".sia-hmi .vsd-param", { state: "visible" });
+      await page.waitForFunction(
+        () => document.querySelector('.sia-hmi [data-diag="output_hz"] .diag-number')?.textContent !== "—",
+      );
+      await page.waitForTimeout(100);
+      const p = await page.evaluate(measurePopover, "vsd-panel-box");
+      const ctx = JSON.stringify(p);
+      assert.ok(p.doc[0] <= w && p.doc[1] <= h, `page scrolls: ${ctx}`);
+      assertInside(p.panel, w, h, POP_PX, "VSD popover");
+      assert.ok(p.panel.sh <= p.panel.ch + 1, `popover overflows: ${ctx}`);
+      assert.ok(p.list && p.list.h >= 96, `parameter list too short: ${ctx}`);
+      assert.ok(p.list.bottom <= p.panel.bottom + 0.5, `list spills out: ${ctx}`);
+      assert.equal(p.list.scrollbar, 0, `a scrollbar is showing: ${ctx}`);
+      // The list overflows here: the buttons show, >= 48 px, beside the list.
+      assert.ok(p.list.sh > p.list.ch + 1, `expected an overflowing list: ${ctx}`);
+      assert.ok(p.rail && p.up && p.down, `scroll buttons missing: ${ctx}`);
+      for (const b of [p.up, p.down]) assert.ok(b.w >= 48 && b.h >= 48, `scroll button ${b.w}x${b.h} < 48px`);
+      assert.ok(p.rail.left >= p.list.right - 0.5 && p.rail.right <= p.panel.right + 0.5, `rail placement: ${ctx}`);
+      assert.equal(p.up.disabled, true, "up disabled at the top");
+      assert.equal(p.down.disabled, false);
+      const detail = await page.evaluate(() => {
+        const list = document.querySelector('.sia-hmi [data-id="vsd-params"]');
+        return getComputedStyle(list).scrollbarWidth;
+      });
+      assert.equal(detail, "none");
+      const rows = await page.$$eval(".sia-hmi .vsd-param", (r) => r.length);
+      assert.ok(rows >= 8, "parameters rendered");
+      if (INSET_SHOTS && w === 1024 && h === 600) {
+        await page.screenshot({ path: path.join(INSET_SHOTS, "inset-vsd.png") });
+      }
+      // Page down, then to the end: down disables; up pages back.
+      await page.click('.sia-hmi [data-id="vsd-params-down"]');
+      const after = await page.evaluate(measurePopover, "vsd-panel-box");
+      // About one visible page (85 %), or to the end if that is nearer.
+      const want = Math.min(Math.max(40, Math.round(p.list.ch * 0.85)), p.list.sh - p.list.ch);
+      assert.ok(Math.abs(after.list.top - want) <= 2, `down scrolled ${after.list.top}, want ${want} (page ${p.list.ch})`);
+      assert.equal(after.up.disabled, false);
+      for (let i = 0; i < 30; i++) {
+        if (await page.isDisabled('.sia-hmi [data-id="vsd-params-down"]')) break;
+        await page.click('.sia-hmi [data-id="vsd-params-down"]');
+      }
+      const end = await page.evaluate(measurePopover, "vsd-panel-box");
+      assert.equal(end.down.disabled, true, "down disabled at the end");
+      assert.ok(Math.abs(end.list.top - (end.list.sh - end.list.ch)) <= 1, `not at the end: ${JSON.stringify(end)}`);
+      await page.click('.sia-hmi [data-id="vsd-params-up"]');
+      const back = await page.evaluate(measurePopover, "vsd-panel-box");
+      assert.ok(back.list.top < end.list.top && back.down.disabled === false, JSON.stringify(back));
+
+      // The keypad from a parameter row sits inside the popover inset too.
+      for (let i = 0; i < 30; i++) {
+        if (await page.isDisabled('.sia-hmi [data-id="vsd-params-up"]')) break;
+        await page.click('.sia-hmi [data-id="vsd-params-up"]');
+      }
+      await page.click('.sia-hmi [data-param="P-01"]');
+      await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
+      const k = await page.evaluate(() => {
+        const r = document.querySelector(".sia-hmi .keypad").getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      });
+      assertInside(k, w, h, POP_PX, "keypad");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test(`${w}x${h} Touch, inset 2 mm + popover 10 mm: every calibration wizard page fits`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    const shoot = INSET_SHOTS && w === 1024 && h === 600;
+    const fits = async (label) => {
+      const m = await page.evaluate(measureWizard);
+      assertWizardFits(m, w, h, label);
+      assertInside(m.panel, w, h, POP_PX, `wizard ${label}`);
+      return m;
+    };
+    try {
+      await page.goto(`${base}?host=local&mode=Touch&scenario=standby&cal=manual&calspeed=15&${INSET_Q}`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await page.waitForTimeout(150);
+      await page.click('.sia-hmi [data-id="touch-cal"]');
+      await wizardPage(page, "1");
+      const m1 = await fits("page 1");
+      const manual = m1.buttons.find((b) => b.id === "calwiz-manual");
+      assert.ok(manual, "manual entry key shown");
+      assert.ok(manual.h >= 56, `manual key ${manual.h}px < 56`);
+      assert.ok(manual.w >= m1.panel.w * 0.8, `manual key not full width: ${manual.w} of ${m1.panel.w}`);
+      assert.equal(manual.text, "Enter calibration factor manually");
+      if (shoot) await page.screenshot({ path: path.join(INSET_SHOTS, "inset-calwiz-p1.png") });
+
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "2");
+      await fits("page 2");
+      await page.click('.sia-hmi [data-id="calwiz-field-start"]');
+      const k = await page.evaluate(() => {
+        const r = document.querySelector(".sia-hmi .keypad").getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      });
+      assertInside(k, w, h, POP_PX, "keypad");
+      await keypadEntry(page, ["5", "0", "0"], w, h);
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "3");
+      await fits("page 3");
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "4");
+      await fits("page 4");
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "5");
+      await fits("page 5");
+      await wizardPage(page, "6");
+      await fits("page 6");
+      await page.click('.sia-hmi [data-id="calwiz-field-final"]');
+      await keypadEntry(page, ["3", "0", "0"], w, h);
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "7");
+      await fits("page 7");
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await page.waitForSelector('.sia-hmi [data-id="calwiz-saved"]');
+      await fits("page 7 saved");
+      // The confirmation (manual factor) sits inside the inset too.
+      await page.click('.sia-hmi [data-id="calwiz-next"]'); // Close
+      await page.click('.sia-hmi [data-id="touch-cal"]');
+      await wizardPage(page, "1");
+      await page.click('.sia-hmi [data-id="calwiz-manual"]');
+      await page.click('.sia-hmi [data-key="clear"]');
+      for (const key of ["1", ".", "1"]) await page.click(`.sia-hmi [data-key="${key}"]`);
+      await page.click('.sia-hmi [data-id="keypad-ok"]');
+      const cb = await page.evaluate(() => {
+        const r = document.querySelector(".sia-hmi .confirm-box").getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      });
+      assertInside(cb, w, h, POP_PX, "confirmation");
     } finally {
       await page.close();
     }
