@@ -134,6 +134,24 @@ export function readTankLevel(
   };
 }
 
+// --- VSD commissioning panel --------------------------------------------------
+
+/**
+ * The `vsd_commissioning` options, as the config editor shows them (pinned
+ * against app_config.py VSD_COMMISSIONING by tests/test_widget_contract.py).
+ * The first is the default: no gear. See lib/vsdPanel.ts.
+ */
+export const VSD_COMMISSIONING_OPTIONS = ["Hidden", "Local only", "Local and cloud"] as const;
+export type VsdCommissioning = "hidden" | "local_only" | "local_and_cloud";
+
+/** "Local only" -> local_only; anything unknown (or unset) is hidden. */
+export function normaliseCommissioning(value: unknown): VsdCommissioning {
+  const t = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (t === "local only") return "local_only";
+  if (t === "local and cloud") return "local_and_cloud";
+  return "hidden";
+}
+
 export interface HmiConfig {
   hmiMode: HmiMode;
   touchEnabled: boolean;
@@ -151,6 +169,9 @@ export interface HmiConfig {
   lowBatteryClearMargin: number;
   rpcTimeoutMs: number;
   tags: StatusTags;
+  /** Techtop motor controller app the VSD panel calls; null hides the gear. */
+  vsdMotorApp: string | null;
+  vsdCommissioning: VsdCommissioning;
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -237,6 +258,8 @@ export function resolveConfig(
     lowBatteryClearMargin: num(c.low_battery_clear_margin, 5),
     rpcTimeoutMs: Math.max(1, timeoutS ?? DEFAULT_RPC_TIMEOUT_S) * 1000,
     tags,
+    vsdMotorApp: asString(c.vsd_motor_app),
+    vsdCommissioning: normaliseCommissioning(c.vsd_commissioning),
   };
 }
 

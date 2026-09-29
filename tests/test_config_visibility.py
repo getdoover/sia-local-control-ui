@@ -105,7 +105,8 @@ def test_lamp_pins_stay_visible_in_every_mode():
 
 def test_config_keys_unchanged_from_the_deployed_schema():
     """Same keys as before: the deployed schema plus the new settings, all
-    defaulting to the old behaviour (Read Only, dashboard on, tank mm only)."""
+    defaulting to the old behaviour (Read Only, dashboard on, tank mm only,
+    no VSD commissioning gear)."""
     schema = _schema()
     keys = set(schema["properties"]) | set(schema["allOf"][0]["then"]["properties"])
     deployed = set(_kuwait())
@@ -114,8 +115,17 @@ def test_config_keys_unchanged_from_the_deployed_schema():
         "local_dashboard_enabled",
         "tank_primary_reading",
         "tank_secondary_reading",
+        "vsd_motor_app",
+        "vsd_commissioning",
     }
     assert deployed - keys == set()
+
+
+def test_kuwait_config_loads_with_no_vsd_commissioning():
+    """An existing config has neither key: no motor app, gear Hidden."""
+    cfg = _load(_kuwait())
+    assert cfg.vsd_motor_app.value is None
+    assert cfg.vsd_commissioning.value == "Hidden"
 
 
 def _jsonschema_valid(instance) -> bool:

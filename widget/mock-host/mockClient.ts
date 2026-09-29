@@ -25,6 +25,34 @@ export interface MockOptions {
   /** tank_primary_reading / tank_secondary_reading (unset = app defaults). */
   tankPrimary?: string;
   tankSecondary?: string;
+  /** vsd_commissioning ("Hidden" / "Local only" / "Local and cloud"). */
+  commissioning?: string;
+  /** vsd_motor_app (defaults to the Techtop key when commissioning is set). */
+  vsdMotorApp?: string;
+  /** Imitate an older Techtop app without get_diagnostics. */
+  legacyMotorApp?: boolean;
+}
+
+export const TECHTOP = "techtop_motor_controller_1";
+
+/** Optidrive E3 parameters as the Techtop app's read_parameters reports them. */
+function techtopParameters() {
+  const p = (
+    id: string, name: string, value: number, units: string, min: number, max: number,
+    step: number, writable: boolean, stop_required: boolean, description: string,
+  ) => ({ id, name, value, units, min, max, step, writable, stop_required, description });
+  return [
+    p("P-01", "Maximum frequency", 50.0, "Hz", 0, 100, 0.1, true, false, "Maximum output frequency (speed limit)."),
+    p("P-02", "Minimum frequency", 10.0, "Hz", 0, 50, 0.1, true, false, "Minimum output frequency while running."),
+    p("P-03", "Acceleration time", 5.0, "s", 0, 600, 0.01, true, false, "Ramp time from 0 to P-09."),
+    p("P-04", "Deceleration time", 5.0, "s", 0, 600, 0.01, true, false, "Ramp time from P-09 to 0."),
+    p("P-07", "Motor rated voltage", 400, "V", 0, 500, 1, true, true, "Motor nameplate voltage."),
+    p("P-08", "Motor rated current", 3.4, "A", 0.9, 4.1, 0.1, true, true, "Motor nameplate current (sets overload)."),
+    p("P-09", "Motor rated frequency", 50, "Hz", 25, 500, 1, true, true, "Motor nameplate frequency."),
+    p("P-10", "Motor rated speed", 1440, "RPM", 0, 30000, 1, true, true, "Motor nameplate speed; 0 shows Hz."),
+    p("P-12", "Primary command source", 4, "", 0, 13, 1, false, true, "Modbus RTU control. Read only: changing it breaks HMI control."),
+    p("P-36", "Serial comms", 1, "", 0, 63, 1, false, true, "Drive address. Read only: changing it breaks comms."),
+  ];
 }
 
 const CTRL = "sia_injection_controller_1";
@@ -76,6 +104,8 @@ export function createMockClient(opts: MockOptions) {
             rate_units: "L/Hr",
             ...(opts.tankPrimary ? { tank_primary_reading: opts.tankPrimary } : {}),
             ...(opts.tankSecondary ? { tank_secondary_reading: opts.tankSecondary } : {}),
+            ...(opts.commissioning ? { vsd_commissioning: opts.commissioning } : {}),
+            ...(opts.vsdMotorApp ? { vsd_motor_app: opts.vsdMotorApp } : {}),
           },
         },
       },
@@ -151,6 +181,56 @@ export function createMockClient(opts: MockOptions) {
     }
   };
 
+  // The Techtop motor controller app on dv-rpc (VSD commissioning panel).
+  const params = techtopParameters();
+  const techtop = async (req: { method: string; request: unknown }) => {
+    const tags = aggregates.tag_values.data[CTRL] as Json;
+    const running = Boolean(tags.Running);
+    const tripped = Boolean(tags.VsdTripCode);
+    await new Promise((r) => setTimeout(r, 150));
+    switch (req.method) {
+      case "get_diagnostics":
+        if (opts.legacyMotorApp) throw rpcError("METHOD_NOT_FOUND", "unknown method get_diagnostics");
+        return {
+          output_hz: running ? 42.5 : 0,
+          output_current_a: running ? 2.8 : 0,
+          motor_rpm: running ? 1224 : 0,
+          dc_bus_v: 562,
+          heatsink_c: 38,
+          drive_state: tripped ? "Tripped" : running ? "Running" : "Stopped",
+          trip_code: tripped ? Number(tags.VsdTripCode) : 0,
+          trip_description: tripped ? String(tags.VsdTripDescription) : null,
+          run_hours: 1287,
+          recent_trips: [3, 21],
+          comms_ok: true,
+        };
+      case "get_status":
+        return {
+          comms_active: true,
+          drive_state: tripped ? "tripped" : running ? "running" : "stopped",
+          trip_code: tripped ? Number(tags.VsdTripCode) : null,
+          trip_description: tripped ? String(tags.VsdTripDescription) : null,
+          output_frequency_hz: running ? 42.5 : 0,
+          motor_current_a: running ? 2.8 : 0,
+          dc_bus_voltage_v: 562,
+        };
+      case "read_parameters":
+        return { parameters: params };
+      case "write_parameter": {
+        const r = req.request as { parameter: string; value: number };
+        const p = params.find((x) => x.id === r.parameter);
+        if (!p || !p.writable) throw rpcError("NOT_ALLOWED", `${r.parameter} is not writable`);
+        if (p.stop_required && running) throw rpcError("DRIVE_RUNNING", `${p.id} can only change while stopped`);
+        if (r.value < p.min || r.value > p.max) throw rpcError("OUT_OF_RANGE", `${p.id} out of range`);
+        p.value = r.value;
+        return { parameter: p.id, value: p.value };
+      }
+      default:
+        // pydoover answers nothing for an unknown method.
+        return new Promise(() => {});
+    }
+  };
+
   const client: Json = {
     ...(opts.host === "local" ? { clientId: "local-dda-http" } : {}),
     posted: [] as unknown[],
@@ -185,7 +265,16 @@ export function createMockClient(opts: MockOptions) {
       },
     },
     rpc: {
-      send: async (_channel: unknown, req: { method: string; request: unknown; actor?: { name?: string } }) => {
+      send: async (
+        channel: { channelName?: string },
+        req: { method: string; request: unknown; app_key?: string; actor?: { name?: string } },
+      ) => {
+        if (channel?.channelName === "dv-rpc") {
+          const w = window as unknown as { __vsdLog?: unknown[] };
+          (w.__vsdLog ??= []).push({ channel: channel.channelName, ...req });
+          if (req.app_key !== (opts.vsdMotorApp ?? TECHTOP)) return new Promise(() => {});
+          return techtop(req);
+        }
         (client.posted as unknown[]).push(req);
         (window as unknown as { __rpcLog: unknown[] }).__rpcLog = client.posted as unknown[];
         return controller(req);

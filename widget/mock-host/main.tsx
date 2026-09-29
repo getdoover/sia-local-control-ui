@@ -12,13 +12,17 @@
  *   &tank=L,mm               tank primary,secondary reading (unset = defaults)
  *   &width=480               cloud card width (px)
  *   &click=touch-start       click a control after load (e.g. to show a denial)
+ *   &commission=Local only   vsd_commissioning (Hidden / Local only / Local and cloud)
+ *   &vsdapp=<key>            vsd_motor_app (default techtop_motor_controller_1
+ *                            whenever commission is given)
+ *   &legacy=1                an older Techtop app without get_diagnostics
  */
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DooverProvider } from "doover-js/react";
 
 import SiaHmiWidget from "../src/SiaHmiWidget";
-import { createMockClient, type MockOptions } from "./mockClient";
+import { createMockClient, TECHTOP, type MockOptions } from "./mockClient";
 
 const q = new URLSearchParams(window.location.search);
 const opts: MockOptions = {
@@ -31,6 +35,9 @@ const opts: MockOptions = {
   solar: q.get("solar") === "1",
   tankPrimary: q.get("tank")?.split(",")[0] || undefined,
   tankSecondary: q.get("tank")?.split(",")[1] || undefined,
+  commissioning: q.get("commission") ?? undefined,
+  vsdMotorApp: q.get("vsdapp") ?? (q.get("commission") ? TECHTOP : undefined),
+  legacyMotorApp: q.get("legacy") === "1",
 };
 const client = createMockClient(opts);
 const queryClient = new QueryClient();

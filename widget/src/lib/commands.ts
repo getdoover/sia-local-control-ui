@@ -179,6 +179,8 @@ export interface SendCommandOptions {
   value: unknown;
   actor: RpcActor | undefined;
   timeoutMs: number;
+  /** Defaults to `ui_cmds` (the pump controller); the VSD panel uses `dv-rpc`. */
+  channelName?: string;
 }
 
 /**
@@ -207,7 +209,7 @@ export async function sendCommand(opts: SendCommandOptions): Promise<Ack> {
   try {
     const result = await Promise.race([
       client.rpc.send(
-        { agentId: opts.agentId, channelName: UI_CMDS_CHANNEL },
+        { agentId: opts.agentId, channelName: opts.channelName ?? UI_CMDS_CHANNEL },
         body,
         { timeoutMs: opts.timeoutMs },
       ),

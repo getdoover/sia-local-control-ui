@@ -32,6 +32,11 @@ class HmiControlMode(enum.Enum):
 TANK_READINGS = ("mm", "m", "L", "%")
 TANK_NONE = "None"
 
+# VSD commissioning panel access (widget/src/lib/vsdPanel.ts
+# VSD_COMMISSIONING_OPTIONS, pinned by tests/test_widget_contract.py). The
+# first is the default: no gear.
+VSD_COMMISSIONING = ("Hidden", "Local only", "Local and cloud")
+
 
 class ButtonConfig(config.Object):
     """Nested config describing where one operator pushbutton is wired.
@@ -386,6 +391,32 @@ class SiaLocalControlUiConfig(config.Schema):
     rpc_timeout = config.Number(
         "RPC Timeout (s)", default=20.0, minimum=1.0,
         description="How long an operator command waits for the controller to physically act.",
+    )
+
+    # --- VSD commissioning panel (widget only) --------------------------------
+    # The gear on the widget's VSD tile opens live drive diagnostics and the
+    # Techtop motor controller's drive parameters. Calls go straight to that
+    # app's RPC channel (dv-rpc). Hidden by default, so existing configs show
+    # no gear. Reset VSD Fault in the panel still goes through the pump
+    # controller (reset_vsd_fault), exactly like the VSD tile's button.
+    vsd_motor_app = config.Application(
+        "VSD Motor App", default=None,
+        description=(
+            "(Optional) the Techtop motor controller app driving this pump's VSD, "
+            "e.g. techtop_motor_controller_1. The HMI widget's VSD commissioning "
+            "panel talks to it; unset hides the panel."
+        ),
+    )
+    vsd_commissioning = config.Enum(
+        "VSD Commissioning",
+        choices=list(VSD_COMMISSIONING),
+        default=VSD_COMMISSIONING[0],
+        description=(
+            "VSD commissioning panel on the HMI widget (gear on the VSD tile). "
+            "Hidden: no gear. Local only: diagnostics everywhere the gear shows, "
+            "drive parameter changes only from the local panel. Local and cloud: "
+            "parameter changes from the local panel and the cloud UI."
+        ),
     )
 
     @classmethod

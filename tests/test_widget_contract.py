@@ -198,3 +198,31 @@ def test_tank_reading_options_match_the_widget():
     for tag in ("level_reading", "level_volume", "level_filled_percentage"):
         assert f'tag: "{tag}"' in src
     assert {"tank_primary_reading", "tank_secondary_reading"} <= _widget_config_keys()
+
+
+def test_vsd_commissioning_options_match_the_widget():
+    """Same options in the config editor and the widget; Hidden (no gear) is
+    the default and an unset VSD Motor App hides it too, so existing configs
+    are unchanged."""
+    from sia_local_control_ui.app_config import VSD_COMMISSIONING
+
+    props = SiaLocalControlUiConfig.to_schema()["properties"]
+    assert props["vsd_commissioning"]["enum"] == ["Hidden", "Local only", "Local and cloud"]
+    assert props["vsd_commissioning"]["default"] == VSD_COMMISSIONING[0] == "Hidden"
+    assert props["vsd_motor_app"]["format"] == "doover-resource-application"
+    assert props["vsd_motor_app"]["default"] is None
+    src = ADAPTER.read_text()
+    ts = re.search(r"VSD_COMMISSIONING_OPTIONS = \[([^\]]*)\] as const", src).group(1)
+    assert tuple(re.findall(r'"([^"]+)"', ts)) == VSD_COMMISSIONING
+    assert {"vsd_motor_app", "vsd_commissioning"} <= _widget_config_keys()
+
+
+def test_vsd_panel_calls_the_techtop_rpc_channel():
+    """The panel talks to the Techtop app on pydoover's default RPC channel
+    (the Techtop app's RPC_CHANNEL), not on this app's ui_cmds."""
+    from pydoover.rpc import DEFAULT_CHANNEL
+
+    src = (WIDGET / "src" / "lib" / "vsdPanel.ts").read_text()
+    assert f'VSD_RPC_CHANNEL = "{DEFAULT_CHANNEL}"' in src
+    for method in ("get_diagnostics", "get_status", "read_parameters", "write_parameter"):
+        assert f'"{method}"' in src

@@ -78,6 +78,81 @@ export function rateNeedsConfirm(current, value) {
   );
 }
 
+// Line icons in the panel's own colour (currentColor), sized by CSS.
+const GEAR_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+const CLOSE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+
+// VSD panel diagnostics, in display order: [field, label, unit, decimals].
+// Decimals null = text. Every value may be null and then shows EMPTY_VALUE.
+export const EMPTY_VALUE = "\u2014";
+const DIAG_FIELDS = [
+  ["output_hz", "Output", "Hz", 1],
+  ["output_current_a", "Current", "A", 1],
+  ["motor_rpm", "Motor speed", "RPM", 0],
+  ["dc_bus_v", "DC bus", "V", 0],
+  ["heatsink_c", "Heatsink", "\u00b0C", 0],
+  ["drive_state", "Drive state", "", null],
+  ["trip", "Trip", "", null],
+  ["run_hours", "Run hours", "h", 0],
+  ["recent_trips", "Recent trips", "", null],
+  ["comms_ok", "Comms", "", null],
+];
+
+function diagCell([field, label, unit]) {
+  return `<div class="diag-cell" data-diag="${field}"><span class="diag-label">${label}</span>` +
+    `<span class="diag-value"><span class="diag-number">${EMPTY_VALUE}</span>` +
+    `<span class="diag-unit">${unit}</span></span></div>`;
+}
+
+/** Display text for one diagnostics field (pure, unit-tested). */
+export function formatDiagnostic(d, field) {
+  if (!d) return EMPTY_VALUE;
+  const def = DIAG_FIELDS.find((f) => f[0] === field);
+  if (field === "trip") {
+    const code = d.trip_code;
+    const text = d.trip_description;
+    if (code == null && !text) return EMPTY_VALUE;
+    if (!code && !text) return "None";
+    return [text, code ? `code ${code}` : ""].filter(Boolean).join(" \u00b7 ");
+  }
+  if (field === "recent_trips") {
+    const t = d.recent_trips;
+    if (!Array.isArray(t)) return EMPTY_VALUE;
+    return t.length ? t.join(", ") : "None";
+  }
+  if (field === "comms_ok") {
+    if (d.comms_ok === true) return "OK";
+    if (d.comms_ok === false) return "Lost";
+    return EMPTY_VALUE;
+  }
+  const v = d[field];
+  if (v === null || v === undefined || v === "") return EMPTY_VALUE;
+  if (def && def[3] !== null) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(def[3]) : EMPTY_VALUE;
+  }
+  return String(v);
+}
+
+/** Decimal places implied by a parameter step (0.1 -> 1, 1 -> 0). */
+function stepDp(step) {
+  if (!(Number(step) > 0)) return 2;
+  const text = String(step);
+  if (/e-/i.test(text)) return Math.min(6, Number(text.split(/e-/i)[1]));
+  const dot = text.indexOf(".");
+  return dot < 0 ? 0 : Math.min(6, text.length - dot - 1);
+}
+
+/** A parameter value with its step's decimals, or the empty dash. */
+export function formatParameter(p, value = p.value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return EMPTY_VALUE;
+  return Number(value).toFixed(stepDp(p.step));
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function escapeAttr(value) {
   return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
@@ -189,7 +264,10 @@ function template(opts) {
           </div>
         </section>
         <section class="control-section vsd-section hidden" data-id="vsd-section">
-          <h2>VSD</h2>
+          <h2 class="vsd-head"><span>VSD</span>
+            <button type="button" class="icon-btn vsd-gear hidden" data-id="vsd-gear"
+              aria-label="VSD commissioning" title="VSD commissioning">${GEAR_ICON}</button>
+          </h2>
           <div class="vsd-body">
             <div class="vsd-status" data-id="vsd-status">
               <span class="state-value">--</span>
@@ -250,6 +328,23 @@ function template(opts) {
   <div class="loading-spinner"><div class="spinner"></div><p>Connecting to controller...</p></div>
 </div>
 
+<div data-id="vsd-panel" class="modal-overlay vsd-panel-overlay hidden" role="dialog" aria-modal="true" aria-label="VSD commissioning">
+  <div class="vsd-panel" data-id="vsd-panel-box">
+    <div class="vsd-panel-head">
+      <h2 class="vsd-panel-title">VSD Commissioning</h2>
+      <span class="vsd-panel-status" data-id="vsd-diag-status"></span>
+      <button type="button" class="action-btn vsd-panel-reset" data-id="vsd-panel-reset">Reset VSD Fault</button>
+      <button type="button" class="icon-btn vsd-panel-close" data-id="vsd-panel-close" aria-label="Close">${CLOSE_ICON}</button>
+    </div>
+    <div class="vsd-diag" data-id="vsd-diag">${DIAG_FIELDS.map(diagCell).join("")}</div>
+    <div class="vsd-params-head">
+      <h3>Drive Parameters</h3>
+      <span class="vsd-params-note" data-id="vsd-params-note"></span>
+    </div>
+    <div class="vsd-params" data-id="vsd-params" role="list"></div>
+  </div>
+</div>
+
 <div data-id="keypad" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="keypad">
     <div class="keypad-info">
@@ -296,6 +391,11 @@ function template(opts) {
 <div data-id="command-toast" class="command-toast hidden" role="status"></div>`;
 }
 
+// The open VSD panel re-reads diagnostics this long after each answer.
+export const VSD_POLL_MS = 2000;
+
+const CSS_ESCAPE = (id) => String(id).replace(/["\\]/g, "\\$&");
+
 const MODE_LABELS = { read_only: "Read Only", touch: "Touch", button: "Button" };
 
 class Hmi {
@@ -312,7 +412,16 @@ class Hmi {
     this.keypadText = "";
     this.keypadPlaceholder = "";
     this.confirmOk = null;
+    this.confirmOwner = null;
     this.destroyed = false;
+    // VSD commissioning panel (gear on the VSD tile).
+    this.vsdAccess = { enabled: false, canWrite: false, writeBlockedReason: "" };
+    this.vsdShown = false;
+    this.vsdOpen = false;
+    this.vsdGen = 0;
+    this.vsdDiag = null;
+    this.vsdParams = null;
+    this.vsdParamState = {};
 
     root.classList.add("sia-hmi", this.opts.layout === "kiosk" ? "kiosk" : "embedded");
     root.innerHTML = template(this.opts);
@@ -363,6 +472,31 @@ class Hmi {
       if (fn) fn();
     });
     on("confirm-cancel", () => this.confirmClose());
+
+    on("vsd-gear", () => this.vsdPanelOpen());
+    on("vsd-panel-close", () => this.vsdPanelClose());
+    // Reset VSD Fault: the controller's reset_vsd_fault, exactly as the tile.
+    on("vsd-panel-reset", (b) => this.sendCommand("reset_vsd_fault", null, b));
+    const overlay = this.$("vsd-panel");
+    if (overlay) {
+      // Tapping the dimmed backdrop (not the panel) closes it.
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) this.vsdPanelClose();
+      });
+    }
+    const params = this.$("vsd-params");
+    if (params) {
+      params.addEventListener("click", (e) => {
+        const row = e.target && e.target.closest ? e.target.closest("[data-param]") : null;
+        if (row) this.vsdEditParameter(row.getAttribute("data-param"), row);
+      });
+    }
+    this.onKey = (e) => {
+      if (e.key !== "Escape" || !this.vsdOpen) return;
+      if (this.keypadIsOpen() || this.confirmOk) return;
+      this.vsdPanelClose();
+    };
+    this.root.ownerDocument.addEventListener("keydown", this.onKey);
   }
 
   // -- keypad ---------------------------------------------------------------
@@ -418,14 +552,16 @@ class Hmi {
   }
 
   // -- confirmation (in-page; no alert()/confirm() on a kiosk) --------------
-  confirmAsk(message, onOk) {
+  confirmAsk(message, onOk, owner = "touch") {
     this.confirmOk = onOk;
+    this.confirmOwner = owner;
     this.setText("confirm-message", message);
     this.show(this.$("confirm"));
   }
 
   confirmClose() {
     this.confirmOk = null;
+    this.confirmOwner = null;
     this.hide(this.$("confirm"));
   }
 
@@ -555,6 +691,7 @@ class Hmi {
     this.renderTank(data.tank);
     this.renderTouch(data.touch, (data.pumps || [])[0]);
     this.renderVsd(data.vsd);
+    if (this.vsdOpen) this.renderVsdReset();
     this.setLastUpdate(data.timestamp);
   }
 
@@ -726,8 +863,10 @@ class Hmi {
         footer.classList.remove("touch-hidden");
         this.show(footer);
       }
-      if (this.keypadIsOpen()) this.keypadClose();
-      this.confirmClose();
+      // Only the touch controls' own keypad / confirmation: a VSD panel edit
+      // is governed by VSD Commissioning, not HMI Control Mode.
+      if (this.keypadIsOpen() && this.keypadOpts.owner !== "vsd") this.keypadClose();
+      if (this.confirmOwner === "touch") this.confirmClose();
       return;
     }
     this.show(bar);
@@ -762,6 +901,8 @@ class Hmi {
   renderVsd(vsd) {
     const section = this.$("vsd-section");
     const line = this.$("pump-drive-line");
+    this.vsdShown = !!vsd;
+    this.renderVsdGear();
     if (!vsd) {
       this.hide(section);
       this.hide(line);
@@ -782,6 +923,246 @@ class Hmi {
       if (vsd.trip_code != null) trip += ` (code ${vsd.trip_code})`;
     }
     this.setText("vsd-trip", trip);
+  }
+
+  // -- VSD commissioning panel ------------------------------------------------
+  // Gear on the VSD tile (only with a VSD AND VSD Commissioning on), a
+  // popover with live diagnostics (polled every VSD_POLL_MS while open) and
+  // the drive parameters; a writable one opens the keypad, then a
+  // confirmation (old -> new), then write_parameter and its read-back.
+  // The RPCs are the injected opts.vsdPanel (lib/vsdPanel.ts).
+
+  setVsdPanel(access) {
+    this.vsdAccess = {
+      enabled: !!(access && access.enabled),
+      canWrite: !!(access && access.canWrite),
+      writeBlockedReason: (access && access.writeBlockedReason) || "",
+    };
+    this.renderVsdGear();
+    if (this.vsdOpen) this.renderParameters();
+  }
+
+  vsdAvailable() {
+    return this.vsdAccess.enabled && this.vsdShown && !!this.opts.vsdPanel;
+  }
+
+  renderVsdGear() {
+    const gear = this.$("vsd-gear");
+    const section = this.$("vsd-section");
+    const on = this.vsdAvailable();
+    this.toggle(gear, on);
+    if (section) section.classList.toggle("has-gear", on);
+    if (!on && this.vsdOpen) this.vsdPanelClose();
+  }
+
+  vsdPanelOpen() {
+    if (!this.vsdAvailable() || this.vsdOpen) return;
+    this.vsdOpen = true;
+    const gen = ++this.vsdGen;
+    this.vsdDiag = null;
+    this.vsdParams = null;
+    this.vsdParamState = {};
+    this.renderDiagnostics(null, "Reading the drive\u2026");
+    this.renderParameters("Reading parameters\u2026");
+    this.renderVsdReset();
+    this.show(this.$("vsd-panel"));
+    const close = this.$("vsd-panel-close");
+    if (close && close.focus) close.focus();
+    this.vsdPoll(gen);
+    this.vsdLoadParameters(gen);
+  }
+
+  vsdPanelClose() {
+    if (!this.vsdOpen) return;
+    this.vsdOpen = false;
+    this.vsdGen++; // stops the poll loop and drops answers still in flight
+    if (this.keypadIsOpen() && this.keypadOpts.owner === "vsd") this.keypadClose();
+    if (this.confirmOwner === "vsd") this.confirmClose();
+    this.hide(this.$("vsd-panel"));
+  }
+
+  vsdLive(gen) {
+    return !this.destroyed && this.vsdOpen && gen === this.vsdGen;
+  }
+
+  // One diagnostics read, then the next VSD_POLL_MS after it answers (never
+  // overlapping, so a slow drive cannot pile requests up).
+  vsdPoll(gen) {
+    if (!this.vsdLive(gen)) return;
+    Promise.resolve()
+      .then(() => this.opts.vsdPanel.diagnostics())
+      .catch((e) => ({ ok: false, message: String((e && e.message) || e) }))
+      .then((ack) => {
+        if (!this.vsdLive(gen)) return;
+        if (ack && ack.ok) {
+          this.vsdDiag = ack.result || null;
+          this.renderDiagnostics(this.vsdDiag, "");
+        } else {
+          this.renderDiagnostics(this.vsdDiag, (ack && ack.message) || "No answer from the drive", true);
+        }
+        this.later(() => this.vsdPoll(gen), VSD_POLL_MS);
+      });
+  }
+
+  vsdLoadParameters(gen) {
+    Promise.resolve()
+      .then(() => this.opts.vsdPanel.parameters())
+      .catch((e) => ({ ok: false, message: String((e && e.message) || e) }))
+      .then((ack) => {
+        if (!this.vsdLive(gen)) return;
+        if (ack && ack.ok) {
+          this.vsdParams = ack.result || [];
+          this.renderParameters(this.vsdParams.length ? "" : "The drive reported no parameters.");
+        } else {
+          this.vsdParams = null;
+          this.renderParameters((ack && ack.message) || "Could not read the parameters.", true);
+        }
+      });
+  }
+
+  renderDiagnostics(d, message, isError = false) {
+    for (const [field] of DIAG_FIELDS) {
+      const cell = this.root.querySelector(`[data-diag="${field}"]`);
+      if (!cell) continue;
+      const n = cell.querySelector(".diag-number");
+      if (n) n.textContent = formatDiagnostic(d, field);
+      let tone = "";
+      if (field === "comms_ok" && d) tone = d.comms_ok === false ? "bad" : d.comms_ok ? "good" : "";
+      if (field === "trip" && d) tone = d.trip_code || d.trip_description ? "bad" : "";
+      cell.classList.toggle("bad", tone === "bad");
+      cell.classList.toggle("good", tone === "good");
+    }
+    const box = this.$("vsd-diag");
+    if (box) box.classList.toggle("stale", isError && !!d);
+    let text = message;
+    if (!text && d) text = d.source === "status" ? "Live \u00b7 basic status (older motor app)" : "Live";
+    const status = this.$("vsd-diag-status");
+    if (status) {
+      status.textContent = text || "";
+      status.classList.toggle("error", isError);
+    }
+  }
+
+  renderVsdReset() {
+    const b = this.$("vsd-panel-reset");
+    if (!b) return;
+    b.disabled = !this.touch;
+    b.title = this.touch ? "" : "Reset is available in HMI Control Mode Touch";
+  }
+
+  renderParameters(message, isError = false) {
+    const list = this.$("vsd-params");
+    if (!list) return;
+    const note = this.$("vsd-params-note");
+    if (note) note.textContent = this.vsdAccess.canWrite ? "Tap a value to change it" : this.vsdAccess.writeBlockedReason;
+    const doc = this.root.ownerDocument;
+    list.textContent = "";
+    if (!this.vsdParams || message) {
+      const p = doc.createElement("div");
+      p.className = "vsd-params-message" + (isError ? " error" : "");
+      p.textContent = message || "";
+      list.appendChild(p);
+      if (isError) {
+        const retry = doc.createElement("button");
+        retry.type = "button";
+        retry.className = "action-btn vsd-params-retry";
+        retry.setAttribute("data-id", "vsd-params-retry");
+        retry.textContent = "Retry";
+        retry.addEventListener("click", () => {
+          this.renderParameters("Reading parameters\u2026");
+          this.vsdLoadParameters(this.vsdGen);
+        });
+        list.appendChild(retry);
+      }
+      if (!this.vsdParams) return;
+    }
+    for (const p of this.vsdParams) list.appendChild(this.parameterRow(p));
+  }
+
+  parameterRow(p) {
+    const doc = this.root.ownerDocument;
+    const editable = p.writable && this.vsdAccess.canWrite;
+    const row = doc.createElement(editable ? "button" : "div");
+    if (editable) row.type = "button";
+    row.className = "vsd-param" + (editable ? " editable" : " locked");
+    row.setAttribute("role", "listitem");
+    row.setAttribute("data-param", p.id);
+    const units = p.units ? ` ${escapeHtml(p.units)}` : "";
+    const range = p.min != null && p.max != null
+      ? `${formatParameter(p, p.min)} to ${formatParameter(p, p.max)}${units}`
+      : EMPTY_VALUE;
+    const tag = !p.writable ? "Read only" : p.stop_required ? "Stopped only" : "";
+    const st = this.vsdParamState[p.id] || {};
+    row.innerHTML =
+      `<span class="param-name"><span class="param-id">${escapeHtml(p.id)}</span>` +
+      `<span class="param-label">${escapeHtml(p.name)}</span></span>` +
+      `<span class="param-value"><span class="param-number">${formatParameter(p)}</span>` +
+      `<span class="param-units">${escapeHtml(p.units || "")}</span></span>` +
+      `<span class="param-range">${range}</span>` +
+      `<span class="param-state">${tag ? `<span class="param-tag">${tag}</span>` : ""}` +
+      `<span class="param-note" data-note>${escapeHtml(st.note || "")}</span></span>`;
+    if (p.description) row.title = p.description;
+    if (st.state) row.classList.add(st.state);
+    return row;
+  }
+
+  setParamState(id, state, note) {
+    this.vsdParamState[id] = { state, note };
+    const list = this.$("vsd-params");
+    const old = list && list.querySelector(`[data-param="${CSS_ESCAPE(id)}"]`);
+    const p = (this.vsdParams || []).find((x) => x.id === id);
+    if (old && p) old.replaceWith(this.parameterRow(p));
+  }
+
+  vsdEditParameter(id, row) {
+    const p = (this.vsdParams || []).find((x) => x.id === id);
+    if (!p || !p.writable) return;
+    if (!this.vsdAccess.canWrite) {
+      this.showToast(this.vsdAccess.writeBlockedReason || "Changes are not allowed here", "error");
+      return;
+    }
+    if (row && row.classList.contains("pending")) return;
+    const dp = stepDp(p.step);
+    this.keypadOpen({
+      owner: "vsd",
+      title: `${p.id} ${p.name}`,
+      value: p.value,
+      min: p.min,
+      max: p.max,
+      decimals: dp,
+      unit: p.units || "",
+      onSubmit: (value) => {
+        const units = p.units ? ` ${p.units}` : "";
+        const stop = p.stop_required ? " The drive must be stopped." : "";
+        this.confirmAsk(
+          `Change ${p.id} ${p.name} from ${formatParameter(p)} \u2192 ${formatParameter(p, value)}${units}?${stop}`,
+          () => this.vsdWrite(p, value),
+          "vsd",
+        );
+      },
+    });
+  }
+
+  vsdWrite(p, value) {
+    const gen = this.vsdGen;
+    this.setParamState(p.id, "pending", "Writing\u2026");
+    Promise.resolve()
+      .then(() => this.opts.vsdPanel.write(p, value))
+      .catch((e) => ({ ok: false, message: String((e && e.message) || e) }))
+      .then((ack) => {
+        if (this.destroyed || gen !== this.vsdGen) return;
+        const readBack = ack && ack.result ? ack.result.value : undefined;
+        if (readBack !== undefined && readBack !== null) p.value = readBack;
+        if (ack && ack.ok) {
+          const units = p.units ? ` ${p.units}` : "";
+          this.setParamState(p.id, "ok", `Saved \u00b7 drive reads ${formatParameter(p)}${units}`);
+          this.showToast(`${p.id} set to ${formatParameter(p)}${units}`, "ok");
+        } else {
+          const msg = (ack && ack.message) || "Write failed";
+          this.setParamState(p.id, "error", msg);
+          this.showToast(`${p.id}: ${msg}`, "error");
+        }
+      });
   }
 
   // -- helpers ------------------------------------------------------------------
@@ -857,6 +1238,8 @@ class Hmi {
 
   destroy() {
     this.destroyed = true;
+    this.vsdOpen = false;
+    if (this.onKey) this.root.ownerDocument.removeEventListener("keydown", this.onKey);
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
     this.root.innerHTML = "";
@@ -873,6 +1256,9 @@ class Hmi {
  *   hostLabel?: string,          // header badge, e.g. "Local panel"
  *   title?: string,              // header title (default "SIA Remote Command")
  *   logos?: {remoteCommand?, doover?}  // data URIs
+ *   vsdPanel?: {diagnostics(), parameters(), write(param, value)}
+ *                                // VSD commissioning RPCs (lib/vsdPanel.ts);
+ *                                // the gear also needs setVsdPanel(access)
  * }
  */
 export function createHmi(root, opts) {
@@ -880,6 +1266,7 @@ export function createHmi(root, opts) {
   return {
     update: (data, status) => hmi.update(data, status),
     notify: (message, level) => hmi.showToast(message, level),
+    setVsdPanel: (access) => hmi.setVsdPanel(access),
     destroy: () => hmi.destroy(),
     /** For tests: the underlying instance. */
     _hmi: hmi,
