@@ -18,6 +18,24 @@
             "title": "$default",
             "type": "object",
             "properties": {
+                "hmi_control_mode": {
+                    "enum": [
+                        "Read Only",
+                        "Touch",
+                        "Button"
+                    ],
+                    "title": "HMI Control Mode",
+                    "x-name": "hmi_control_mode",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "On-screen controls. Read Only: display only (the physical buttons still work). Touch: on-screen Start/Stop, rate, resets and calibration factor. Button: reserved, currently the same as Read Only. Physical pushbuttons and lamps are never affected.",
+                    "default": "Read Only",
+                    "x-position": 0
+                },
                 "pump_controllers": {
                     "title": "Pump Controllers",
                     "x-name": "pump_controllers",
@@ -25,7 +43,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "Pump controller apps to display and control. The first is the primary (button/RPC target).",
-                    "x-position": 0,
+                    "x-position": 1,
                     "items": {
                         "title": "Pump Controller",
                         "x-name": "pump_controller",
@@ -47,7 +65,7 @@
                     "x-required": false,
                     "description": "Controller tag holding the machine state string.",
                     "default": "StateString",
-                    "x-position": 1
+                    "x-position": 2
                 },
                 "target_rate_tag": {
                     "title": "Target Rate Tag",
@@ -60,7 +78,7 @@
                     "x-required": false,
                     "description": "Controller tag holding the commanded dose rate.",
                     "default": "TargetRate",
-                    "x-position": 2
+                    "x-position": 3
                 },
                 "flow_rate_tag": {
                     "title": "Flow Rate Tag",
@@ -73,7 +91,7 @@
                     "x-required": false,
                     "description": "Controller tag holding the measured flow rate.",
                     "default": "FlowRate",
-                    "x-position": 3
+                    "x-position": 4
                 },
                 "total_tag": {
                     "title": "Total Tag",
@@ -86,7 +104,7 @@
                     "x-required": false,
                     "description": "Controller tag holding the total delivered volume.",
                     "default": "Total",
-                    "x-position": 4
+                    "x-position": 5
                 },
                 "min_rate_tag": {
                     "title": "Min Rate Tag",
@@ -99,7 +117,7 @@
                     "x-required": false,
                     "description": "Controller tag holding the pump's minimum deliverable rate (for the flow-range bar).",
                     "default": "MinRate",
-                    "x-position": 5
+                    "x-position": 6
                 },
                 "max_rate_tag": {
                     "title": "Max Rate Tag",
@@ -112,7 +130,7 @@
                     "x-required": false,
                     "description": "Controller tag holding the pump's maximum deliverable rate (for the flow-range bar).",
                     "default": "MaxRate",
-                    "x-position": 6
+                    "x-position": 7
                 },
                 "running_tag": {
                     "title": "Running Tag",
@@ -125,7 +143,7 @@
                     "x-required": false,
                     "description": "Controller boolean tag: pump output energised.",
                     "default": "Running",
-                    "x-position": 7
+                    "x-position": 8
                 },
                 "fault_tag": {
                     "title": "Fault Tag",
@@ -138,7 +156,7 @@
                     "x-required": false,
                     "description": "Controller boolean tag: trip active.",
                     "default": "Fault",
-                    "x-position": 8
+                    "x-position": 9
                 },
                 "fault_reason_tag": {
                     "title": "Fault Reason Tag",
@@ -151,7 +169,7 @@
                     "x-required": false,
                     "description": "Controller string tag: human-readable trip cause.",
                     "default": "FaultReason",
-                    "x-position": 9
+                    "x-position": 10
                 },
                 "warning_tag": {
                     "title": "Warning Tag",
@@ -164,7 +182,7 @@
                     "x-required": false,
                     "description": "Controller boolean tag: warning active (non-trip; pump keeps running).",
                     "default": "Warning",
-                    "x-position": 10
+                    "x-position": 11
                 },
                 "warning_reason_tag": {
                     "title": "Warning Reason Tag",
@@ -177,359 +195,7 @@
                     "x-required": false,
                     "description": "Controller string tag: human-readable warning cause.",
                     "default": "WarningReason",
-                    "x-position": 11
-                },
-                "start_button": {
-                    "title": "Start Button",
-                    "x-name": "start_button",
-                    "x-hidden": false,
-                    "type": "object",
-                    "x-required": true,
-                    "description": "Physical Start pushbutton. J5246: DI1.",
-                    "x-position": 12,
-                    "properties": {
-                        "source": {
-                            "enum": [
-                                "Disabled",
-                                "DI",
-                                "AI"
-                            ],
-                            "title": "Source",
-                            "x-name": "source",
-                            "x-hidden": false,
-                            "type": [
-                                "string",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
-                            "default": "DI",
-                            "x-position": 1
-                        },
-                        "pin": {
-                            "title": "Pin",
-                            "x-name": "pin",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "DI or AI pin number, per Source.",
-                            "default": 0,
-                            "x-position": 2,
-                            "minimum": 0
-                        },
-                        "threshold_voltage": {
-                            "title": "Threshold Voltage",
-                            "x-name": "threshold_voltage",
-                            "x-hidden": false,
-                            "type": [
-                                "number",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
-                            "default": 9.0,
-                            "x-position": 3,
-                            "minimum": 0.0
-                        },
-                        "active_low": {
-                            "title": "Active Low",
-                            "x-name": "active_low",
-                            "x-hidden": false,
-                            "type": [
-                                "boolean",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
-                            "default": false,
-                            "x-position": 4
-                        },
-                        "debounce_ms": {
-                            "title": "Debounce (ms)",
-                            "x-name": "debounce_ms",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
-                            "default": 50,
-                            "x-position": 5,
-                            "minimum": 0
-                        }
-                    },
-                    "additionalElements": true,
-                    "required": [],
-                    "x-collapsible": true,
-                    "x-defaultCollapsed": false
-                },
-                "stop_button": {
-                    "title": "Stop Button",
-                    "x-name": "stop_button",
-                    "x-hidden": false,
-                    "type": "object",
-                    "x-required": true,
-                    "description": "Physical Stop pushbutton. J5246: DI2.",
-                    "x-position": 13,
-                    "properties": {
-                        "source": {
-                            "enum": [
-                                "Disabled",
-                                "DI",
-                                "AI"
-                            ],
-                            "title": "Source",
-                            "x-name": "source",
-                            "x-hidden": false,
-                            "type": [
-                                "string",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
-                            "default": "DI",
-                            "x-position": 1
-                        },
-                        "pin": {
-                            "title": "Pin",
-                            "x-name": "pin",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "DI or AI pin number, per Source.",
-                            "default": 0,
-                            "x-position": 2,
-                            "minimum": 0
-                        },
-                        "threshold_voltage": {
-                            "title": "Threshold Voltage",
-                            "x-name": "threshold_voltage",
-                            "x-hidden": false,
-                            "type": [
-                                "number",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
-                            "default": 9.0,
-                            "x-position": 3,
-                            "minimum": 0.0
-                        },
-                        "active_low": {
-                            "title": "Active Low",
-                            "x-name": "active_low",
-                            "x-hidden": false,
-                            "type": [
-                                "boolean",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
-                            "default": false,
-                            "x-position": 4
-                        },
-                        "debounce_ms": {
-                            "title": "Debounce (ms)",
-                            "x-name": "debounce_ms",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
-                            "default": 50,
-                            "x-position": 5,
-                            "minimum": 0
-                        }
-                    },
-                    "additionalElements": true,
-                    "required": [],
-                    "x-collapsible": true,
-                    "x-defaultCollapsed": false
-                },
-                "flow_up_button": {
-                    "title": "Flow Up Button",
-                    "x-name": "flow_up_button",
-                    "x-hidden": false,
-                    "type": "object",
-                    "x-required": true,
-                    "description": "Physical Flow Up pushbutton. J5246: DI3.",
-                    "x-position": 14,
-                    "properties": {
-                        "source": {
-                            "enum": [
-                                "Disabled",
-                                "DI",
-                                "AI"
-                            ],
-                            "title": "Source",
-                            "x-name": "source",
-                            "x-hidden": false,
-                            "type": [
-                                "string",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
-                            "default": "DI",
-                            "x-position": 1
-                        },
-                        "pin": {
-                            "title": "Pin",
-                            "x-name": "pin",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "DI or AI pin number, per Source.",
-                            "default": 0,
-                            "x-position": 2,
-                            "minimum": 0
-                        },
-                        "threshold_voltage": {
-                            "title": "Threshold Voltage",
-                            "x-name": "threshold_voltage",
-                            "x-hidden": false,
-                            "type": [
-                                "number",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
-                            "default": 9.0,
-                            "x-position": 3,
-                            "minimum": 0.0
-                        },
-                        "active_low": {
-                            "title": "Active Low",
-                            "x-name": "active_low",
-                            "x-hidden": false,
-                            "type": [
-                                "boolean",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
-                            "default": false,
-                            "x-position": 4
-                        },
-                        "debounce_ms": {
-                            "title": "Debounce (ms)",
-                            "x-name": "debounce_ms",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
-                            "default": 50,
-                            "x-position": 5,
-                            "minimum": 0
-                        }
-                    },
-                    "additionalElements": true,
-                    "required": [],
-                    "x-collapsible": true,
-                    "x-defaultCollapsed": false
-                },
-                "flow_down_button": {
-                    "title": "Flow Down Button",
-                    "x-name": "flow_down_button",
-                    "x-hidden": false,
-                    "type": "object",
-                    "x-required": true,
-                    "description": "Physical Flow Down pushbutton. J5246: AI1 thresholded at 9V.",
-                    "x-position": 15,
-                    "properties": {
-                        "source": {
-                            "enum": [
-                                "Disabled",
-                                "DI",
-                                "AI"
-                            ],
-                            "title": "Source",
-                            "x-name": "source",
-                            "x-hidden": false,
-                            "type": [
-                                "string",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
-                            "default": "DI",
-                            "x-position": 1
-                        },
-                        "pin": {
-                            "title": "Pin",
-                            "x-name": "pin",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "DI or AI pin number, per Source.",
-                            "default": 0,
-                            "x-position": 2,
-                            "minimum": 0
-                        },
-                        "threshold_voltage": {
-                            "title": "Threshold Voltage",
-                            "x-name": "threshold_voltage",
-                            "x-hidden": false,
-                            "type": [
-                                "number",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
-                            "default": 9.0,
-                            "x-position": 3,
-                            "minimum": 0.0
-                        },
-                        "active_low": {
-                            "title": "Active Low",
-                            "x-name": "active_low",
-                            "x-hidden": false,
-                            "type": [
-                                "boolean",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
-                            "default": false,
-                            "x-position": 4
-                        },
-                        "debounce_ms": {
-                            "title": "Debounce (ms)",
-                            "x-name": "debounce_ms",
-                            "x-hidden": false,
-                            "type": [
-                                "integer",
-                                "null"
-                            ],
-                            "x-required": false,
-                            "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
-                            "default": 50,
-                            "x-position": 5,
-                            "minimum": 0
-                        }
-                    },
-                    "additionalElements": true,
-                    "required": [],
-                    "x-collapsible": true,
-                    "x-defaultCollapsed": false
+                    "x-position": 12
                 },
                 "run_lamp_pin": {
                     "title": "Run Lamp Pin",
@@ -542,7 +208,7 @@
                     "x-required": false,
                     "description": "Digital output for the green RUN lamp (J5246 DO3). Unset to disable.",
                     "default": 3,
-                    "x-position": 16,
+                    "x-position": 17,
                     "minimum": 0
                 },
                 "trip_lamp_pin": {
@@ -556,7 +222,7 @@
                     "x-required": false,
                     "description": "Digital output for the red TRIP lamp (J5246 DO4). Unset to disable.",
                     "default": 4,
-                    "x-position": 17,
+                    "x-position": 18,
                     "minimum": 0
                 },
                 "enable_pumpvalve_selector": {
@@ -570,7 +236,7 @@
                     "x-required": false,
                     "description": "Legacy two-pump selector switch. Off for single-pump J5246 skids.",
                     "default": false,
-                    "x-position": 18
+                    "x-position": 19
                 },
                 "selector_threshold_voltage": {
                     "title": "Selector Threshold Voltage",
@@ -583,7 +249,7 @@
                     "x-required": false,
                     "description": "AI voltage above which a selector position reads active.",
                     "default": 5.0,
-                    "x-position": 19,
+                    "x-position": 20,
                     "minimum": 0.0
                 },
                 "pump_1_selector_ai_pin": {
@@ -597,7 +263,7 @@
                     "x-required": false,
                     "description": "Analog input pin for the pump 1 selector (only used when the selector is enabled).",
                     "default": null,
-                    "x-position": 20,
+                    "x-position": 21,
                     "minimum": 0
                 },
                 "pump_2_selector_ai_pin": {
@@ -611,7 +277,7 @@
                     "x-required": false,
                     "description": "Analog input pin for the pump 2 selector (only used when the selector is enabled).",
                     "default": null,
-                    "x-position": 21,
+                    "x-position": 22,
                     "minimum": 0
                 },
                 "enable_valve_card": {
@@ -625,7 +291,7 @@
                     "x-required": false,
                     "description": "Show the valve status card (legacy skids with a calibration valve). Off for J5246.",
                     "default": false,
-                    "x-position": 22
+                    "x-position": 23
                 },
                 "solar_controllers": {
                     "title": "Solar Controllers",
@@ -634,7 +300,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "Solar controller apps whose battery/panel figures are aggregated on the dashboard.",
-                    "x-position": 23,
+                    "x-position": 24,
                     "items": {
                         "title": "Solar Controller",
                         "x-name": "solar_controller",
@@ -656,7 +322,7 @@
                     "x-required": false,
                     "description": "Aggregated battery charge at or below which the dashboard shows a low-battery warning. 0 disables the check.",
                     "default": 30.0,
-                    "x-position": 24,
+                    "x-position": 25,
                     "minimum": 0.0,
                     "maximum": 100.0
                 },
@@ -671,7 +337,7 @@
                     "x-required": false,
                     "description": "Aggregated battery voltage at or below which the low-battery warning shows. 0 disables the check (use the percentage instead).",
                     "default": 0.0,
-                    "x-position": 25,
+                    "x-position": 26,
                     "minimum": 0.0
                 },
                 "low_battery_clear_margin": {
@@ -685,7 +351,7 @@
                     "x-required": false,
                     "description": "Hysteresis: once warning, the reading must recover this far above the threshold before the banner clears (percentage points / volts).",
                     "default": 5.0,
-                    "x-position": 26,
+                    "x-position": 27,
                     "minimum": 0.0
                 },
                 "tank_level_app": {
@@ -700,7 +366,7 @@
                     "x-required": false,
                     "description": "(Optional) tank level app for the tank card.",
                     "default": null,
-                    "x-position": 27
+                    "x-position": 28
                 },
                 "flow_sensor_app": {
                     "title": "Flow Sensor App",
@@ -714,7 +380,7 @@
                     "x-required": false,
                     "description": "(Optional) skid flow sensor app.",
                     "default": null,
-                    "x-position": 28
+                    "x-position": 29
                 },
                 "pressure_sensor_app": {
                     "title": "Pressure Sensor App",
@@ -728,7 +394,7 @@
                     "x-required": false,
                     "description": "(Optional) skid pressure sensor app.",
                     "default": null,
-                    "x-position": 29
+                    "x-position": 30
                 },
                 "rate_units": {
                     "title": "Rate Units",
@@ -741,7 +407,7 @@
                     "x-required": false,
                     "description": "Units label shown against target/flow rate figures.",
                     "default": "L/Hr",
-                    "x-position": 30
+                    "x-position": 31
                 },
                 "pressure_units": {
                     "title": "Pressure Units",
@@ -754,7 +420,7 @@
                     "x-required": false,
                     "description": "Units label shown against the skid pressure figure.",
                     "default": "psi",
-                    "x-position": 31
+                    "x-position": 32
                 },
                 "dashboard_port": {
                     "title": "Dashboard Port",
@@ -767,7 +433,7 @@
                     "x-required": false,
                     "description": "TCP port the Flask/SocketIO touchscreen server listens on.",
                     "default": 8091,
-                    "x-position": 32,
+                    "x-position": 33,
                     "minimum": 1,
                     "maximum": 65535
                 },
@@ -782,7 +448,7 @@
                     "x-required": false,
                     "description": "Flask session secret key.",
                     "default": "sia_local_control_ui",
-                    "x-position": 33
+                    "x-position": 34
                 },
                 "display_refresh_period_s": {
                     "title": "Display Refresh Period (s)",
@@ -795,7 +461,7 @@
                     "x-required": false,
                     "description": "How often the dashboard/status readouts refresh. Buttons are event-driven and unaffected.",
                     "default": 0.5,
-                    "x-position": 34,
+                    "x-position": 35,
                     "minimum": 0.1
                 },
                 "rpc_timeout_s": {
@@ -809,18 +475,408 @@
                     "x-required": false,
                     "description": "How long an operator command waits for the controller to physically act.",
                     "default": 20.0,
-                    "x-position": 35,
+                    "x-position": 36,
                     "minimum": 1.0
                 }
             },
             "additionalElements": true,
             "required": [
                 "pump_controllers",
-                "start_button",
-                "stop_button",
-                "flow_up_button",
-                "flow_down_button",
                 "solar_controllers"
+            ],
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "hmi_control_mode": {
+                                "const": "Button"
+                            }
+                        },
+                        "required": [
+                            "hmi_control_mode"
+                        ]
+                    },
+                    "then": {
+                        "properties": {
+                            "start_button": {
+                                "title": "Start Button",
+                                "x-name": "start_button",
+                                "x-hidden": false,
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "x-required": false,
+                                "description": "Physical Start pushbutton. J5246: DI1.",
+                                "default": {
+                                    "source": "Disabled"
+                                },
+                                "x-position": 13,
+                                "properties": {
+                                    "source": {
+                                        "enum": [
+                                            "Disabled",
+                                            "DI",
+                                            "AI"
+                                        ],
+                                        "title": "Source",
+                                        "x-name": "source",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
+                                        "default": "DI",
+                                        "x-position": 1
+                                    },
+                                    "pin": {
+                                        "title": "Pin",
+                                        "x-name": "pin",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "DI or AI pin number, per Source.",
+                                        "default": 0,
+                                        "x-position": 2,
+                                        "minimum": 0
+                                    },
+                                    "threshold_voltage": {
+                                        "title": "Threshold Voltage",
+                                        "x-name": "threshold_voltage",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
+                                        "default": 9.0,
+                                        "x-position": 3,
+                                        "minimum": 0.0
+                                    },
+                                    "active_low": {
+                                        "title": "Active Low",
+                                        "x-name": "active_low",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "boolean",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
+                                        "default": false,
+                                        "x-position": 4
+                                    },
+                                    "debounce_ms": {
+                                        "title": "Debounce (ms)",
+                                        "x-name": "debounce_ms",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
+                                        "default": 50,
+                                        "x-position": 5,
+                                        "minimum": 0
+                                    }
+                                },
+                                "additionalElements": true,
+                                "required": [],
+                                "x-collapsible": true,
+                                "x-defaultCollapsed": false
+                            },
+                            "stop_button": {
+                                "title": "Stop Button",
+                                "x-name": "stop_button",
+                                "x-hidden": false,
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "x-required": false,
+                                "description": "Physical Stop pushbutton. J5246: DI2.",
+                                "default": {
+                                    "source": "Disabled"
+                                },
+                                "x-position": 14,
+                                "properties": {
+                                    "source": {
+                                        "enum": [
+                                            "Disabled",
+                                            "DI",
+                                            "AI"
+                                        ],
+                                        "title": "Source",
+                                        "x-name": "source",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
+                                        "default": "DI",
+                                        "x-position": 1
+                                    },
+                                    "pin": {
+                                        "title": "Pin",
+                                        "x-name": "pin",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "DI or AI pin number, per Source.",
+                                        "default": 0,
+                                        "x-position": 2,
+                                        "minimum": 0
+                                    },
+                                    "threshold_voltage": {
+                                        "title": "Threshold Voltage",
+                                        "x-name": "threshold_voltage",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
+                                        "default": 9.0,
+                                        "x-position": 3,
+                                        "minimum": 0.0
+                                    },
+                                    "active_low": {
+                                        "title": "Active Low",
+                                        "x-name": "active_low",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "boolean",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
+                                        "default": false,
+                                        "x-position": 4
+                                    },
+                                    "debounce_ms": {
+                                        "title": "Debounce (ms)",
+                                        "x-name": "debounce_ms",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
+                                        "default": 50,
+                                        "x-position": 5,
+                                        "minimum": 0
+                                    }
+                                },
+                                "additionalElements": true,
+                                "required": [],
+                                "x-collapsible": true,
+                                "x-defaultCollapsed": false
+                            },
+                            "flow_up_button": {
+                                "title": "Flow Up Button",
+                                "x-name": "flow_up_button",
+                                "x-hidden": false,
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "x-required": false,
+                                "description": "Physical Flow Up pushbutton. J5246: DI3.",
+                                "default": {
+                                    "source": "Disabled"
+                                },
+                                "x-position": 15,
+                                "properties": {
+                                    "source": {
+                                        "enum": [
+                                            "Disabled",
+                                            "DI",
+                                            "AI"
+                                        ],
+                                        "title": "Source",
+                                        "x-name": "source",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
+                                        "default": "DI",
+                                        "x-position": 1
+                                    },
+                                    "pin": {
+                                        "title": "Pin",
+                                        "x-name": "pin",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "DI or AI pin number, per Source.",
+                                        "default": 0,
+                                        "x-position": 2,
+                                        "minimum": 0
+                                    },
+                                    "threshold_voltage": {
+                                        "title": "Threshold Voltage",
+                                        "x-name": "threshold_voltage",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
+                                        "default": 9.0,
+                                        "x-position": 3,
+                                        "minimum": 0.0
+                                    },
+                                    "active_low": {
+                                        "title": "Active Low",
+                                        "x-name": "active_low",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "boolean",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
+                                        "default": false,
+                                        "x-position": 4
+                                    },
+                                    "debounce_ms": {
+                                        "title": "Debounce (ms)",
+                                        "x-name": "debounce_ms",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
+                                        "default": 50,
+                                        "x-position": 5,
+                                        "minimum": 0
+                                    }
+                                },
+                                "additionalElements": true,
+                                "required": [],
+                                "x-collapsible": true,
+                                "x-defaultCollapsed": false
+                            },
+                            "flow_down_button": {
+                                "title": "Flow Down Button",
+                                "x-name": "flow_down_button",
+                                "x-hidden": false,
+                                "type": [
+                                    "object",
+                                    "null"
+                                ],
+                                "x-required": false,
+                                "description": "Physical Flow Down pushbutton. J5246: AI1 thresholded at 9V.",
+                                "default": {
+                                    "source": "Disabled"
+                                },
+                                "x-position": 16,
+                                "properties": {
+                                    "source": {
+                                        "enum": [
+                                            "Disabled",
+                                            "DI",
+                                            "AI"
+                                        ],
+                                        "title": "Source",
+                                        "x-name": "source",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Where this button is wired: Disabled, a digital input (DI), or an analog input (AI) thresholded to press events.",
+                                        "default": "DI",
+                                        "x-position": 1
+                                    },
+                                    "pin": {
+                                        "title": "Pin",
+                                        "x-name": "pin",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "DI or AI pin number, per Source.",
+                                        "default": 0,
+                                        "x-position": 2,
+                                        "minimum": 0
+                                    },
+                                    "threshold_voltage": {
+                                        "title": "Threshold Voltage",
+                                        "x-name": "threshold_voltage",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "number",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "For AI buttons: voltage the input must cross to register a press (matches the existing >9V idiom).",
+                                        "default": 9.0,
+                                        "x-position": 3,
+                                        "minimum": 0.0
+                                    },
+                                    "active_low": {
+                                        "title": "Active Low",
+                                        "x-name": "active_low",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "boolean",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Register the press on the falling edge (DI) / downward threshold crossing (AI) instead of rising.",
+                                        "default": false,
+                                        "x-position": 4
+                                    },
+                                    "debounce_ms": {
+                                        "title": "Debounce (ms)",
+                                        "x-name": "debounce_ms",
+                                        "x-hidden": false,
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "x-required": false,
+                                        "description": "Hardware debounce pushed to the DI pin config (not used for AI buttons).",
+                                        "default": 50,
+                                        "x-position": 5,
+                                        "minimum": 0
+                                    }
+                                },
+                                "additionalElements": true,
+                                "required": [],
+                                "x-collapsible": true,
+                                "x-defaultCollapsed": false
+                            }
+                        }
+                    }
+                }
             ]
         },
         "key": "c01f11da-53f8-4a22-ba00-8ffa1180cd92",

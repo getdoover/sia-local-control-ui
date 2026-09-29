@@ -13,6 +13,20 @@ class ButtonSource(enum.Enum):
     ai = "AI"
 
 
+class HmiControlMode(enum.Enum):
+    """What the touchscreen lets the operator do.
+
+    Governs ON-SCREEN controls only. The physical pushbuttons and the RUN /
+    TRIP lamps work exactly as configured in every mode.
+    """
+
+    read_only = "Read Only"
+    touch = "Touch"
+    # Reserved for a future on-screen mode (placeholder). Behaves exactly like
+    # Read Only until it is implemented; see README "HMI Control Mode".
+    button = "Button"
+
+
 class ButtonConfig(config.Object):
     """Nested config describing where one operator pushbutton is wired.
 
@@ -77,6 +91,17 @@ def normalise_source(value) -> tuple[ButtonSource, int | None]:
             return ButtonSource.disabled, None
 
 
+def normalise_hmi_mode(value) -> HmiControlMode:
+    """Member from a config value (member, display text or member name)."""
+    if isinstance(value, HmiControlMode):
+        return value
+    text = str(value).strip().lower()
+    for member in HmiControlMode:
+        if text in (member.value.lower(), member.name):
+            return member
+    return HmiControlMode.read_only
+
+
 def resolve_pulse(
     source, pin, threshold_v=9.0, active_low=False
 ) -> tuple[int, str] | tuple[None, None]:
@@ -99,6 +124,21 @@ def resolve_pulse(
     return pin, f"VI{'-' if active_low else '+'}{threshold}"
 
 
+# Config for a physical button that was never saved (its fields are hidden in
+# the editor outside Button mode): load it as not fitted. A saved button always
+# loads its saved values.
+_BUTTON_ABSENT = {"source": ButtonSource.disabled.value}
+
+# Editor-only visibility: these fields appear only when HMI Control Mode is
+# "Button". Keys, defaults and runtime behaviour are unchanged.
+BUTTON_MODE_FIELDS = (
+    "start_button",
+    "stop_button",
+    "flow_up_button",
+    "flow_down_button",
+)
+
+
 class SiaLocalControlUiConfig(config.Schema):
     """Config for the local HMI touchscreen app.
 
@@ -108,6 +148,22 @@ class SiaLocalControlUiConfig(config.Schema):
     mappings, lamp pins, display units, the Flask port/secret -- lives HERE, in
     the HMI's own config. It no longer reads the controller's deployment_config.
     """
+
+    # --- On-screen control (first in the editor) ----------------------------
+    # Only "Button" reveals the physical-button fields in the config editor
+    # (see to_schema). That is editor visibility only: the physical buttons
+    # and lamps always run from whatever is configured, in every mode.
+    hmi_control_mode = config.Enum(
+        "HMI Control Mode",
+        choices=HmiControlMode,
+        default=HmiControlMode.read_only,
+        description=(
+            "On-screen controls. Read Only: display only (the physical buttons "
+            "still work). Touch: on-screen Start/Stop, rate, resets and "
+            "calibration factor. Button: reserved, currently the same as Read "
+            "Only. Physical pushbuttons and lamps are never affected."
+        ),
+    )
 
     # --- Pump controllers (1..N; single pump is the J5246 default) ----------
     # The FIRST controller is the "primary": physical buttons and the on-screen
@@ -169,21 +225,29 @@ class SiaLocalControlUiConfig(config.Schema):
     )
 
     # --- Physical operator pushbuttons (event-driven pulse listeners) --------
+    # Shown in the config editor only when HMI Control Mode is "Button", but
+    # ALWAYS active at runtime from their saved values (Kuwait skids keep their
+    # DI1/DI2/DI3/AI wiring in Read Only). A button with no saved config at all
+    # loads as Disabled instead of failing the whole config load.
     # J5246 wiring: start=DI1, stop=DI2, flow_up=DI3, flow_down=AI1@9V.
     start_button = ButtonConfig(
         "Start Button",
+        default=_BUTTON_ABSENT,
         description="Physical Start pushbutton. J5246: DI1.",
     )
     stop_button = ButtonConfig(
         "Stop Button",
+        default=_BUTTON_ABSENT,
         description="Physical Stop pushbutton. J5246: DI2.",
     )
     flow_up_button = ButtonConfig(
         "Flow Up Button",
+        default=_BUTTON_ABSENT,
         description="Physical Flow Up pushbutton. J5246: DI3.",
     )
     flow_down_button = ButtonConfig(
         "Flow Down Button",
+        default=_BUTTON_ABSENT,
         description="Physical Flow Down pushbutton. J5246: AI1 thresholded at 9V.",
     )
 
@@ -281,6 +345,36 @@ class SiaLocalControlUiConfig(config.Schema):
         description="How long an operator command waits for the controller to physically act.",
     )
 
+    @classmethod
+    def to_schema(cls):
+        """pydoover's schema, with the physical-button fields made conditional.
+
+        The Doover config editor (doover-admin, rjsf) resolves JSON-schema
+        ``allOf`` / ``if`` / ``then`` branches against the form data and
+        renders ``then`` fields only while the condition holds; its field
+        list, ordering and save filter also read the branch properties, so a
+        hidden field keeps its saved value. This is the same shape as its own
+        tests (doover-admin 6c2a3c7, "Support conditional config schema
+        fields"). ``required`` in the ``if`` keeps an unset mode (the Read
+        Only default) from matching vacuously.
+        """
+        schema = super().to_schema()
+        properties = schema["properties"]
+        branch = {name: properties.pop(name) for name in BUTTON_MODE_FIELDS}
+        schema["required"] = [r for r in schema["required"] if r not in branch]
+        schema["allOf"] = [
+            {
+                "if": {
+                    "properties": {
+                        "hmi_control_mode": {"const": HmiControlMode.button.value}
+                    },
+                    "required": ["hmi_control_mode"],
+                },
+                "then": {"properties": branch},
+            }
+        ]
+        return schema
+
     # ------------------------------------------------------------------
     # Derived helpers
     # ------------------------------------------------------------------
@@ -301,6 +395,18 @@ class SiaLocalControlUiConfig(config.Schema):
         """The controller that physical buttons / on-screen controls drive."""
         keys = self.controller_keys
         return keys[0] if keys else None
+
+    @property
+    def touch_enabled(self) -> bool:
+        """On-screen controls are on (HMI Control Mode = Touch).
+
+        ``Button`` is reserved and deliberately falls through to read-only.
+        """
+        try:
+            value = self.hmi_control_mode.value
+        except AttributeError:
+            return False
+        return normalise_hmi_mode(value) is HmiControlMode.touch
 
     @property
     def selector_enabled(self) -> bool:

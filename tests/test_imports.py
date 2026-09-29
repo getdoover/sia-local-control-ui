@@ -16,9 +16,10 @@ def test_config_schema():
     schema = SiaLocalControlUiConfig.to_schema()
     assert isinstance(schema, dict)
     assert len(schema["properties"]) > 0
-    # button mappings + controller list are present
-    assert "start_button" in schema["properties"]
+    # controller list is present; button mappings live in the Button-mode
+    # branch (shown conditionally by the config editor)
     assert "pump_controllers" in schema["properties"]
+    assert "start_button" in schema["allOf"][0]["then"]["properties"]
 
 
 def test_tags():

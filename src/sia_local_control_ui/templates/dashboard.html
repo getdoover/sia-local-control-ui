@@ -80,6 +80,16 @@
                             <div class="state-display" id="pump-state">
                                 <span class="state-value">unknown</span>
                             </div>
+                            <!-- Drive status line: measured pump RPM + motor Hz. Shown only
+                                 when the controller has a VSD configured. -->
+                            <div class="secondary-line hidden" id="pump-drive-line">
+                                <span class="secondary-label">Pump</span>
+                                <span class="secondary-value" id="pump-rpm">--</span>
+                                <span class="secondary-unit">RPM</span>
+                                <span class="secondary-label drive-line-gap">Motor</span>
+                                <span class="secondary-value" id="motor-hz">--</span>
+                                <span class="secondary-unit">Hz</span>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -182,6 +192,26 @@
                         </div>
                     </div>
                 </section>
+
+                <!-- VSD (only when the controller has a VSD configured, see
+                     application.py _collect_vsd). Sits to the right of Tank on the
+                     same row; the compact one-screen layout applies only while it
+                     is shown (.has-vsd), so a skid without a VSD is unchanged. -->
+                <section class="control-section vsd-section hidden" id="vsd-section">
+                    <h2>VSD</h2>
+                    <div class="vsd-body">
+                        <div class="vsd-status" id="vsd-status">
+                            <span class="state-value">--</span>
+                            <span class="vsd-trip" id="vsd-trip"></span>
+                        </div>
+                        <!-- Two-step reset (controller REQ-004): Reset VSD here clears the
+                             drive, then Reset Fault (touch bar, or the physical Start
+                             button) clears the pump fault. Neither starts the pump. -->
+                        <div class="vsd-actions">
+                            <button type="button" class="action-btn" id="reset-vsd-btn">Reset VSD</button>
+                        </div>
+                    </div>
+                </section>
             </div>
         </main>
     </div>
@@ -193,6 +223,87 @@
             <p>Connecting to controller...</p>
         </div>
     </div>
+
+    <!-- Touch controls (HMI Control Mode = Touch only). Fixed to the bottom of the
+         screen so Start / Stop / rate never need a scroll, at 1024x768 or 800x480.
+         Hidden in Read Only (the default) and Button modes. -->
+    <div id="touch-bar" class="touch-bar hidden" role="toolbar" aria-label="Pump controls">
+        <div class="touch-group">
+            <button type="button" class="touch-btn touch-start" id="touch-start">
+                <span class="touch-label">Start</span>
+                <span class="touch-hint" id="touch-start-hint"></span>
+            </button>
+            <button type="button" class="touch-btn touch-stop" id="touch-stop">
+                <span class="touch-label">Stop</span>
+            </button>
+        </div>
+        <div class="touch-group touch-rate-group">
+            <button type="button" class="touch-btn touch-step" id="touch-rate-down" aria-label="Decrease target rate">&minus;</button>
+            <button type="button" class="touch-btn touch-value" id="touch-rate" aria-label="Enter target rate">
+                <span class="touch-caption">Target</span>
+                <span class="touch-number" id="touch-rate-value">--</span>
+                <span class="touch-caption" id="touch-rate-unit">L/Hr</span>
+            </button>
+            <button type="button" class="touch-btn touch-step" id="touch-rate-up" aria-label="Increase target rate">+</button>
+        </div>
+        <div class="touch-group">
+            <button type="button" class="touch-btn touch-reset" id="touch-reset">
+                <span class="touch-label">Reset Fault</span>
+            </button>
+            <button type="button" class="touch-btn touch-value" id="touch-cal" aria-label="Enter calibration factor">
+                <span class="touch-caption">Cal factor</span>
+                <span class="touch-number" id="touch-cal-value">--</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Reusable numeric keypad popover (target rate, calibration factor). -->
+    <div id="keypad" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="keypad-title">
+        <div class="keypad">
+            <div class="keypad-info">
+                <div class="keypad-title" id="keypad-title"></div>
+                <div class="keypad-display">
+                    <span class="keypad-entry" id="keypad-entry"></span>
+                    <span class="keypad-unit" id="keypad-unit"></span>
+                </div>
+                <div class="keypad-range" id="keypad-range"></div>
+                <div class="keypad-error" id="keypad-error" role="alert"></div>
+                <div class="keypad-actions">
+                    <button type="button" class="key key-cancel" id="keypad-cancel">Cancel</button>
+                    <button type="button" class="key key-ok" id="keypad-ok">OK</button>
+                </div>
+            </div>
+            <div class="keypad-keys">
+                <button type="button" class="key" data-key="7">7</button>
+                <button type="button" class="key" data-key="8">8</button>
+                <button type="button" class="key" data-key="9">9</button>
+                <button type="button" class="key key-fn" data-key="back" aria-label="Backspace">&#9003;</button>
+                <button type="button" class="key" data-key="4">4</button>
+                <button type="button" class="key" data-key="5">5</button>
+                <button type="button" class="key" data-key="6">6</button>
+                <button type="button" class="key key-fn" data-key="clear">C</button>
+                <button type="button" class="key" data-key="1">1</button>
+                <button type="button" class="key" data-key="2">2</button>
+                <button type="button" class="key" data-key="3">3</button>
+                <button type="button" class="key" data-key=".">.</button>
+                <button type="button" class="key key-zero" data-key="0">0</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- In-page confirmation (calibration factor, large rate changes). -->
+    <div id="confirm" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
+        <div class="confirm-box">
+            <p class="confirm-message" id="confirm-message"></p>
+            <div class="confirm-actions">
+                <button type="button" class="key key-cancel" id="confirm-cancel">Cancel</button>
+                <button type="button" class="key key-ok" id="confirm-ok">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command result / operator notice (e.g. a denied command). Hidden until used. -->
+    <div id="command-toast" class="command-toast hidden" role="status"></div>
 
     <!-- Footer Logo -->
     <div class="footer-logo">

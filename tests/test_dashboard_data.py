@@ -46,6 +46,7 @@ def _fake_tags():
 def _fake_config(controller_keys):
     return types.SimpleNamespace(
         controller_keys=controller_keys,
+        primary_controller_key=controller_keys[0] if controller_keys else None,
         tag_state=_val("StateString"),
         tag_target_rate=_val("TargetRate"),
         tag_flow_rate=_val("FlowRate"),
@@ -63,6 +64,7 @@ def _fake_config(controller_keys):
         pressure_units=_val("psi"),
         selector_enabled=False,
         valve_enabled=False,
+        touch_enabled=False,
         solar_controllers=types.SimpleNamespace(elements=[]),
         low_battery_percentage=_val(30.0),
         low_battery_voltage=_val(0.0),
@@ -97,6 +99,10 @@ def _make_stub(controller_keys, tag_values):
         "_battery_warnings",
         "_collect_tank",
         "_collect_skid",
+        "_collect_vsd",
+        "_vsd_seen",
+        "_trip_text",
+        "_pressure_units",
     ):
         setattr(stub, meth, getattr(App, meth).__get__(stub))
     return stub
@@ -397,7 +403,10 @@ async def test_dispatch_no_controller():
 
 
 def test_run_command_sync_not_ready():
-    stub = types.SimpleNamespace(_loop=None)
+    stub = types.SimpleNamespace(
+        _loop=None, config=types.SimpleNamespace(touch_enabled=True)
+    )
+    stub._check_touch_command = App._check_touch_command.__get__(stub)
     stub._run_command_sync = App._run_command_sync.__get__(stub)
     res = stub._run_command_sync("set_pump_state", "start")
     assert res["ok"] is False

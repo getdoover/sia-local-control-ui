@@ -1,0 +1,3300 @@
+{
+ "running": {
+  "tree": [
+   {
+    "tag": "html",
+    "children": [
+     {
+      "tag": "head",
+      "children": [
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "title"
+       },
+       {
+        "tag": "link"
+       }
+      ]
+     },
+     {
+      "tag": "body",
+      "children": [
+       {
+        "tag": "div",
+        "class": [
+         "dashboard-container"
+        ],
+        "children": [
+         {
+          "tag": "header",
+          "class": [
+           "dashboard-header"
+          ],
+          "children": [
+           {
+            "tag": "h1",
+            "children": [
+             {
+              "tag": "img",
+              "class": [
+               "header-logo"
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "header-info"
+            ],
+            "children": [
+             {
+              "tag": "div",
+              "class": [
+               "connection-status"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "connection-status",
+                "class": [
+                 "status-connected"
+                ],
+                "text": "&#9679; Connected"
+               }
+              ]
+             },
+             {
+              "tag": "div",
+              "class": [
+               "timestamp"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "last-update",
+                "text": "11:02:03"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "fault-banner",
+          "class": [
+           "fault-banner",
+           "hidden"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "fault-message-list",
+            "class": [
+             "fault-banner-list"
+            ],
+            "text": ""
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "warning-banner",
+          "class": [
+           "hidden",
+           "warning-banner"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "warning-message-list",
+            "class": [
+             "warning-banner-list"
+            ],
+            "text": ""
+           }
+          ]
+         },
+         {
+          "tag": "main",
+          "class": [
+           "dashboard-content"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "id": "pump-skid-row",
+            "class": [
+             "no-skid",
+             "pump-skid-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "class": [
+               "control-section",
+               "pump-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "pump-control-1",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "target-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "12.50"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "L/Hr"
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-range",
+                    "class": [
+                     "flow-range"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-track"
+                      ],
+                      "children": [
+                       {
+                        "tag": "div",
+                        "id": "flow-range-fill",
+                        "class": [
+                         "flow-range-fill"
+                        ],
+                        "width": "11.645962732919255%"
+                       }
+                      ]
+                     },
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-labels"
+                      ],
+                      "children": [
+                       {
+                        "tag": "span",
+                        "id": "flow-range-min",
+                        "class": [
+                         "flow-range-min"
+                        ],
+                        "text": "2.00 L/Hr"
+                       },
+                       {
+                        "tag": "span",
+                        "id": "flow-range-max",
+                        "class": [
+                         "flow-range-max"
+                        ],
+                        "text": "92.16 L/Hr"
+                       }
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "11.9"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "L/Hr"
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-total",
+                    "class": [
+                     "secondary-line"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-label"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-value"
+                      ],
+                      "text": "345.60"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-unit"
+                      ],
+                      "text": "L"
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "pump-state",
+                    "class": [
+                     "state-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "pumping",
+                       "state-value"
+                      ],
+                      "text": "pumping"
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "skid-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "skid-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-flow",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-pressure",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "secondary-controls-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "id": "valve-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "valve-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "valve-control",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "valve-state",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "state-value"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "solar-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "solar-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-voltage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-percentage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "battery-progress",
+                      "class": [
+                       "progress-fill"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "panel-power",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-ah",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "tank-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "tank-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-mm",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-percent",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "tank-progress",
+                      "class": [
+                       "progress-fill"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "id": "loading-overlay",
+        "class": [
+         "hidden",
+         "loading-overlay"
+        ],
+        "children": [
+         {
+          "tag": "div",
+          "class": [
+           "loading-spinner"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "class": [
+             "spinner"
+            ]
+           },
+           {
+            "tag": "p"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "class": [
+         "footer-logo"
+        ],
+        "children": [
+         {
+          "tag": "img"
+         }
+        ]
+       },
+       {
+        "tag": "script"
+       },
+       {
+        "tag": "script"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "emits": []
+ },
+ "faulted": {
+  "tree": [
+   {
+    "tag": "html",
+    "children": [
+     {
+      "tag": "head",
+      "children": [
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "title"
+       },
+       {
+        "tag": "link"
+       }
+      ]
+     },
+     {
+      "tag": "body",
+      "children": [
+       {
+        "tag": "div",
+        "class": [
+         "dashboard-container"
+        ],
+        "children": [
+         {
+          "tag": "header",
+          "class": [
+           "dashboard-header"
+          ],
+          "children": [
+           {
+            "tag": "h1",
+            "children": [
+             {
+              "tag": "img",
+              "class": [
+               "header-logo"
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "header-info"
+            ],
+            "children": [
+             {
+              "tag": "div",
+              "class": [
+               "connection-status"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "connection-status",
+                "class": [
+                 "status-connected"
+                ],
+                "text": "&#9679; Connected"
+               }
+              ]
+             },
+             {
+              "tag": "div",
+              "class": [
+               "timestamp"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "last-update",
+                "text": "11:02:03"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "fault-banner",
+          "class": [
+           "fault-banner"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "fault-message-list",
+            "class": [
+             "fault-banner-list"
+            ],
+            "text": "",
+            "children": [
+             {
+              "tag": "li",
+              "text": "Pump: Tank level low-low"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "warning-banner",
+          "class": [
+           "hidden",
+           "warning-banner"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "warning-message-list",
+            "class": [
+             "warning-banner-list"
+            ],
+            "text": ""
+           }
+          ]
+         },
+         {
+          "tag": "main",
+          "class": [
+           "dashboard-content"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "id": "pump-skid-row",
+            "class": [
+             "no-skid",
+             "pump-skid-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "class": [
+               "control-section",
+               "pump-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "pump-control-1",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "target-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "12.50"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "L/Hr"
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-range",
+                    "class": [
+                     "flow-range"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-track"
+                      ],
+                      "children": [
+                       {
+                        "tag": "div",
+                        "id": "flow-range-fill",
+                        "class": [
+                         "flow-range-fill"
+                        ],
+                        "width": "11.645962732919255%"
+                       }
+                      ]
+                     },
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-labels"
+                      ],
+                      "children": [
+                       {
+                        "tag": "span",
+                        "id": "flow-range-min",
+                        "class": [
+                         "flow-range-min"
+                        ],
+                        "text": "2.00 L/Hr"
+                       },
+                       {
+                        "tag": "span",
+                        "id": "flow-range-max",
+                        "class": [
+                         "flow-range-max"
+                        ],
+                        "text": "92.16 L/Hr"
+                       }
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "11.9"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "L/Hr"
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-total",
+                    "class": [
+                     "secondary-line"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-label"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-value"
+                      ],
+                      "text": "345.60"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-unit"
+                      ],
+                      "text": "L"
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "pump-state",
+                    "class": [
+                     "state-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "error",
+                       "fault",
+                       "state-value"
+                      ],
+                      "text": "fault"
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "skid-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "skid-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-flow",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-pressure",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "secondary-controls-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "id": "valve-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "valve-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "valve-control",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "valve-state",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "state-value"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "solar-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "solar-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-voltage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-percentage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "battery-progress",
+                      "class": [
+                       "progress-fill"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "panel-power",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-ah",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "tank-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "tank-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-mm",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-percent",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "tank-progress",
+                      "class": [
+                       "progress-fill"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "id": "loading-overlay",
+        "class": [
+         "hidden",
+         "loading-overlay"
+        ],
+        "children": [
+         {
+          "tag": "div",
+          "class": [
+           "loading-spinner"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "class": [
+             "spinner"
+            ]
+           },
+           {
+            "tag": "p"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "class": [
+         "footer-logo"
+        ],
+        "children": [
+         {
+          "tag": "img"
+         }
+        ]
+       },
+       {
+        "tag": "script"
+       },
+       {
+        "tag": "script"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "emits": []
+ },
+ "warning_with_peripherals": {
+  "tree": [
+   {
+    "tag": "html",
+    "children": [
+     {
+      "tag": "head",
+      "children": [
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "title"
+       },
+       {
+        "tag": "link"
+       }
+      ]
+     },
+     {
+      "tag": "body",
+      "children": [
+       {
+        "tag": "div",
+        "class": [
+         "dashboard-container"
+        ],
+        "children": [
+         {
+          "tag": "header",
+          "class": [
+           "dashboard-header"
+          ],
+          "children": [
+           {
+            "tag": "h1",
+            "children": [
+             {
+              "tag": "img",
+              "class": [
+               "header-logo"
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "header-info"
+            ],
+            "children": [
+             {
+              "tag": "div",
+              "class": [
+               "connection-status"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "connection-status",
+                "class": [
+                 "status-connected"
+                ],
+                "text": "&#9679; Connected"
+               }
+              ]
+             },
+             {
+              "tag": "div",
+              "class": [
+               "timestamp"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "last-update",
+                "text": "11:02:03"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "fault-banner",
+          "class": [
+           "fault-banner",
+           "hidden"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "fault-message-list",
+            "class": [
+             "fault-banner-list"
+            ],
+            "text": ""
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "warning-banner",
+          "class": [
+           "warning-banner"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "warning-message-list",
+            "class": [
+             "warning-banner-list"
+            ],
+            "text": "",
+            "children": [
+             {
+              "tag": "li",
+              "text": "Pump: No flow feedback — not receiving pulses from pump sensor"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "tag": "main",
+          "class": [
+           "dashboard-content"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "id": "pump-skid-row",
+            "class": [
+             "pump-skid-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "class": [
+               "control-section",
+               "pump-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "pump-control-1",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "target-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "12.50"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "L/Hr"
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-range",
+                    "class": [
+                     "flow-range"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-track"
+                      ],
+                      "children": [
+                       {
+                        "tag": "div",
+                        "id": "flow-range-fill",
+                        "class": [
+                         "flow-range-fill"
+                        ],
+                        "width": "11.645962732919255%"
+                       }
+                      ]
+                     },
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-labels"
+                      ],
+                      "children": [
+                       {
+                        "tag": "span",
+                        "id": "flow-range-min",
+                        "class": [
+                         "flow-range-min"
+                        ],
+                        "text": "2.00 L/Hr"
+                       },
+                       {
+                        "tag": "span",
+                        "id": "flow-range-max",
+                        "class": [
+                         "flow-range-max"
+                        ],
+                        "text": "92.16 L/Hr"
+                       }
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "11.9"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "L/Hr"
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-total",
+                    "class": [
+                     "secondary-line"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-label"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-value"
+                      ],
+                      "text": "345.60"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-unit"
+                      ],
+                      "text": "L"
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "pump-state",
+                    "class": [
+                     "state-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "pumping",
+                       "state-value"
+                      ],
+                      "text": "pumping"
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "skid-section",
+              "class": [
+               "control-section",
+               "skid-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-flow",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "11.2"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "L/Hr"
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-pressure",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "350.2"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ],
+                      "text": "psi"
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "secondary-controls-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "id": "valve-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "valve-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "valve-control",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "valve-state",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "state-value"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "solar-section",
+              "class": [
+               "control-section",
+               "solar-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-voltage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "25.4"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-percentage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "81"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "battery-progress",
+                      "class": [
+                       "progress-fill"
+                      ],
+                      "width": "81%"
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "panel-power",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "120.5"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-ah",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "200.0"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "tank-section",
+              "class": [
+               "control-section",
+               "tank-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-mm",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "850"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-percent",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ],
+                      "text": "64"
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "tank-progress",
+                      "class": [
+                       "progress-fill"
+                      ],
+                      "width": "64%"
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "id": "loading-overlay",
+        "class": [
+         "hidden",
+         "loading-overlay"
+        ],
+        "children": [
+         {
+          "tag": "div",
+          "class": [
+           "loading-spinner"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "class": [
+             "spinner"
+            ]
+           },
+           {
+            "tag": "p"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "class": [
+         "footer-logo"
+        ],
+        "children": [
+         {
+          "tag": "img"
+         }
+        ]
+       },
+       {
+        "tag": "script"
+       },
+       {
+        "tag": "script"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "emits": []
+ },
+ "no_controller": {
+  "tree": [
+   {
+    "tag": "html",
+    "children": [
+     {
+      "tag": "head",
+      "children": [
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "meta"
+       },
+       {
+        "tag": "title"
+       },
+       {
+        "tag": "link"
+       }
+      ]
+     },
+     {
+      "tag": "body",
+      "children": [
+       {
+        "tag": "div",
+        "class": [
+         "dashboard-container"
+        ],
+        "children": [
+         {
+          "tag": "header",
+          "class": [
+           "dashboard-header"
+          ],
+          "children": [
+           {
+            "tag": "h1",
+            "children": [
+             {
+              "tag": "img",
+              "class": [
+               "header-logo"
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "header-info"
+            ],
+            "children": [
+             {
+              "tag": "div",
+              "class": [
+               "connection-status"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "connection-status",
+                "class": [
+                 "status-disconnected",
+                 "status-warning"
+                ],
+                "text": "&#9679; No controller"
+               }
+              ]
+             },
+             {
+              "tag": "div",
+              "class": [
+               "timestamp"
+              ],
+              "children": [
+               {
+                "tag": "span",
+                "id": "last-update",
+                "text": "11:02:03"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "fault-banner",
+          "class": [
+           "fault-banner",
+           "hidden"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "fault-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "fault-message-list",
+            "class": [
+             "fault-banner-list"
+            ],
+            "text": ""
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "id": "warning-banner",
+          "class": [
+           "hidden",
+           "warning-banner"
+          ],
+          "children": [
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-icon"
+            ]
+           },
+           {
+            "tag": "span",
+            "class": [
+             "warning-banner-title"
+            ]
+           },
+           {
+            "tag": "ul",
+            "id": "warning-message-list",
+            "class": [
+             "warning-banner-list"
+            ],
+            "text": ""
+           }
+          ]
+         },
+         {
+          "tag": "main",
+          "class": [
+           "dashboard-content"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "id": "pump-skid-row",
+            "class": [
+             "no-skid",
+             "pump-skid-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "class": [
+               "control-section",
+               "pump-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "pump-control-1",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "target-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-range",
+                    "class": [
+                     "flow-range",
+                     "hidden"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-track"
+                      ],
+                      "children": [
+                       {
+                        "tag": "div",
+                        "id": "flow-range-fill",
+                        "class": [
+                         "flow-range-fill"
+                        ]
+                       }
+                      ]
+                     },
+                     {
+                      "tag": "div",
+                      "class": [
+                       "flow-range-labels"
+                      ],
+                      "children": [
+                       {
+                        "tag": "span",
+                        "id": "flow-range-min",
+                        "class": [
+                         "flow-range-min"
+                        ]
+                       },
+                       {
+                        "tag": "span",
+                        "id": "flow-range-max",
+                        "class": [
+                         "flow-range-max"
+                        ]
+                       }
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-rate",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "id": "flow-total",
+                    "class": [
+                     "secondary-line"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-label"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "secondary-unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "pump-state",
+                    "class": [
+                     "state-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "state-value"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "skid-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "skid-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-flow",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "skid-pressure",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "class": [
+             "secondary-controls-row"
+            ],
+            "children": [
+             {
+              "tag": "section",
+              "id": "valve-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "valve-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "id": "valve-control",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "valve-state",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "state-value"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "solar-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "solar-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-voltage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-percentage",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "battery-progress",
+                      "class": [
+                       "progress-fill"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "panel-power",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "battery-ah",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "section",
+              "id": "tank-section",
+              "class": [
+               "control-section",
+               "hidden",
+               "tank-section"
+              ],
+              "children": [
+               {
+                "tag": "h2"
+               },
+               {
+                "tag": "div",
+                "class": [
+                 "controls-grid"
+                ],
+                "children": [
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-mm",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "div",
+                  "class": [
+                   "control-card"
+                  ],
+                  "children": [
+                   {
+                    "tag": "h3"
+                   },
+                   {
+                    "tag": "div",
+                    "id": "tank-level-percent",
+                    "class": [
+                     "value-display"
+                    ],
+                    "children": [
+                     {
+                      "tag": "span",
+                      "class": [
+                       "value"
+                      ]
+                     },
+                     {
+                      "tag": "span",
+                      "class": [
+                       "unit"
+                      ]
+                     }
+                    ]
+                   },
+                   {
+                    "tag": "div",
+                    "class": [
+                     "progress-bar"
+                    ],
+                    "children": [
+                     {
+                      "tag": "div",
+                      "id": "tank-progress",
+                      "class": [
+                       "progress-fill"
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "id": "loading-overlay",
+        "class": [
+         "hidden",
+         "loading-overlay"
+        ],
+        "children": [
+         {
+          "tag": "div",
+          "class": [
+           "loading-spinner"
+          ],
+          "children": [
+           {
+            "tag": "div",
+            "class": [
+             "spinner"
+            ]
+           },
+           {
+            "tag": "p"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "class": [
+         "footer-logo"
+        ],
+        "children": [
+         {
+          "tag": "img"
+         }
+        ]
+       },
+       {
+        "tag": "script"
+       },
+       {
+        "tag": "script"
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "emits": []
+ }
+}
