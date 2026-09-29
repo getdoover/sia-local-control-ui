@@ -48,19 +48,23 @@ export function mlOverSecondsToRate(ml, seconds, rateUnits) {
 
 const finite = (v) => typeof v === "number" && Number.isFinite(v);
 
-/** The starting site-glass reading: must be more than 0 mL. */
+/**
+ * The starting site-glass reading. The site glass is graduated from the top,
+ * so it reads low (often 0) before the test and climbs as the pump draws
+ * chemical out of it.
+ */
 export function validateStartMl(value) {
   if (!finite(value)) return "Enter the site glass reading in mL";
-  if (value <= 0) return "Must be more than 0 mL";
+  if (value < 0) return "Cannot be negative";
   return null;
 }
 
-/** The final reading: at least 0 and less than the starting reading. */
+/** The final reading: more than the starting reading (the glass reads up as it drains). */
 export function validateFinalMl(value, startMl) {
   if (!finite(value)) return "Enter the site glass reading in mL";
   if (value < 0) return "Cannot be negative";
-  if (finite(startMl) && value >= startMl) {
-    return `Must be less than the starting ${formatMl(startMl)} mL`;
+  if (finite(startMl) && value <= startMl) {
+    return `Must be more than the starting ${formatMl(startMl)} mL`;
   }
   return null;
 }
@@ -106,7 +110,7 @@ export function computeCalibration({ startMl, finalMl, elapsedS, targetRate, old
   }
   // An unset factor is 1.0 on the controller too (_calibration_factor).
   const factor = finite(oldFactor) && oldFactor >= 0.01 ? oldFactor : 1.0;
-  const deliveredMl = startMl - finalMl;
+  const deliveredMl = finalMl - startMl;
   const measuredRate = mlOverSecondsToRate(deliveredMl, elapsedS, rateUnits);
   const rawFactor = (factor * targetRate) / measuredRate;
   const rounded = round(rawFactor, 2);

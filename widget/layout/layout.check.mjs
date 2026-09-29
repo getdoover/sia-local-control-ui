@@ -496,7 +496,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "6");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 6");
       await page.click('.sia-hmi [data-id="calwiz-field-final"]');
-      await keypadEntry(page, ["3", "0", "0"], w, h);
+      await keypadEntry(page, ["7", "0", "0"], w, h); // the site glass reads up as it drains
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "7");
       const m7 = await page.evaluate(measureWizard);
@@ -753,7 +753,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "6");
       await fits("page 6");
       await page.click('.sia-hmi [data-id="calwiz-field-final"]');
-      await keypadEntry(page, ["3", "0", "0"], w, h);
+      await keypadEntry(page, ["7", "0", "0"], w, h); // the site glass reads up as it drains
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "7");
       await fits("page 7");

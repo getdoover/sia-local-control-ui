@@ -18,7 +18,7 @@ import {
 const calc = (over) =>
   computeCalibration({
     startMl: 500,
-    finalMl: 300,
+    finalMl: 700,
     elapsedS: 60,
     targetRate: 12.5,
     oldFactor: 1.0,
@@ -49,7 +49,7 @@ test("worked example: the old factor scales the result (0.90 x 12.5 / 12.0 = 0.9
 });
 
 test("worked example, L/Day: 15 mL in 60 s at 20 L/Day, factor 0.90 -> 0.83", () => {
-  const r = calc({ startMl: 120, finalMl: 105, targetRate: 20, oldFactor: 0.9, rateUnits: "L/Day" });
+  const r = calc({ startMl: 105, finalMl: 120, targetRate: 20, oldFactor: 0.9, rateUnits: "L/Day" });
   // 15 mL / 60 s = 0.25 mL/s = 21.6 L/Day; 0.9 x 20 / 21.6 = 0.8333
   assert.ok(Math.abs(r.measuredRate - 21.6) < 1e-9, r.measuredRate);
   assert.equal(r.newFactor, 0.83);
@@ -57,7 +57,7 @@ test("worked example, L/Day: 15 mL in 60 s at 20 L/Day, factor 0.90 -> 0.83", ()
 
 test("worked example, Gal/Hr: 1 gallon an hour measured at a 1.1 Gal/Hr target -> 1.10", () => {
   const ml = 3785.411784 / 60; // one US gallon per hour, over 60 s
-  const r = calc({ startMl: 100, finalMl: 100 - ml, targetRate: 1.1, rateUnits: "Gal/Hr" });
+  const r = calc({ startMl: 100, finalMl: 100 + ml, targetRate: 1.1, rateUnits: "Gal/Hr" });
   assert.ok(Math.abs(r.measuredRate - 1.0) < 1e-9, r.measuredRate);
   assert.equal(r.newFactor, 1.1);
 });
@@ -80,7 +80,7 @@ test("the factor makes the controller's calculated flow equal the measured flow"
   const duty = target / (nominalMax / oldFactor);
   const measured = duty * trueMax; // L/Hr, what the site glass shows
   const deliveredMl = (measured * 1000 * 60) / 3600;
-  const r = calc({ startMl: 1000, finalMl: 1000 - deliveredMl, targetRate: target, oldFactor });
+  const r = calc({ startMl: 1000, finalMl: 1000 + deliveredMl, targetRate: target, oldFactor });
   // With the unrounded factor the controller's duty for the same target
   // now delivers exactly the target.
   const newDuty = target / (nominalMax / r.rawFactor);
@@ -89,14 +89,14 @@ test("the factor makes the controller's calculated flow equal the measured flow"
 });
 
 test("clamped high to 1.7, with the raw value kept for the note", () => {
-  const r = calc({ finalMl: 450 }); // 50 mL -> 3 L/Hr; 12.5 / 3 = 4.17
+  const r = calc({ finalMl: 550 }); // 50 mL -> 3 L/Hr; 12.5 / 3 = 4.17
   assert.equal(r.newFactor, 1.7);
   assert.equal(r.clamped, "high");
   assert.ok(r.rawFactor > 4);
 });
 
 test("clamped low to 0.3", () => {
-  const r = calc({ startMl: 3000, finalMl: 1000 }); // 2000 mL -> 120 L/Hr; 0.104
+  const r = calc({ startMl: 1000, finalMl: 3000 }); // 2000 mL -> 120 L/Hr; 0.104
   assert.equal(r.newFactor, 0.3);
   assert.equal(r.clamped, "low");
 });
@@ -105,7 +105,7 @@ test("rounded to 2 dp before the clamp, like the controller", () => {
   // raw 1.7049 rounds to 1.70: inside the range, not clamped.
   const measured = 12.5 / 1.7049;
   const ml = (measured * 1000 * 60) / 3600;
-  const r = calc({ startMl: 500, finalMl: 500 - ml });
+  const r = calc({ startMl: 500, finalMl: 500 + ml });
   assert.equal(r.newFactor, 1.7);
   assert.equal(r.clamped, null);
 });
@@ -122,20 +122,20 @@ test("mL over seconds in each rate unit", () => {
   assert.ok(Math.abs(mlOverSecondsToRate(3785.411784, 86400, "Gal/Day") - 1) < 1e-12);
 });
 
-test("start mL must be more than 0", () => {
+test("start mL can be 0 or more (the site glass reads up as it drains)", () => {
   assert.equal(validateStartMl(250), null);
   assert.equal(validateStartMl(0.1), null);
-  assert.match(validateStartMl(0), /more than 0/);
-  assert.match(validateStartMl(-5), /more than 0/);
+  assert.equal(validateStartMl(0), null);
+  assert.match(validateStartMl(-5), /negative/);
   assert.ok(validateStartMl(null));
   assert.ok(validateStartMl(NaN));
 });
 
-test("final mL must be less than the start (and not negative)", () => {
-  assert.equal(validateFinalMl(100, 250), null);
-  assert.equal(validateFinalMl(0, 250), null);
-  assert.match(validateFinalMl(250, 250), /less than the starting 250 mL/);
-  assert.match(validateFinalMl(300, 250), /less than/);
+test("final mL must be more than the start (the site glass reads up as it drains)", () => {
+  assert.equal(validateFinalMl(400, 250), null);
+  assert.equal(validateFinalMl(150, 0), null);
+  assert.match(validateFinalMl(250, 250), /more than the starting 250 mL/);
+  assert.match(validateFinalMl(100, 250), /more than/);
   assert.match(validateFinalMl(-1, 250), /negative/);
   assert.ok(validateFinalMl(null, 250));
 });
@@ -152,7 +152,9 @@ test("test rate within MinRate..MaxRate (as shown, to 2 dp)", () => {
 
 test("computeCalibration refuses impossible inputs", () => {
   assert.equal(calc({ finalMl: 500 }).ok, false);
-  assert.equal(calc({ startMl: 0 }).ok, false);
+  assert.equal(calc({ startMl: -1 }).ok, false);
+  assert.equal(calc({ finalMl: 300 }).ok, false); // below the start: the glass only reads up
+  assert.equal(calc({ startMl: 0, finalMl: 200 }).deliveredMl, 200);
   assert.equal(calc({ elapsedS: 0 }).ok, false);
   assert.equal(calc({ elapsedS: null }).ok, false);
   assert.equal(calc({ targetRate: null }).ok, false);

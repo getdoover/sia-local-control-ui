@@ -67,7 +67,7 @@ async function toRunning(m, opts) {
   m.render(calPayload({ active: true, remaining_s: 60, rate: 12.5, duration_s: 60 }, { state: "pumping", running: true, flow_rate: 12.1 }));
 }
 
-async function toResults(m, { final = "300", elapsed = 60 } = {}) {
+async function toResults(m, { final = "700", elapsed = 60 } = {}) {
   await toRunning(m);
   m.render(calPayload({ active: false, remaining_s: 0, rate: 12.5, duration_s: 60, elapsed_s: elapsed, result: "completed" }));
   m.click("calwiz-field-final");
@@ -202,7 +202,7 @@ test("Back on page 1 and X close the wizard without sending anything", async () 
   assert.deepEqual(m.state.sent, []);
 });
 
-test("validation: start mL must be more than 0 (Confirm disabled until valid)", () => {
+test("validation: start mL entered (0 allowed; Confirm disabled until valid)", () => {
   const m = mountHmi();
   m.render(calPayload());
   m.click("touch-cal");
@@ -212,9 +212,9 @@ test("validation: start mL must be more than 0 (Confirm disabled until valid)", 
   assert.equal(page(m), "2");
   assert.equal(text(m, "calwiz-error"), "Enter the site glass reading in mL");
   m.click("calwiz-field-start");
-  enter(m, "0");
-  assert.ok(!isHidden(m.byId("keypad")));
-  assert.equal(text(m, "keypad-error"), "Must be more than 0 mL");
+  enter(m, "0"); // an empty-looking site glass is a valid starting reading
+  assert.ok(isHidden(m.byId("keypad")));
+  m.click("calwiz-field-start");
   enter(m, "250.5");
   assert.ok(isHidden(m.byId("keypad")));
   assert.ok(!blocked(m, "calwiz-next"));
@@ -331,7 +331,7 @@ test("a fault mid-test shows the fault reason; Close closes", async () => {
   assert.ok(!wizardOpen(m));
 });
 
-test("completed: final mL, which must be less than the start", async () => {
+test("completed: final mL, which must be more than the start", async () => {
   const m = mountHmi();
   m.render(calPayload());
   await toRunning(m);
@@ -342,10 +342,10 @@ test("completed: final mL, which must be less than the start", async () => {
   m.click("calwiz-field-final");
   assert.equal(text(m, "keypad-title"), "Final site glass mL");
   enter(m, "500");
-  assert.equal(text(m, "keypad-error"), "Must be less than the starting 500 mL");
-  enter(m, "600");
-  assert.match(text(m, "keypad-error"), /less than/);
-  enter(m, "300");
+  assert.equal(text(m, "keypad-error"), "Must be more than the starting 500 mL");
+  enter(m, "400");
+  assert.match(text(m, "keypad-error"), /more than/);
+  enter(m, "700");
   assert.ok(!blocked(m, "calwiz-next"));
   // Back from 6 starts over from the starting reading.
   back(m);
@@ -380,7 +380,7 @@ test("results: uses the controller's actual run time", async () => {
 test("results: a clamped factor says so", async () => {
   const m = mountHmi();
   m.render(calPayload());
-  await toResults(m, { final: "450" });
+  await toResults(m, { final: "550" });
   assert.equal(text(m, "calwiz-new-factor"), "1.70");
   assert.match(text(m, "calwiz-clamped"), /outside 0\.3 to 1\.7, so it is limited to 1\.70/);
 });
@@ -456,7 +456,7 @@ test("reload mid-test: reattaches to the running test with the saved inputs", as
   assert.equal(page(again), "6");
   assert.match(text(again, "calwiz-body"), /Start was 500 mL/);
   again.click("calwiz-field-final");
-  enter(again, "300");
+  enter(again, "700");
   next(again);
   assert.equal(text(again, "calwiz-new-factor"), "1.04");
 });
@@ -472,7 +472,7 @@ test("reattach without saved inputs asks for the starting reading too", async ()
   m.click("calwiz-field-start");
   enter(m, "500");
   m.click("calwiz-field-final");
-  enter(m, "300");
+  enter(m, "700");
   next(m);
   assert.equal(text(m, "calwiz-new-factor"), "1.04");
 });
@@ -722,7 +722,7 @@ test("a stale pending state on the shared Next key is cleared on a page change",
   assert.equal(page(m), "6");
   assert.ok(!m.byId("calwiz-next").classList.contains("pending"));
   m.click("calwiz-field-final");
-  enter(m, "300");
+  enter(m, "700");
   next(m); // 6 -> 7
   next(m); // Set calibration factor: must go out
   assert.equal(m.state.sent.at(-1).cmd, "last_calibration_factor");
