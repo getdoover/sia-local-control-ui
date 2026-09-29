@@ -25,6 +25,10 @@
 // Screenshots: SHOTS=<dir> npm run test:layout
 // Popover screenshots: VSD_SHOTS=<dir> npm run test:layout  (vsd-panel-<w>x<h>.png)
 // Wizard screenshots (1024x600): CAL_SHOTS=<dir> npm run test:layout  (calwiz-<page>.png)
+// Alarm settings (alarm_settings_access): the Tank / Skid gears fit their
+// tiles, and each popover (tank L / LL, pressure H / HH) and its keypad fit
+// at every size, with and without the insets. Screenshots:
+// ALARM_SHOTS=<dir> (alarm-tank.png, alarm-pressure.png at 1024x600 inset)
 // Cover-plate insets (kiosk_inset_mm 2 + popover_inset_mm 10) at every size:
 // the whole HMI inside the inset, the VSD popover (with its up / down scroll
 // buttons, no scrollbar), the wizard, keypad and confirmation inside the
@@ -152,6 +156,7 @@ test.before(async () => {
   if (VSD_SHOTS) fs.mkdirSync(VSD_SHOTS, { recursive: true });
   if (CAL_SHOTS) fs.mkdirSync(CAL_SHOTS, { recursive: true });
   if (process.env.INSET_SHOTS) fs.mkdirSync(process.env.INSET_SHOTS, { recursive: true });
+  if (process.env.ALARM_SHOTS) fs.mkdirSync(process.env.ALARM_SHOTS, { recursive: true });
 });
 
 test.after(async () => {
@@ -772,4 +777,148 @@ for (const [w, h] of SIZES) {
       await page.close();
     }
   });
+}
+
+// --- Alarm settings gears and popovers --------------------------------------------
+
+const ALARM_SHOTS = process.env.ALARM_SHOTS;
+
+/** The two gears, their tiles and every other control, for the overlap check. */
+function measureAlarmGears() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const gears = ["tank-gear", "pressure-gear", "vsd-gear"].filter((id) => vis(q(id)));
+  return {
+    gears: Object.fromEntries(
+      ["tank-gear", "pressure-gear"].map((id) => [id, vis(q(id)) ? box(q(id)) : null]),
+    ),
+    tank: box(q("tank-section")),
+    skid: box(q("skid-section")),
+    others: [...document.querySelectorAll(".sia-hmi .dashboard-container button")]
+      .filter((b) => vis(b) && !gears.includes(b.dataset.id))
+      .map((b) => ({ id: b.dataset.id, ...box(b) })),
+  };
+}
+
+function measureAlarmPanel() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const panel = document.querySelector('.sia-hmi [data-id="alarm-panel-box"]');
+  return {
+    open: vis(document.querySelector('.sia-hmi [data-id="alarm-panel"]')),
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    panel: { ...box(panel), sh: panel.scrollHeight, ch: panel.clientHeight, sw: panel.scrollWidth, cw: panel.clientWidth },
+    title: document.querySelector('.sia-hmi [data-id="alarm-panel-title"]').textContent,
+    close: box(document.querySelector('.sia-hmi [data-id="alarm-panel-close"]')),
+    rows: [...panel.querySelectorAll(".alarm-row")].filter(vis).map((r) => ({
+      id: r.dataset.alarm,
+      ...box(r),
+      overflowX: r.scrollWidth - r.clientWidth,
+      value: r.querySelector("[data-alarm-value]").textContent,
+    })),
+  };
+}
+
+const ALARM_Q = `alarms=${encodeURIComponent("Local only")}&punits=kPa&scenario=running`;
+
+for (const [w, h] of SIZES) {
+  for (const [insetName, insetQ, gap] of [["no inset", "", 8], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, POP_PX]]) {
+    test(`${w}x${h} Touch, ${insetName}: alarm settings gears and popovers fit`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      const shoot = ALARM_SHOTS && w === 1024 && h === 600 && insetQ;
+      try {
+        await page.goto(`${base}?host=local&mode=Touch&${ALARM_Q}${insetQ}&commission=${encodeURIComponent("Local only")}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.waitForTimeout(150);
+
+        // The tiles still fit with the gears in.
+        const m = await page.evaluate(measure);
+        assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${m.doc}`);
+        for (const [label, v] of [["content", m.content], ["body", m.body]]) {
+          assert.ok(v[2] <= v[3] + 1, `${label} overflows vertically with the gears: ${v}`);
+        }
+        for (const t of m.tiles) assert.ok(t.bottom <= m.barTop + 0.5, `${t.name} under the bar`);
+
+        // Gears: >= 44 px, top-right of their tiles, clear of other controls.
+        const g = await page.evaluate(measureAlarmGears);
+        const gctx = JSON.stringify(g);
+        for (const [id, tile] of [["tank-gear", g.tank], ["pressure-gear", g.skid]]) {
+          const b = g.gears[id];
+          assert.ok(b, `${id} not shown: ${gctx}`);
+          assert.ok(b.w >= 44 && b.h >= 44, `${id} ${b.w}x${b.h} < 44px`);
+          assert.ok(b.top >= tile.top - 0.5 && b.right <= tile.right + 0.5 && b.left >= tile.left - 0.5, `${id} outside its tile: ${gctx}`);
+          assert.ok(b.right >= tile.right - 20 && b.top <= tile.top + 20, `${id} not top-right: ${gctx}`);
+          for (const o of g.others) {
+            const overlap = b.left < o.right && o.left < b.right && b.top < o.bottom && o.top < b.bottom;
+            assert.ok(!overlap, `${id} overlaps ${o.id}: ${gctx}`);
+          }
+        }
+
+        for (const [gear, title, file] of [
+          ["tank-gear", "Tank Level Alarms", "alarm-tank.png"],
+          ["pressure-gear", "Discharge Pressure Alarms", "alarm-pressure.png"],
+        ]) {
+          await page.click(`.sia-hmi [data-id="${gear}"]`);
+          await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
+          const p = await page.evaluate(measureAlarmPanel);
+          const ctx = `${title}: ${JSON.stringify(p)}`;
+          assert.equal(p.title, title);
+          assert.ok(p.doc[0] <= w && p.doc[1] <= h, `page scrolls with the popover: ${ctx}`);
+          assertInside(p.panel, w, h, gap, title);
+          assert.ok(p.panel.sh <= p.panel.ch + 1 && p.panel.sw <= p.panel.cw + 1, `popover overflows: ${ctx}`);
+          assert.equal(p.rows.length, 2, ctx);
+          for (const r of p.rows) {
+            assert.ok(r.h >= 56, `${r.id} row ${r.h}px < 56`);
+            assert.ok(r.overflowX <= 1, `${r.id} row overflows: ${ctx}`);
+            assert.ok(r.bottom <= p.panel.bottom + 0.5, `${r.id} outside the popover: ${ctx}`);
+            assert.notEqual(r.value, "\u2014", `${r.id} readback missing: ${ctx}`);
+          }
+          assert.ok(p.close.w >= 44 && p.close.h >= 44, "close < 44px");
+          if (shoot) await page.screenshot({ path: path.join(ALARM_SHOTS, file) });
+
+          // The keypad from a row sits above the popover and inside the gap.
+          await page.click(`.sia-hmi [data-alarm="${p.rows[0].id}"]`);
+          await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
+          const k = await page.evaluate(() => {
+            const r = document.querySelector(".sia-hmi .keypad").getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 10);
+            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, onTop: !!hit?.closest(".keypad") };
+          });
+          assert.ok(k.onTop, "keypad above the alarm popover");
+          assertInside(k, w, h, gap, "keypad");
+          await page.click('.sia-hmi [data-id="keypad-cancel"]');
+          await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+          assert.equal(await page.isVisible('.sia-hmi [data-id="alarm-panel"]'), false);
+        }
+
+        // One real edit end to end at the panel size: L 20 -> 25 %.
+        await page.click('.sia-hmi [data-id="tank-gear"]');
+        await page.click('.sia-hmi [data-alarm="low_tank_level"]');
+        await page.click('.sia-hmi [data-key="clear"]');
+        for (const key of ["2", "5"]) await page.click(`.sia-hmi [data-key="${key}"]`);
+        await page.click('.sia-hmi [data-id="keypad-ok"]');
+        const cb = await page.evaluate(() => {
+          const r = document.querySelector(".sia-hmi .confirm-box").getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        });
+        assertInside(cb, w, h, gap, "confirmation");
+        await page.click('.sia-hmi [data-id="confirm-ok"]');
+        await page.waitForFunction(
+          () => document.querySelector('.sia-hmi [data-alarm="low_tank_level"] [data-alarm-value]')?.textContent === "25.0 %",
+        );
+        const sent = await page.evaluate(() => window.__rpcLog.at(-1));
+        assert.equal(sent.method, "low_tank_level");
+        assert.equal(sent.request, 25);
+      } finally {
+        await page.close();
+      }
+    });
+  }
 }

@@ -25,6 +25,7 @@ import { detectHost, hostLabel, resolveActor, type CloudUser } from "./lib/host.
 import { overlayLiveValues } from "./lib/liveTags.ts";
 import { useLiveTags } from "./lib/useLiveTags.ts";
 import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
+import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
 
 /**
  * SIA HMI widget: one bundle for the Doovit's local widget host and the
@@ -46,6 +47,8 @@ import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
  *     the kiosk only);
  *   - the VSD commissioning panel: `vsd_commissioning` "Local only" allows
  *     drive parameter writes from the local host only (lib/vsdPanel.ts);
+ *   - the alarm settings gears: `alarm_settings_access` "Local only" allows
+ *     threshold changes from the local host only (lib/alarmSettings.ts);
  *   - live tags: the cloud claims the tags it renders so they stream in
  *     seconds rather than every 15 minutes; the local host already reads the
  *     device's own state and skips it.
@@ -143,6 +146,11 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.vsdCommissioning, cfg.vsdMotorApp, host.kind],
   );
 
+  const alarmAccess = useMemo(
+    () => alarmSettingsAccess(cfg.alarmSettingsAccess, host.kind),
+    [cfg.alarmSettingsAccess, host.kind],
+  );
+
   const data = useMemo(() => {
     if (tagValues === undefined) return null;
     const live = overlayLiveValues(
@@ -172,8 +180,8 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.kioskInsetMm, cfg.popoverInsetMm, cfg.kioskPxPerMm],
   );
 
-  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display });
-  latest.current = { cfg, actor, agentId, client, vsdAccess, display };
+  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display, alarmAccess });
+  latest.current = { cfg, actor, agentId, client, vsdAccess, display, alarmAccess };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hmiRef = useRef<HmiHandle | null>(null);
@@ -182,7 +190,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     if (!rootRef.current) return;
     const run = async (cmd: string, value: unknown): Promise<Ack> => {
       const now = latest.current;
-      const refused = checkTouchCommand(now.cfg.touchEnabled, cmd, value);
+      const refused = checkTouchCommand(now.cfg.touchEnabled, cmd, value, now.alarmAccess.canWrite);
       if (refused) return refused;
       const key = now.cfg.controllers[0] ?? null;
       const ack = await sendCommand({
@@ -221,6 +229,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     });
     hmiRef.current.setVsdPanel(latest.current.vsdAccess);
     hmiRef.current.setDisplay(latest.current.display);
+    hmiRef.current.setAlarmAccess(latest.current.alarmAccess);
     return () => {
       hmiRef.current?.destroy();
       hmiRef.current = null;
@@ -238,6 +247,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.setDisplay(display);
   }, [display]);
+
+  useEffect(() => {
+    hmiRef.current?.setAlarmAccess(alarmAccess);
+  }, [alarmAccess]);
 
   return <div ref={rootRef} />;
 }

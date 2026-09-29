@@ -38,6 +38,15 @@ import {
   validateStartMl,
   validateTestRate,
 } from "./calibration.js";
+import {
+  ALARM_FIELDS,
+  ALARM_GROUPS,
+  alarmDecimals,
+  alarmRange,
+  alarmValue,
+  formatAlarmValue,
+  validateAlarmValue,
+} from "./alarms.js";
 
 // Success toasts for the on-screen commands.
 export const COMMAND_DONE = {
@@ -218,6 +227,12 @@ export function setNodeText(el, text) {
   if (el.textContent !== t) el.textContent = t;
 }
 
+/** A range limit as the controller holds it (e.g. 758.4 kPa, 100 %). */
+function rangeNum(v) {
+  const n = Number(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
 function escapeHtml(value) {
   return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -304,7 +319,10 @@ function template(opts) {
         </section>
 
         <section class="control-section skid-section hidden" data-id="skid-section">
-          <h2>Skid</h2>
+          <h2 class="section-head"><span>Skid</span>
+            <button type="button" class="icon-btn section-gear hidden" data-id="pressure-gear"
+              aria-label="Discharge pressure alarms" title="Discharge pressure alarms">${GEAR_ICON}</button>
+          </h2>
           <div class="controls-grid">
             <div class="control-card" data-id="skid-flow-card">
               <h3>Flow</h3>
@@ -322,7 +340,10 @@ function template(opts) {
            Tank spans the row when it is alone. -->
       <div class="secondary-controls-row status-row" data-id="status-row">
         <section class="control-section tank-section hidden" data-id="tank-section">
-          <h2>Tank</h2>
+          <h2 class="section-head"><span>Tank</span>
+            <button type="button" class="icon-btn section-gear hidden" data-id="tank-gear"
+              aria-label="Tank level alarms" title="Tank level alarms">${GEAR_ICON}</button>
+          </h2>
           <div class="controls-grid">
             <div class="control-card"><h3>Tank Level</h3>
               <div class="value-display" data-id="tank-level-mm"><span class="value">--</span><span class="unit">mm</span></div>
@@ -415,6 +436,17 @@ function template(opts) {
       <div class="vsd-params" data-id="vsd-params" role="list"></div>
       ${scrollRail("vsd-params")}
     </div>
+  </div>
+</div>
+
+<div data-id="alarm-panel" class="modal-overlay alarm-panel-overlay hidden" role="dialog" aria-modal="true" aria-label="Alarm settings">
+  <div class="alarm-panel" data-id="alarm-panel-box">
+    <div class="vsd-panel-head">
+      <h2 class="vsd-panel-title" data-id="alarm-panel-title">Alarm Settings</h2>
+      <span class="vsd-panel-status alarm-panel-note" data-id="alarm-panel-note"></span>
+      <button type="button" class="icon-btn vsd-panel-close" data-id="alarm-panel-close" aria-label="Close">${CLOSE_ICON}</button>
+    </div>
+    <div class="alarm-rows" data-id="alarm-rows" role="list"></div>
   </div>
 </div>
 
@@ -514,6 +546,10 @@ class Hmi {
     this.vsdDiag = null;
     this.vsdParams = null;
     this.vsdParamState = {};
+    // Alarm settings popovers (gears on the Tank / Skid tiles).
+    this.alarmAccess = { enabled: false, canWrite: false, writeBlockedReason: "" };
+    this.alarmOpen = null; // "tank" | "pressure" while shown
+    this.alarmState = {};
     // 1min Calibration Sequence wizard state while open (null when closed).
     // Invariant: set only while the calwiz popover is on screen; a session
     // without it is stale and is dropped (calwizDropStale).
@@ -599,6 +635,22 @@ class Hmi {
         if (row) this.vsdEditParameter(row.getAttribute("data-param"), row);
       });
     }
+    on("tank-gear", () => this.alarmPanelOpen("tank"));
+    on("pressure-gear", () => this.alarmPanelOpen("pressure"));
+    on("alarm-panel-close", () => this.alarmPanelClose());
+    const alarmOverlay = this.$("alarm-panel");
+    if (alarmOverlay) {
+      alarmOverlay.addEventListener("click", (e) => {
+        if (e.target === alarmOverlay) this.alarmPanelClose();
+      });
+    }
+    const alarmRows = this.$("alarm-rows");
+    if (alarmRows) {
+      alarmRows.addEventListener("click", (e) => {
+        const row = e.target && e.target.closest ? e.target.closest("[data-alarm]") : null;
+        if (row) this.alarmEdit(row.getAttribute("data-alarm"), row);
+      });
+    }
     this.bindScroller("vsd-params");
     this.onKey = (e) => {
       if (e.key !== "Escape") return;
@@ -606,6 +658,7 @@ class Hmi {
       // The wizard on screen takes Escape (and keeps it on page 5, while the
       // pump runs); a stale session never blocks the VSD panel.
       if (this.cal && this.calwizShown()) this.calwizClose();
+      else if (this.alarmOpen) this.alarmPanelClose();
       else if (this.vsdOpen) this.vsdPanelClose();
     };
     this.root.ownerDocument.addEventListener("keydown", this.onKey);
@@ -785,12 +838,12 @@ class Hmi {
   // Always answers (a promise of an ack) and never fails silently: a refused
   // or doubled press says why, and a command with no answer is reported and
   // its button freed after commandTimeoutMs().
-  sendCommand(cmd, value, btn) {
+  sendCommand(cmd, value, btn, { requireTouch = true } = {}) {
     const refuse = (message, level = "error") => {
       this.showToast(message, level);
       return Promise.resolve({ ok: false, code: "REFUSED", message });
     };
-    if (!this.touch) return refuse("On-screen control is off (HMI Control Mode)");
+    if (requireTouch && !this.touch) return refuse("On-screen control is off (HMI Control Mode)");
     if (typeof this.opts.sendCommand !== "function") return refuse("Commands are not available from this screen");
     if (btn && btn.classList.contains("pending")) {
       const since = this.pendingSince.get(btn) || 0;
@@ -894,6 +947,8 @@ class Hmi {
     this.renderSkid(data.skid);
     this.renderSolar(data.solar);
     this.renderTank(data.tank);
+    this.renderAlarmGears();
+    if (this.alarmOpen) this.renderAlarmValues();
     this.renderTouch(data.touch, (data.pumps || [])[0]);
     this.renderCalwizLive();
     this.renderVsd(data.vsd);
@@ -1070,7 +1125,7 @@ class Hmi {
       }
       // Only the touch controls' own keypad / confirmation: a VSD panel edit
       // is governed by VSD Commissioning, not HMI Control Mode.
-      if (this.keypadIsOpen() && this.keypadOpts.owner !== "vsd") this.keypadClose();
+      if (this.keypadIsOpen() && !["vsd", "alarm"].includes(this.keypadOpts.owner)) this.keypadClose();
       if (this.confirmOwner === "touch") this.confirmClose();
       return;
     }
@@ -1735,6 +1790,173 @@ class Hmi {
     this.setText("vsd-trip", trip);
   }
 
+  // -- Alarm settings (gears on the Tank / Skid tiles) --------------------------
+  // alarm_settings_access decides whether the gears show and whether this
+  // host may change a threshold (setAlarmAccess). Values come from the
+  // controller's Setpoint* tags (payload alarm_settings); a change is a
+  // keypad (range-limited), a confirmation (old -> new), then the ui_cmds
+  // RPC named after the controller's element, with the row's pending / saved
+  // / error state. Rows are built once per open and updated in place.
+
+  setAlarmAccess(access) {
+    const was = this.alarmAccess;
+    this.alarmAccess = {
+      enabled: !!(access && access.enabled),
+      canWrite: !!(access && access.canWrite),
+      writeBlockedReason: (access && access.writeBlockedReason) || "",
+    };
+    this.renderAlarmGears();
+    if (this.alarmOpen && was.canWrite !== this.alarmAccess.canWrite) this.buildAlarmRows();
+  }
+
+  alarmAvailable(group) {
+    const a = this.data.alarm_settings;
+    if (!this.alarmAccess.enabled || !a || !a[group]) return false;
+    if (group === "tank") return !!this.data.tank;
+    return !!(this.data.skid && this.data.skid.skid_pressure != null);
+  }
+
+  renderAlarmGears() {
+    for (const [group, id, section] of [["tank", "tank-gear", "tank-section"], ["pressure", "pressure-gear", "skid-section"]]) {
+      const on = this.alarmAvailable(group);
+      this.toggle(this.$(id), on);
+      const sec = this.$(section);
+      if (sec) sec.classList.toggle("has-gear", on);
+      if (!on && this.alarmOpen === group) this.alarmPanelClose();
+    }
+  }
+
+  alarmPanelOpen(group) {
+    if (!this.alarmAvailable(group)) {
+      this.showToast("Alarm settings are not available here", "error");
+      return;
+    }
+    if (this.alarmOpen) this.alarmPanelClose();
+    this.alarmOpen = group;
+    this.alarmState = {};
+    this.setText("alarm-panel-title", ALARM_GROUPS[group].title);
+    this.buildAlarmRows();
+    this.show(this.$("alarm-panel"));
+    const close = this.$("alarm-panel-close");
+    if (close && close.focus) close.focus();
+  }
+
+  alarmPanelClose() {
+    if (!this.alarmOpen) return;
+    this.alarmOpen = null;
+    if (this.keypadIsOpen() && this.keypadOpts.owner === "alarm") this.keypadClose();
+    if (this.confirmOwner === "alarm") this.confirmClose();
+    this.hide(this.$("alarm-panel"));
+  }
+
+  buildAlarmRows() {
+    const list = this.$("alarm-rows");
+    if (!list || !this.alarmOpen) return;
+    const doc = this.root.ownerDocument;
+    const editable = this.alarmAccess.canWrite;
+    this.setText("alarm-panel-note", editable ? "Tap a value to change it" : this.alarmAccess.writeBlockedReason || "View only");
+    const note = this.$("alarm-panel-note");
+    if (note) note.classList.toggle("error", !editable);
+    list.textContent = "";
+    for (const field of ALARM_GROUPS[this.alarmOpen].fields) {
+      const f = ALARM_FIELDS[field];
+      const row = doc.createElement(editable ? "button" : "div");
+      if (editable) row.type = "button";
+      row.className = `alarm-row ${editable ? "editable" : "locked"} alarm-${f.kind.toLowerCase()}`;
+      row.setAttribute("role", "listitem");
+      row.setAttribute("data-alarm", field);
+      row.setAttribute("data-id", `alarm-row-${field}`);
+      row.innerHTML =
+        `<span class="alarm-label">${escapeHtml(f.label)}</span>` +
+        `<span class="alarm-value" data-alarm-value></span>` +
+        `<span class="alarm-meta"><span class="alarm-kind">${f.kind}</span>` +
+        `<span class="alarm-range" data-alarm-range></span></span>` +
+        `<span class="alarm-note" data-alarm-note></span>`;
+      list.appendChild(row);
+    }
+    this.renderAlarmValues();
+  }
+
+  // Per payload while open: text in place (no row is replaced under a tap).
+  renderAlarmValues() {
+    const list = this.$("alarm-rows");
+    if (!list || !this.alarmOpen) return;
+    const settings = this.data.alarm_settings;
+    for (const row of list.querySelectorAll("[data-alarm]")) {
+      const field = row.getAttribute("data-alarm");
+      const r = alarmRange(field, settings);
+      const value = alarmValue(field, settings);
+      setNodeText(row.querySelector("[data-alarm-value]"), formatAlarmValue(field, value, settings, EMPTY_VALUE));
+      const lo = r.offAllowed && r.min === 0 ? r.step : r.min;
+      setNodeText(
+        row.querySelector("[data-alarm-range]"),
+        `${rangeNum(lo)} to ${rangeNum(r.max)} ${r.unit}${r.offAllowed ? " \u00b7 0 = off" : ""}`,
+      );
+      const st = this.alarmState[field] || {};
+      setNodeText(row.querySelector("[data-alarm-note]"), st.note || "");
+      row.classList.toggle("ok", st.state === "ok");
+      row.classList.toggle("error", st.state === "error");
+      row.classList.toggle("off", value === 0);
+    }
+  }
+
+  alarmEdit(field, row) {
+    const f = ALARM_FIELDS[field];
+    if (!f || !this.alarmOpen) return;
+    if (!this.alarmAccess.canWrite) {
+      this.showToast(this.alarmAccess.writeBlockedReason || "Alarm settings are view only here", "error");
+      return;
+    }
+    if (row && row.classList.contains("pending")) {
+      this.showToast("Still waiting for the pump controller to answer");
+      return;
+    }
+    const settings = () => this.data.alarm_settings;
+    const r = alarmRange(field, settings());
+    const dp = alarmDecimals(field, settings());
+    const current = alarmValue(field, settings());
+    const fmt = (v) => formatAlarmValue(field, v, settings(), EMPTY_VALUE);
+    this.keypadOpen({
+      owner: "alarm",
+      title: `${f.label}`,
+      value: current,
+      min: r.offAllowed ? 0 : r.min,
+      max: r.max,
+      rangeText: r.offAllowed
+        ? `0 = off, or up to ${rangeNum(r.max)} ${r.unit}`
+        : `Range ${rangeNum(r.min)} to ${rangeNum(r.max)} ${r.unit} (can't be off)`,
+      decimals: dp,
+      unit: r.unit,
+      validate: (v) => validateAlarmValue(field, v, settings()) || null,
+      onSubmit: (value) => {
+        this.confirmAsk(
+          `Change ${f.label} from ${fmt(current)} \u2192 ${fmt(value)}?`,
+          () => this.alarmWrite(field, value),
+          "alarm",
+        );
+      },
+    });
+  }
+
+  alarmWrite(field, value) {
+    const f = ALARM_FIELDS[field];
+    const row = this.$(`alarm-row-${field}`);
+    const fmt = (v) => formatAlarmValue(field, v, this.data.alarm_settings, EMPTY_VALUE);
+    this.alarmState[field] = { state: "pending", note: "Writing\u2026" };
+    this.renderAlarmValues();
+    return this.sendCommand(field, value, row && row.tagName === "BUTTON" ? row : null, { requireTouch: false }).then((ack) => {
+      if (this.destroyed) return ack;
+      if (ack && ack.ok) {
+        this.alarmState[field] = { state: "ok", note: `Saved \u00b7 ${fmt(value)}` };
+        this.showToast(`${f.label} set to ${fmt(value)}`, "ok");
+      } else {
+        this.alarmState[field] = { state: "error", note: (ack && ack.message) || "Not saved" };
+      }
+      this.renderAlarmValues();
+      return ack;
+    });
+  }
+
   // -- VSD commissioning panel ------------------------------------------------
   // Gear on the VSD tile (only with a VSD AND VSD Commissioning on), a
   // popover with live diagnostics (polled every VSD_POLL_MS while open) and
@@ -2089,6 +2311,7 @@ export function createHmi(root, opts) {
     notify: (message, level) => hmi.showToast(message, level),
     setVsdPanel: (access) => hmi.setVsdPanel(access),
     setDisplay: (display) => hmi.setDisplay(display),
+    setAlarmAccess: (access) => hmi.setAlarmAccess(access),
     destroy: () => hmi.destroy(),
     /** For tests: the underlying instance. */
     _hmi: hmi,

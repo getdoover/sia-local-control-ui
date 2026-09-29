@@ -224,6 +224,35 @@ def test_vsd_commissioning_options_match_the_widget():
     assert {"vsd_motor_app", "vsd_commissioning"} <= _widget_config_keys()
 
 
+def test_alarm_settings_access_options_match_the_widget():
+    """Same three options as VSD commissioning, Hidden (no gears) by default,
+    and the widget reads the key."""
+    from sia_local_control_ui.app_config import ALARM_SETTINGS_ACCESS
+
+    props = SiaLocalControlUiConfig.to_schema()["properties"]
+    assert props["alarm_settings_access"]["enum"] == [
+        "Hidden",
+        "Local only",
+        "Local and cloud",
+    ]
+    assert (
+        props["alarm_settings_access"]["default"]
+        == ALARM_SETTINGS_ACCESS[0]
+        == "Hidden"
+    )
+    assert "alarm_settings_access" in _widget_config_keys()
+    # The four thresholds are the pump controller's "Alarm Settings" element
+    # names, written over ui_cmds like last_calibration_factor.
+    commands = (WIDGET / "src" / "lib" / "commands.ts").read_text()
+    for name in (
+        "low_tank_level",
+        "low_low_tank_level",
+        "high_pressure",
+        "high_high_pressure",
+    ):
+        assert f'"{name}"' in commands
+
+
 def test_vsd_panel_calls_the_techtop_rpc_channel():
     """The panel talks to the Techtop app on pydoover's default RPC channel
     (the Techtop app's RPC_CHANNEL), not on this app's ui_cmds."""

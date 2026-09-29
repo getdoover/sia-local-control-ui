@@ -37,6 +37,10 @@ TANK_NONE = "None"
 # first is the default: no gear.
 VSD_COMMISSIONING = ("Hidden", "Local only", "Local and cloud")
 
+# Alarm settings gears on the widget's Tank / Skid tiles: the same options
+# (widget/src/lib/alarmSettings.ts). Hidden first = the default: no gears.
+ALARM_SETTINGS_ACCESS = VSD_COMMISSIONING
+
 
 class ButtonConfig(config.Object):
     """Nested config describing where one operator pushbutton is wired.
@@ -448,6 +452,24 @@ class SiaLocalControlUiConfig(config.Schema):
             "Hidden: no gear. Local only: diagnostics everywhere the gear shows, "
             "drive parameter changes only from the local panel. Local and cloud: "
             "parameter changes from the local panel and the cloud UI."
+        ),
+    )
+
+    # --- Alarm settings (widget only) -----------------------------------------
+    # Gears on the Tank and Skid (discharge pressure) tiles open the pump
+    # controller's alarm thresholds: tank L / LL and pressure H / HH, read
+    # back from its Setpoint* tags and written to its "Alarm Settings"
+    # elements over ui_cmds. Hidden by default, so existing configs show no
+    # gears. Governed by this setting, not HMI Control Mode.
+    alarm_settings_access = config.Enum(
+        "Alarm Settings Access",
+        choices=list(ALARM_SETTINGS_ACCESS),
+        default=ALARM_SETTINGS_ACCESS[0],
+        description=(
+            "Alarm threshold gears on the HMI widget's Tank and Skid pressure "
+            "tiles (tank L / LL, discharge pressure H / HH). Hidden: no gears. "
+            "Local only: values shown everywhere, changes only from the local "
+            "panel. Local and cloud: changes from the local panel and the cloud UI."
         ),
     )
 

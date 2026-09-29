@@ -740,14 +740,16 @@
 /* The gear sits at the right end of the VSD heading, inside the tile: its
    44px target overhangs only the tile's own padding (4px each way), never
    the Reset VSD button below or the tile above. */
-.sia-hmi .control-section h2.vsd-head {
+.sia-hmi .control-section h2.vsd-head,
+.sia-hmi .control-section h2.section-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
 }
 
-.sia-hmi .vsd-gear {
+.sia-hmi .vsd-gear,
+.sia-hmi .section-gear {
     margin: -4px -4px -4px 0;
     color: var(--hmi-muted);
 }
@@ -1484,3 +1486,90 @@
     .sia-hmi .calwiz-step { display: none; }
     .sia-hmi .calwiz-title { flex: 1 1 auto; }
 }
+
+/* ------------------------------------------------------------------
+   Alarm settings: the gears on the Tank / Skid tiles and their popover
+   (same overlay, head and insets as the VSD panel; two large rows, no
+   scrolling).
+   ------------------------------------------------------------------ */
+.sia-hmi .alarm-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(680px, 100%);
+    max-height: 100%;
+    margin: auto;
+    padding: 12px 14px;
+    background: var(--hmi-panel);
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px var(--hmi-edge), 0 12px 40px #0009;
+    overflow: hidden;
+}
+
+.sia-hmi .alarm-panel-note { color: var(--hmi-muted); text-transform: none; letter-spacing: 0; }
+.sia-hmi .alarm-panel-note.error { color: var(--hmi-amber); }
+
+.sia-hmi .alarm-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+}
+
+.sia-hmi .alarm-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 16px;
+    width: 100%;
+    min-height: 72px;
+    padding: 8px 14px;
+    border: 2px solid #39464f;
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
+    font-size: 1rem;
+    text-align: left;
+}
+
+.sia-hmi .alarm-row.editable {
+    border-color: var(--hmi-edge);
+    box-shadow: inset 3px 0 0 var(--hmi-blue), inset 0 1px 0 #ffffff26, 0 3px 0 #090e11;
+    cursor: pointer;
+}
+
+/* The generic pending ellipsis would become an extra grid cell. */
+.sia-hmi .alarm-row.pending::after { content: none; }
+.sia-hmi .alarm-row.ok { box-shadow: 0 0 0 3px #27ae60; }
+.sia-hmi .alarm-row.error { box-shadow: 0 0 0 3px #e74c3c; }
+
+.sia-hmi .alarm-label { font-size: 1.1rem; font-weight: 700; min-width: 0; }
+.sia-hmi .alarm-value {
+    grid-row: span 2;
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.6rem;
+    font-weight: 700;
+    white-space: nowrap;
+    text-align: right;
+}
+.sia-hmi .alarm-row.off .alarm-value { color: var(--hmi-muted); }
+.sia-hmi .alarm-meta { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.sia-hmi .alarm-kind {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--hmi-amber);
+}
+.sia-hmi .alarm-trip .alarm-kind { color: var(--hmi-red); }
+.sia-hmi .alarm-range { font-size: 0.8rem; font-weight: 600; color: var(--hmi-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sia-hmi .alarm-note {
+    grid-column: 1 / -1;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--hmi-muted);
+}
+.sia-hmi .alarm-note:empty { display: none; }
+.sia-hmi .alarm-row.ok .alarm-note { color: var(--hmi-green); }
+.sia-hmi .alarm-row.error .alarm-note { color: var(--hmi-red); }

@@ -172,6 +172,8 @@ export interface HmiConfig {
   /** Techtop motor controller app the VSD panel calls; null hides the gear. */
   vsdMotorApp: string | null;
   vsdCommissioning: VsdCommissioning;
+  /** Alarm settings gears on the Tank / Skid tiles (same options as VSD). */
+  alarmSettingsAccess: VsdCommissioning;
   /** Local panel only: gap on every side of the whole HMI (cover plate). */
   kioskInsetMm: number;
   /** Local panel only: popover gap from the screen edge, on top of the inset. */
@@ -282,6 +284,7 @@ export function resolveConfig(
     tags,
     vsdMotorApp: asString(c.vsd_motor_app),
     vsdCommissioning: normaliseCommissioning(c.vsd_commissioning),
+    alarmSettingsAccess: normaliseCommissioning(c.alarm_settings_access),
     kioskInsetMm: clampNum(c.kiosk_inset_mm, 0, 0, 30),
     popoverInsetMm: clampNum(c.popover_inset_mm, 0, 0, 40),
     kioskPxPerMm: positiveNum(c.kiosk_px_per_mm, DEFAULT_KIOSK_PX_PER_MM),
@@ -367,6 +370,47 @@ export interface CalibrationData {
   test_run: TestRunData;
 }
 
+/**
+ * The controller's tank / discharge pressure alarm thresholds (0 = off),
+ * for the alarm settings popovers (core/alarms.js). A group is present only
+ * when its sensor app is configured on the HMI.
+ */
+export interface AlarmSettingsData {
+  tank?: { low: number | null; low_low: number | null; ll_required: boolean };
+  pressure?: { high: number | null; high_high: number | null; units: string };
+}
+
+/**
+ * Alarm thresholds from the primary controller's Setpoint* tags, with the
+ * two controller config facts the editor needs: its pressure unit (the
+ * PressureUnits tag, else its pressure_units config) and whether tank LL
+ * may be off (tank_ll_validation_enabled with a tank_app: it may not).
+ */
+export function collectAlarmSettings(
+  get: TagReader,
+  key: string,
+  controllerConfig: unknown,
+  cfg: Pick<HmiConfig, "tankLevelApp" | "pressureSensorApp">,
+): AlarmSettingsData | undefined {
+  const cc = asRecord(controllerConfig);
+  const out: AlarmSettingsData = {};
+  if (cfg.tankLevelApp) {
+    out.tank = {
+      low: optNum(get("SetpointTankL", key)),
+      low_low: optNum(get("SetpointTankLL", key)),
+      ll_required: cc.tank_ll_validation_enabled === true && asString(cc.tank_app) !== null,
+    };
+  }
+  if (cfg.pressureSensorApp) {
+    out.pressure = {
+      high: optNum(get("SetpointPressureH", key)),
+      high_high: optNum(get("SetpointPressureHH", key)),
+      units: asString(get("PressureUnits", key)) ?? asString(cc.pressure_units) ?? DEFAULT_PRESSURE_UNITS,
+    };
+  }
+  return out.tank || out.pressure ? out : undefined;
+}
+
 export interface DashboardData {
   pumps: PumpData[];
   faults: BannerItem[];
@@ -378,6 +422,8 @@ export interface DashboardData {
   vsd?: VsdData;
   touch?: TouchData;
   calibration?: CalibrationData;
+  /** Alarm thresholds read back from the controller (Setpoint* tags). */
+  alarm_settings?: AlarmSettingsData;
   solar?: {
     battery_voltage?: number;
     battery_percentage?: number;
@@ -692,6 +738,12 @@ export function assembleDashboardData(inputs: AssembleInputs): DashboardData {
   }
   if (Object.keys(skid).length) data.skid = skid;
 
+  if (primaryKey !== null) {
+    const applications = asRecord(asRecord(inputs.deploymentConfig).applications);
+    const alarms = collectAlarmSettings(get, primaryKey, applications[primaryKey], cfg);
+    if (alarms) data.alarm_settings = alarms;
+  }
+
   return data;
 }
 
@@ -729,6 +781,11 @@ export function liveTagIds(cfg: HmiConfig): string[] {
     "TestRunDuration_s",
     "TestRunElapsed_s",
     "TestRunResult",
+    // Alarm settings readback.
+    "SetpointTankL",
+    "SetpointTankLL",
+    "SetpointPressureH",
+    "SetpointPressureHH",
   ];
   for (const key of cfg.controllers) {
     for (const tag of controllerTags) ids.push(`${key}.${tag}`);

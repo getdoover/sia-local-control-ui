@@ -26,6 +26,8 @@ export interface HmiHandle {
   notify(message: string, level?: "ok" | "error"): void;
   setVsdPanel(access: VsdPanelAccess): void;
   setDisplay(display: HmiDisplay): void;
+  /** Alarm settings gears / writes (lib/alarmSettings.ts alarmSettingsAccess). */
+  setAlarmAccess(access: { enabled: boolean; canWrite: boolean; writeBlockedReason: string }): void;
   destroy(): void;
 }
 

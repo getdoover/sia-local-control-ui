@@ -40,7 +40,23 @@ export const TOUCH_COMMANDS: readonly string[] = [
   // 1min Calibration Sequence (controller calibration_method "Manual (HMI)").
   "start_test_run",
   "cancel_test_run",
+  // Alarm settings (the controller's "Alarm Settings" ui elements). Governed
+  // by alarm_settings_access, not HMI Control Mode: see checkTouchCommand.
+  "low_tank_level",
+  "low_low_tank_level",
+  "high_pressure",
+  "high_high_pressure",
 ];
+
+/** Threshold writes: numbers, allowed by alarm_settings_access on this host. */
+export const ALARM_SETTING_COMMANDS: readonly string[] = [
+  "low_tank_level",
+  "low_low_tank_level",
+  "high_pressure",
+  "high_high_pressure",
+];
+
+export const ALARM_WRITE_BLOCKED_TEXT = "Alarm settings can't be changed from this screen.";
 
 export interface Ack {
   ok: boolean;
@@ -52,13 +68,22 @@ export interface Ack {
 
 /**
  * Refuse a command unless HMI Control Mode is Touch; validate numeric values.
+ * Alarm settings are the exception: they need `alarmWrite` (alarm settings
+ * access allows changes from this host) instead of Touch.
  * Returns an error ack, or null to allow.
  */
 export function checkTouchCommand(
   touchEnabled: boolean,
   cmd: string,
   value: unknown,
+  alarmWrite = false,
 ): Ack | null {
+  if (ALARM_SETTING_COMMANDS.includes(cmd)) {
+    if (!alarmWrite) return { ok: false, code: "READ_ONLY", message: ALARM_WRITE_BLOCKED_TEXT };
+    const n = optNum(value);
+    if (n === null || n < 0) return { ok: false, code: "INVALID", message: "enter a number" };
+    return null;
+  }
   if (!touchEnabled) {
     return {
       ok: false,
@@ -108,7 +133,7 @@ export function buildRpcRequest(
   actor: RpcActor | undefined,
 ): RpcRequestBody {
   let request: unknown = value;
-  if (cmd === "set_target_rate" || cmd === "last_calibration_factor") {
+  if (cmd === "set_target_rate" || cmd === "last_calibration_factor" || ALARM_SETTING_COMMANDS.includes(cmd)) {
     request = optNum(value);
   }
   if (cmd === "start_test_run") {

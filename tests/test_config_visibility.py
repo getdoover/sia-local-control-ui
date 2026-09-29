@@ -102,7 +102,8 @@ def test_lamp_pins_stay_visible_in_every_mode():
 def test_config_keys_unchanged_from_the_deployed_schema():
     """Same keys as before: the deployed schema plus the new settings, all
     defaulting to the old behaviour (Read Only, dashboard on, tank mm only,
-    no VSD commissioning gear, no cover-plate insets)."""
+    no VSD commissioning gear, no cover-plate insets, no alarm settings
+    gears)."""
     schema = _schema()
     keys = set(schema["properties"]) | set(schema["allOf"][0]["then"]["properties"])
     deployed = set(_kuwait())
@@ -116,6 +117,7 @@ def test_config_keys_unchanged_from_the_deployed_schema():
         "kiosk_inset_mm",
         "popover_inset_mm",
         "kiosk_px_per_mm",
+        "alarm_settings_access",
     }
     assert deployed - keys == set()
 

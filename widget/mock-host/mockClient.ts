@@ -41,6 +41,12 @@ export interface MockOptions {
   kioskInsetMm?: number;
   popoverInsetMm?: number;
   kioskPxPerMm?: number;
+  /** alarm_settings_access ("Hidden" / "Local only" / "Local and cloud"). */
+  alarmAccess?: string;
+  /** The controller's PressureUnits (default psi). */
+  pressureUnits?: string;
+  /** Controller tank_ll_validation_enabled with a tank_app. */
+  tankLlRequired?: boolean;
 }
 
 export const TECHTOP = "techtop_motor_controller_1";
@@ -91,7 +97,11 @@ export function scenarioTags(opts: MockOptions): Json {
       VsdTripDescription: faulted ? "Over current" : null,
       MotorOutputHz: faulted || standby ? 0 : 42.5,
       PumpRpm: faulted || standby ? 0 : 61,
-      PressureUnits: "psi",
+      PressureUnits: opts.pressureUnits ?? "psi",
+      SetpointTankL: 20,
+      SetpointTankLL: 10,
+      SetpointPressureH: 0,
+      SetpointPressureHH: opts.pressureUnits === "kPa" ? 6894.8 : opts.pressureUnits === "bar" ? 68.9 : 1000,
       ...(opts.calibrationMethod ? { CalibrationMethod: opts.calibrationMethod } : {}),
       ...(opts.testRunRemaining != null
         ? {
@@ -133,6 +143,11 @@ export function createMockClient(opts: MockOptions) {
             ...(opts.kioskInsetMm != null ? { kiosk_inset_mm: opts.kioskInsetMm } : {}),
             ...(opts.popoverInsetMm != null ? { popover_inset_mm: opts.popoverInsetMm } : {}),
             ...(opts.kioskPxPerMm != null ? { kiosk_px_per_mm: opts.kioskPxPerMm } : {}),
+            ...(opts.alarmAccess ? { alarm_settings_access: opts.alarmAccess } : {}),
+          },
+          [CTRL]: {
+            pressure_units: opts.pressureUnits ?? "psi",
+            ...(opts.tankLlRequired ? { tank_ll_validation_enabled: true, tank_app: "analog_level_sensor_1" } : {}),
           },
         },
       },
@@ -249,6 +264,23 @@ export function createMockClient(opts: MockOptions) {
       case "cancel_test_run":
         if (tags.TestRunActive) endTest("cancelled", testElapsed ? testElapsed() : 0);
         return { active: false, result: "cancelled" };
+      case "low_tank_level":
+      case "low_low_tank_level":
+      case "high_pressure":
+      case "high_high_pressure": {
+        const v = Number(req.request);
+        if (req.method === "low_low_tank_level" && opts.tankLlRequired && !(v > 0)) {
+          throw rpcError("INVALID", "the low-low tank level must be above 0 while a tank sensor is configured");
+        }
+        const tag = {
+          low_tank_level: "SetpointTankL",
+          low_low_tank_level: "SetpointTankLL",
+          high_pressure: "SetpointPressureH",
+          high_high_pressure: "SetpointPressureHH",
+        }[req.method] as string;
+        patchTags({ [tag]: v });
+        return { [req.method]: v };
+      }
       case "last_calibration_factor":
         aggregates.ui_cmds = {
           data: { [CTRL]: { last_calibration_factor: req.request } },

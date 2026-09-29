@@ -64,7 +64,11 @@ test("touch rejects bad values and unknown commands", () => {
 test("the touch command list is exactly the controller contract", () => {
   assert.deepEqual([...TOUCH_COMMANDS].sort(), [
     "cancel_test_run",
+    "high_high_pressure",
+    "high_pressure",
     "last_calibration_factor",
+    "low_low_tank_level",
+    "low_tank_level",
     "nudge_rate",
     "reset_fault",
     "reset_vsd_fault",

@@ -23,6 +23,9 @@
  *   &inset=2                 kiosk_inset_mm (cover plate)
  *   &popinset=10             popover_inset_mm
  *   &pxmm=5.8                kiosk_px_per_mm
+ *   &alarms=Local only       alarm_settings_access (gears on Tank / Skid)
+ *   &punits=kPa              the controller's PressureUnits (alarm ranges)
+ *   &llreq=1                 controller tank_ll_validation_enabled (LL never off)
  */
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -53,6 +56,9 @@ const opts: MockOptions = {
   kioskInsetMm: q.get("inset") != null ? Number(q.get("inset")) : undefined,
   popoverInsetMm: q.get("popinset") != null ? Number(q.get("popinset")) : undefined,
   kioskPxPerMm: q.get("pxmm") != null ? Number(q.get("pxmm")) : undefined,
+  alarmAccess: q.get("alarms") ?? undefined,
+  pressureUnits: q.get("punits") ?? undefined,
+  tankLlRequired: q.get("llreq") === "1",
 };
 const client = createMockClient(opts);
 const queryClient = new QueryClient();
