@@ -1,6 +1,6 @@
 // Kiosk layout check: every tile fits on ONE screen with no scrolling.
 //
-// Loads the mock host (npm run build:mock) in headless Chromium at the two
+// Loads the mock host (npm run build:mock) in headless Chromium at the three
 // panel sizes and measures, for Read Only and Touch, with and without a VSD,
 // a fault banner, a warning banner and a solar card:
 //   - no vertical or horizontal overflow of the page or the content area;
@@ -31,6 +31,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(here, "..", "mock-host", "dist");
 const SIZES = [
   [800, 480],
+  // The HDMI panel on the Doovit bench (and the Tamboran skids).
+  [1024, 600],
   [1024, 768],
 ];
 const MODES = ["Touch", "Read Only"];
