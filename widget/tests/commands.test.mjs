@@ -222,6 +222,6 @@ test("refusals show the controller's own reason, generically", () => {
   assert.equal(explainRpcError("NOT_TRIPPED", "the VSD is not tripped").message, "Refused: the VSD is not tripped");
   assert.equal(explainRpcError("FAULTED", "pump tripped").message, "Refused: pump tripped");
   assert.equal(explainRpcError("NOT_CLEARABLE", "").message, "Refused by the pump controller (NOT_CLEARABLE).");
-  assert.equal(explainRpcError("TIMEOUT", "").message, "The pump controller did not answer in time.");
+  assert.equal(explainRpcError("TIMEOUT", "").message, "No reply from the pump controller (it did not answer in time).");
   assert.equal(explainRpcError("UNSUPPORTED", "").message, "Commands are not available from this screen.");
 });

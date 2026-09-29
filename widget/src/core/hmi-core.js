@@ -49,6 +49,11 @@ export const COMMAND_DONE = {
 export const RATE_CONFIRM_FRACTION = 0.2;
 const KEYPAD_MAX_CHARS = 8;
 const FEEDBACK_MS = 2500;
+// A command with no answer this long is reported and its button freed (the
+// shell times out first, at the RPC timeout + 2 s; this is the backstop for
+// a host whose RPC never settles, e.g. no gateway connection).
+export const COMMAND_TIMEOUT_MS = 30_000;
+export const NO_REPLY_TEXT = "No reply from the pump controller";
 
 // Pure keypad helpers (unit-tested): next entry text after a key press, and
 // validation of an entry against an inclusive range.
@@ -162,6 +167,18 @@ function stepDp(step) {
 export function formatParameter(p, value = p.value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return EMPTY_VALUE;
   return Number(value).toFixed(stepDp(p.step));
+}
+
+/**
+ * Set an element's text only when it changes. Data updates arrive every
+ * second or so (more often when the host polls); rewriting unchanged text
+ * replaces the text node, and WebKit drops a touch tap whose touchstart node
+ * is replaced before touchend. So an update never touches what it need not.
+ */
+export function setNodeText(el, text) {
+  if (!el) return;
+  const t = String(text);
+  if (el.textContent !== t) el.textContent = t;
 }
 
 function escapeHtml(value) {
@@ -373,7 +390,7 @@ function template(opts) {
     <div class="calwiz-actions">
       <button type="button" class="key key-cancel calwiz-back" data-id="calwiz-back">Back</button>
       <button type="button" class="key calwiz-discard hidden" data-id="calwiz-discard">Discard</button>
-      <button type="button" class="key key-ok calwiz-next" data-id="calwiz-next">Confirm</button>
+      <button type="button" class="key key-ok calwiz-next" data-id="calwiz-next"><span class="btn-label" data-id="calwiz-next-label">Confirm</span></button>
     </div>
   </div>
 </div>
@@ -447,6 +464,7 @@ class Hmi {
     this.keypadPlaceholder = "";
     this.confirmOk = null;
     this.confirmOwner = null;
+    this.pendingSince = new Map();
     this.destroyed = false;
     // VSD commissioning panel (gear on the VSD tile).
     this.vsdAccess = { enabled: false, canWrite: false, writeBlockedReason: "" };
@@ -457,6 +475,8 @@ class Hmi {
     this.vsdParams = null;
     this.vsdParamState = {};
     // 1min Calibration Sequence wizard state while open (null when closed).
+    // Invariant: set only while the calwiz popover is on screen; a session
+    // without it is stale and is dropped (calwizDropStale).
     this.cal = null;
 
     root.classList.add("sia-hmi", this.opts.layout === "kiosk" ? "kiosk" : "embedded");
@@ -541,7 +561,9 @@ class Hmi {
     this.onKey = (e) => {
       if (e.key !== "Escape") return;
       if (this.keypadIsOpen() || this.confirmOk) return;
-      if (this.cal) this.calwizClose();
+      // The wizard on screen takes Escape (and keeps it on page 5, while the
+      // pump runs); a stale session never blocks the VSD panel.
+      if (this.cal && this.calwizShown()) this.calwizClose();
       else if (this.vsdOpen) this.vsdPanelClose();
     };
     this.root.ownerDocument.addEventListener("keydown", this.onKey);
@@ -666,19 +688,46 @@ class Hmi {
   // -- commands ---------------------------------------------------------------
   // One on-screen command with pending / success / error feedback on the
   // control that issued it. Touch mode only.
+  // Always answers (a promise of an ack) and never fails silently: a refused
+  // or doubled press says why, and a command with no answer is reported and
+  // its button freed after commandTimeoutMs().
   sendCommand(cmd, value, btn) {
-    if (!this.touch || typeof this.opts.sendCommand !== "function") return;
-    if (btn && btn.classList.contains("pending")) return;
+    const refuse = (message, level = "error") => {
+      this.showToast(message, level);
+      return Promise.resolve({ ok: false, code: "REFUSED", message });
+    };
+    if (!this.touch) return refuse("On-screen control is off (HMI Control Mode)");
+    if (typeof this.opts.sendCommand !== "function") return refuse("Commands are not available from this screen");
+    if (btn && btn.classList.contains("pending")) {
+      const since = this.pendingSince.get(btn) || 0;
+      if (Date.now() - since < this.commandTimeoutMs()) {
+        return refuse("Still waiting for the pump controller to answer", "");
+      }
+      // A press whose answer never came: free the button and send again.
+    }
     this.setFeedback(btn, "pending");
+    if (btn) this.pendingSince.set(btn, Date.now());
     let result;
     try {
       result = Promise.resolve(this.opts.sendCommand(cmd, value));
     } catch (e) {
       result = Promise.resolve({ ok: false, message: String((e && e.message) || e) });
     }
-    return result
-      .catch((e) => ({ ok: false, message: String((e && e.message) || e) }))
+    let watchdog = null;
+    const noReply = new Promise((resolve) => {
+      watchdog = this.later(
+        () => resolve({ ok: false, code: "TIMEOUT", message: NO_REPLY_TEXT }),
+        this.commandTimeoutMs(),
+      );
+    });
+    return Promise.race([
+      result.catch((e) => ({ ok: false, message: String((e && e.message) || e) })),
+      noReply,
+    ])
       .then((ack) => {
+        clearTimeout(watchdog);
+        this.timers.delete(watchdog);
+        if (btn) this.pendingSince.delete(btn);
         if (this.destroyed) return ack;
         if (ack && ack.ok) {
           this.setFeedback(btn, "ok");
@@ -689,6 +738,13 @@ class Hmi {
         }
         return ack;
       });
+  }
+
+  commandTimeoutMs() {
+    const t = typeof this.opts.commandTimeoutMs === "function"
+      ? this.opts.commandTimeoutMs()
+      : this.opts.commandTimeoutMs;
+    return Number(t) > 0 ? Number(t) : COMMAND_TIMEOUT_MS;
   }
 
   setFeedback(btn, state) {
@@ -769,7 +825,7 @@ class Hmi {
     this.renderFlowRange(pump);
     const st = this.root.querySelector('[data-id="pump-state"] .state-value');
     if (st) {
-      st.textContent = state;
+      setNodeText(st, state);
       st.className = "state-value " + stateClass + (pump.fault ? " error" : "");
     }
   }
@@ -778,9 +834,8 @@ class Hmi {
     const el = this.$("flow-total");
     if (!el) return;
     const v = el.querySelector(".secondary-value");
-    if (v) v.textContent = this.fmt(value, 2);
-    const u = el.querySelector(".secondary-unit");
-    if (u) u.textContent = unit;
+    setNodeText(v, this.fmt(value, 2));
+    setNodeText(el.querySelector(".secondary-unit"), unit);
   }
 
   // "L/Day" -> "L", "Gal/Hr" -> "Gal": strip the time denominator.
@@ -973,9 +1028,14 @@ class Hmi {
     tile.setAttribute("aria-label", "Calibrate (1min Calibration Sequence)");
     this.setText("touch-cal-value", active ? "Testing" : "Calibrate");
     this.setText("touch-cal-caption", `Factor ${factor}`);
-    const hint = active ? "" : faulted ? "Reset fault first" : running ? "Stop pump first" : "";
+    const blocked = active ? "" : this.calwizBlocked();
+    const hint = !blocked ? "" : faulted ? "Reset fault first" : running ? "Stop pump first" : "Waiting for data";
     this.setText("touch-cal-hint", hint);
-    tile.disabled = !active && (faulted || running || !pump);
+    // Looks disabled but still takes the tap, so the operator is told why
+    // (a disabled button would swallow it silently).
+    tile.disabled = false;
+    tile.setAttribute("aria-disabled", blocked ? "true" : "false");
+    tile.classList.toggle("blocked", !!blocked);
   }
 
   // -- 1min Calibration Sequence ------------------------------------------------
@@ -995,15 +1055,52 @@ class Hmi {
     return (this.data.pumps || [])[0] || null;
   }
 
+  /** Why the wizard cannot open now ("" when it can). Shown as a toast. */
+  calwizBlocked() {
+    if (!this.touch) return "Calibration needs HMI Control Mode Touch";
+    if (!this.data.calibration) return "Waiting for pump controller data";
+    const tr = this.calTestRun();
+    if (tr && tr.active) return "";
+    const pump = this.calPump();
+    if (!pump || pump.state === "unknown") return "Waiting for pump controller data";
+    if (pump.fault) return "Reset the fault first";
+    if (pump.running || pump.state === "pumping") return "Stop the pump before calibrating";
+    return "";
+  }
+
+  /** The wizard popover is on screen (shown and still in the page). */
+  calwizShown() {
+    const o = this.$("calwiz");
+    return !!(o && o.isConnected && !o.classList.contains("hidden"));
+  }
+
+  // A session whose popover is not on screen is stale: nothing the operator
+  // can see, finish or close, and it would block every later CALIBRATE tap.
+  // Drop it through the close path; while the controller still runs the
+  // test, keep the saved inputs so the wizard reattaches from its TestRun
+  // tags on page 5 rather than starting over.
+  calwizDropStale() {
+    if (!this.cal || this.calwizShown()) return false;
+    const tr = this.calTestRun();
+    this.calwizClose(true, { keepStore: !!(tr && tr.active) });
+    return true;
+  }
+
   calwizOpen() {
-    if (!this.touch || !this.data.calibration || this.cal) return;
+    if (this.cal) {
+      if (this.calwizShown()) return;
+      this.calwizDropStale();
+    }
+    const blocked = this.calwizBlocked();
+    if (blocked) {
+      this.showToast(blocked, "error");
+      return;
+    }
     const tr = this.calTestRun();
     if (tr && tr.active) {
       this.calwizReattach(tr);
       return;
     }
-    const pump = this.calPump();
-    if (pump && (pump.fault || pump.running || pump.state === "pumping")) return;
     const t = this.data.touch || {};
     this.cal = {
       page: 1,
@@ -1019,8 +1116,19 @@ class Hmi {
       saved: null,
       error: "",
     };
-    this.show(this.$("calwiz"));
-    this.renderCalwiz();
+    this.calwizShow();
+  }
+
+  // Show the popover for the session just set up. A render error must not
+  // leave a session behind with nothing on screen: close it and say so.
+  calwizShow() {
+    try {
+      this.show(this.$("calwiz"));
+      this.renderCalwiz();
+    } catch (e) {
+      this.calwizClose(true);
+      this.showToast(`The calibration wizard could not open: ${(e && e.message) || e}`, "error");
+    }
   }
 
   // A test is running (this panel reloaded, or it was started elsewhere):
@@ -1045,15 +1153,14 @@ class Hmi {
       error: "",
       reattached: true,
     };
-    this.show(this.$("calwiz"));
-    this.renderCalwiz();
+    this.calwizShow();
   }
 
-  calwizClose(force = false) {
+  calwizClose(force = false, { keepStore = false } = {}) {
     if (!this.cal) return;
     if (this.cal.page === 5 && !force) return; // never while the pump runs
     this.cal = null;
-    this.calStore(null);
+    if (!keepStore) this.calStore(null);
     if (this.keypadIsOpen() && this.keypadOpts.owner === "calwiz") this.keypadClose();
     if (this.confirmOwner === "calwiz") this.confirmClose();
     this.hide(this.$("calwiz"));
@@ -1061,6 +1168,13 @@ class Hmi {
 
   calwizGo(page) {
     if (!this.cal) return;
+    // Next is one key for every page: a press still waiting on another page
+    // (Start Test whose ack never came) must not block this page's press.
+    const next = this.$("calwiz-next");
+    if (next && next.classList.contains("pending")) {
+      next.classList.remove("pending");
+      this.pendingSince.delete(next);
+    }
     this.cal.page = page;
     this.cal.error = "";
     this.renderCalwiz();
@@ -1085,7 +1199,11 @@ class Hmi {
 
   calwizNext(btn) {
     const c = this.cal;
-    if (!c) return;
+    if (!c) {
+      // A popover without a session: nothing to confirm; take it away.
+      this.hide(this.$("calwiz"));
+      return;
+    }
     const fail = (msg) => {
       c.error = msg;
       this.setText("calwiz-error", msg);
@@ -1108,8 +1226,22 @@ class Hmi {
         if (err) return fail(err);
         return this.calwizGo(4);
       }
-      case 4:
+      case 4: {
+        const pump = this.calPump();
+        const blocked = !pump || pump.state === "unknown"
+          ? "Waiting for pump controller data"
+          : pump.fault
+            ? "Reset the fault first"
+            : pump.running || pump.state === "pumping"
+              ? "Stop the pump before calibrating"
+              : "";
+        if (blocked) {
+          fail(blocked);
+          this.showToast(blocked, "error");
+          return undefined;
+        }
         return this.calwizStart(btn);
+      }
       case 6: {
         const err = validateStartMl(c.startMl) || validateFinalMl(c.finalMl, c.startMl);
         if (err) return fail(err);
@@ -1146,7 +1278,6 @@ class Hmi {
     const t = this.data.touch || {};
     if (t.calibration_factor != null) c.oldFactor = Number(t.calibration_factor);
     const sent = this.sendCommand("start_test_run", payload, btn);
-    if (!sent) return;
     sent.then((ack) => {
       if (this.cal !== c || c.page !== 4) return;
       if (ack && ack.ok) {
@@ -1166,7 +1297,6 @@ class Hmi {
     if (!c.result || !c.result.ok) return;
     const value = c.result.newFactor;
     const sent = this.sendCommand("last_calibration_factor", value, btn);
-    if (!sent) return;
     sent.then((ack) => {
       if (this.cal !== c) return;
       if (ack && ack.ok) {
@@ -1237,16 +1367,13 @@ class Hmi {
         },
       });
     } else if (act === "cancel") {
-      const sent = this.sendCommand("cancel_test_run", null, el);
-      if (sent) {
-        sent.then((ack) => {
-          if (this.cal === c && c.run && ack && ack.ok) {
-            // The result arrives with the tags; this one is fresh.
-            c.run.seenActive = true;
-            this.renderCalwizLive();
-          }
-        });
-      }
+      this.sendCommand("cancel_test_run", null, el).then((ack) => {
+        if (this.cal === c && c.run && ack && ack.ok) {
+          // The result arrives with the tags; this one is fresh.
+          c.run.seenActive = true;
+          this.renderCalwizLive();
+        }
+      });
     }
   }
 
@@ -1278,6 +1405,9 @@ class Hmi {
       if (this.cal) this.calwizClose(true);
       return;
     }
+    // Self-heal: a session without its popover is dropped here too (and a
+    // running test then reattaches just below).
+    this.calwizDropStale();
     const tr = this.calTestRun();
     if (!this.cal) {
       if (tr.active) this.calwizReattach(tr);
@@ -1458,7 +1588,7 @@ class Hmi {
     this.toggle(discard, c.page === 7 && c.saved == null);
     if (!next) return;
     const labels = { 1: "Confirm", 2: "Confirm", 3: "Confirm", 4: "Start Test", 6: "Confirm", 7: "Set calibration factor", ended: "Close" };
-    next.textContent = c.page === 7 && c.saved != null ? "Close" : labels[c.page] || "Confirm";
+    this.setText("calwiz-next-label", c.page === 7 && c.saved != null ? "Close" : labels[c.page] || "Confirm");
     next.classList.toggle("calwiz-go", c.page === 4 || (c.page === 7 && c.saved == null));
     const pump = this.calPump() || {};
     let disabled = false;
@@ -1466,15 +1596,19 @@ class Hmi {
     if (c.page === 3) disabled = !!validateTestRate(c.rate, pump.min_rate, pump.max_rate);
     if (c.page === 4) disabled = !!(pump.fault || pump.running || pump.state === "pumping");
     if (c.page === 6) disabled = !!(validateStartMl(c.startMl) || validateFinalMl(c.finalMl, c.startMl));
-    next.disabled = disabled;
+    // Looks disabled but takes the tap: calwizNext then says why (the
+    // validation message, or the pump state on Start Test).
+    next.disabled = false;
+    next.setAttribute("aria-disabled", disabled ? "true" : "false");
+    next.classList.toggle("blocked", disabled);
     if (c.page === 4) {
       const note = this.$("calwiz-start-note");
       if (note) {
-        note.textContent = pump.fault
+        setNodeText(note, pump.fault
           ? "The pump is faulted: reset the fault first."
           : pump.running || pump.state === "pumping"
             ? "The pump is running: stop it first."
-            : "The pump will run for 1 minute at the test rate, then stop by itself.";
+            : "The pump will run for 1 minute at the test rate, then stop by itself.");
         note.classList.toggle("calwiz-warn", disabled);
       }
     }
@@ -1496,7 +1630,7 @@ class Hmi {
     this.setText("motor-hz", vsd.motor_hz != null ? this.fmt(vsd.motor_hz, 1) : "--");
     const st = this.root.querySelector('[data-id="vsd-status"] .state-value');
     if (st) {
-      st.textContent = vsd.tripped ? "Tripped" : "OK";
+      setNodeText(st, vsd.tripped ? "Tripped" : "OK");
       st.className = "state-value " + (vsd.tripped ? "vsd-tripped" : "vsd-ok");
     }
     let trip = "";
@@ -1607,7 +1741,7 @@ class Hmi {
       const cell = this.root.querySelector(`[data-diag="${field}"]`);
       if (!cell) continue;
       const n = cell.querySelector(".diag-number");
-      if (n) n.textContent = formatDiagnostic(d, field);
+      setNodeText(n, formatDiagnostic(d, field));
       let tone = "";
       if (field === "comms_ok" && d) tone = d.comms_ok === false ? "bad" : d.comms_ok ? "good" : "";
       if (field === "trip" && d) tone = d.trip_code || d.trip_description ? "bad" : "";
@@ -1620,7 +1754,7 @@ class Hmi {
     if (!text && d) text = d.source === "status" ? "Live \u00b7 basic status (older motor app)" : "Live";
     const status = this.$("vsd-diag-status");
     if (status) {
-      status.textContent = text || "";
+      setNodeText(status, text || "");
       status.classList.toggle("error", isError);
     }
   }
@@ -1636,7 +1770,7 @@ class Hmi {
     const list = this.$("vsd-params");
     if (!list) return;
     const note = this.$("vsd-params-note");
-    if (note) note.textContent = this.vsdAccess.canWrite ? "Tap a value to change it" : this.vsdAccess.writeBlockedReason;
+    setNodeText(note, this.vsdAccess.canWrite ? "Tap a value to change it" : this.vsdAccess.writeBlockedReason);
     const doc = this.root.ownerDocument;
     list.textContent = "";
     if (!this.vsdParams || message) {
@@ -1757,16 +1891,12 @@ class Hmi {
     const c = this.$(id);
     if (!c) return;
     const v = c.querySelector(".value");
-    if (v) v.textContent = value;
-    if (unit !== undefined) {
-      const u = c.querySelector(".unit");
-      if (u) u.textContent = unit;
-    }
+    setNodeText(v, value);
+    if (unit !== undefined) setNodeText(c.querySelector(".unit"), unit);
   }
 
   setText(id, text) {
-    const e = this.$(id);
-    if (e) e.textContent = text;
+    setNodeText(this.$(id), text);
   }
 
   setConnection(connected, linkOk) {
@@ -1774,13 +1904,13 @@ class Hmi {
     if (!e) return;
     if (!connected) {
       e.className = "status-disconnected";
-      e.textContent = "● Disconnected";
+      setNodeText(e, "● Disconnected");
     } else if (linkOk === false) {
       e.className = "status-disconnected status-warning";
-      e.textContent = "● No controller";
+      setNodeText(e, "● No controller");
     } else {
       e.className = "status-connected";
-      e.textContent = "● Connected";
+      setNodeText(e, "● Connected");
     }
   }
 
@@ -1838,10 +1968,13 @@ class Hmi {
  *   hostLabel?: string,          // header badge, e.g. "Local panel"
  *   title?: string,              // header title (default "SIA Remote Command")
  *   logos?: {remoteCommand?, doover?}  // data URIs
+ *   commandTimeoutMs?: number | () => number
+ *                                // no-answer backstop (default 30 s)
  *   vsdPanel?: {diagnostics(), parameters(), write(param, value)}
  *                                // VSD commissioning RPCs (lib/vsdPanel.ts);
  *                                // the gear also needs setVsdPanel(access)
  * }
+
  */
 export function createHmi(root, opts) {
   const hmi = new Hmi(root, opts);

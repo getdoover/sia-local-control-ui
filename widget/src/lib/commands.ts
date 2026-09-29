@@ -161,7 +161,7 @@ export function rpcErrorOf(error: unknown): { code: string; message: string } {
  */
 export function explainRpcError(code: string, message: string): Ack {
   if (code === "TIMEOUT") {
-    return { ok: false, code, message: "The pump controller did not answer in time." };
+    return { ok: false, code, message: "No reply from the pump controller (it did not answer in time)." };
   }
   if (code === "UNSUPPORTED") {
     return { ok: false, code, message: "Commands are not available from this screen." };

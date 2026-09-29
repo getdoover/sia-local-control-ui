@@ -202,6 +202,8 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
       layout: host.kind === "local" ? "kiosk" : "embedded",
       hostLabel: hostLabel(host.kind),
       sendCommand: run,
+      // Backstop only: `run` itself answers by the RPC timeout + 2 s.
+      commandTimeoutMs: () => latest.current.cfg.rpcTimeoutMs + 5_000,
       logos: { remoteCommand: remoteCommandLogo, doover: dooverLogo },
       vsdPanel,
     });

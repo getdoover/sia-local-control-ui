@@ -49,6 +49,14 @@
     font-family: inherit;
 }
 
+/* A tap always lands on the button itself, never on a label or icon inside
+   it. WebKit (the kiosk's WebKitGTK) drops the click when the node under the
+   finger at touchstart is replaced before touchend; with this, the only node
+   a tap can hit is the button, which updates never replace. */
+.sia-hmi button * {
+    pointer-events: none;
+}
+
 /* Kiosk: take the whole panel, whatever padding the host page has. */
 .sia-hmi.kiosk {
     position: fixed;
@@ -1172,6 +1180,9 @@
    above it.
    ------------------------------------------------------------------ */
 .sia-hmi .touch-cal .touch-hint:empty { display: none; }
+/* Blocked (faulted, running, no data): looks disabled, still takes the tap
+   so the operator is told why. */
+.sia-hmi .touch-cal.blocked { opacity: 0.45; filter: saturate(0.3); cursor: not-allowed; }
 .sia-hmi .touch-cal.calibrate { border-color: var(--hmi-blue); }
 .sia-hmi .touch-cal.calibrate .touch-number {
     font-family: inherit;
@@ -1389,6 +1400,9 @@
 .sia-hmi .calwiz-actions .key { flex: 1; font-size: 1.1rem; }
 .sia-hmi .calwiz-actions .key.hidden { display: none; }
 .sia-hmi .calwiz-next.calwiz-go { background: #185c3b; border-color: var(--hmi-green); }
+/* Not ready (entry missing, pump running): looks disabled, still takes the
+   tap so the wizard can say why. */
+.sia-hmi .calwiz-next.blocked { opacity: 0.45; filter: saturate(0.3); box-shadow: none; cursor: not-allowed; }
 .sia-hmi .calwiz-actions .key.pending { opacity: 0.6; }
 
 /* Short screens (800x480, 1024x600): tighter so every page fits. */

@@ -36,6 +36,9 @@ const text = (m, id) => m.byId(id).textContent;
 const next = (m) => m.click("calwiz-next");
 const back = (m) => m.click("calwiz-back");
 const wizardOpen = (m) => !isHidden(m.byId("calwiz"));
+/** Looks disabled (a blocked key still takes the tap, to say why). */
+const blocked = (m, id) => m.byId(id).getAttribute("aria-disabled") === "true" && m.byId(id).classList.contains("blocked");
+const toast = (m) => (isHidden(m.byId("command-toast")) ? "" : m.byId("command-toast").textContent);
 
 /** Enter a value on the open keypad. */
 function enter(m, keys) {
@@ -109,17 +112,25 @@ test("tile: switches back to CAL FACTOR when the method changes", () => {
   assert.equal(text(m, "touch-cal-caption"), "Cal factor");
 });
 
-test("tile: disabled with a hint while faulted or running", () => {
+test("tile: blocked with a hint while faulted or running; a tap says why", () => {
   const m = mountHmi();
   m.render(calPayload({}, { state: "fault", fault: true, fault_reason: "Pressure high-high" }));
-  assert.equal(m.byId("touch-cal").disabled, true);
+  // Not `disabled`: a disabled button would swallow the tap silently.
+  assert.equal(m.byId("touch-cal").disabled, false);
+  assert.ok(blocked(m, "touch-cal"));
   assert.equal(text(m, "touch-cal-hint"), "Reset fault first");
-  m.render(calPayload({}, { state: "pumping", running: true }));
-  assert.equal(m.byId("touch-cal").disabled, true);
-  assert.equal(text(m, "touch-cal-hint"), "Stop pump first");
-  m.byId("touch-cal").disabled = false; // even if clicked, nothing opens
   m.click("touch-cal");
   assert.ok(!wizardOpen(m));
+  assert.equal(toast(m), "Reset the fault first");
+  m.render(calPayload({}, { state: "pumping", running: true }));
+  assert.ok(blocked(m, "touch-cal"));
+  assert.equal(text(m, "touch-cal-hint"), "Stop pump first");
+  m.click("touch-cal");
+  assert.ok(!wizardOpen(m));
+  assert.equal(toast(m), "Stop the pump before calibrating");
+  m.render(calPayload());
+  assert.ok(!blocked(m, "touch-cal"));
+  assert.equal(m.byId("touch-cal").getAttribute("aria-disabled"), "false");
 });
 
 test("tile: no touch bar at all in Read Only, even with Manual (HMI)", () => {
@@ -196,14 +207,17 @@ test("validation: start mL must be more than 0 (Confirm disabled until valid)", 
   m.render(calPayload());
   m.click("touch-cal");
   next(m);
-  assert.equal(m.byId("calwiz-next").disabled, true);
+  assert.ok(blocked(m, "calwiz-next"));
+  next(m); // a tap while blocked stays and says why
+  assert.equal(page(m), "2");
+  assert.equal(text(m, "calwiz-error"), "Enter the site glass reading in mL");
   m.click("calwiz-field-start");
   enter(m, "0");
   assert.ok(!isHidden(m.byId("keypad")));
   assert.equal(text(m, "keypad-error"), "Must be more than 0 mL");
   enter(m, "250.5");
   assert.ok(isHidden(m.byId("keypad")));
-  assert.equal(m.byId("calwiz-next").disabled, false);
+  assert.ok(!blocked(m, "calwiz-next"));
 });
 
 test("validation: the test rate stays within the pump range", () => {
@@ -255,15 +269,24 @@ test("a refused start stays on the summary with the controller's reason", async 
   assert.match(text(m, "calwiz-error"), /stop it before a test run/);
 });
 
-test("Start Test is disabled while the pump runs or is faulted", () => {
+test("Start Test is blocked while the pump runs or is faulted, and a tap says why", async () => {
   const m = mountHmi();
   m.render(calPayload());
   toSummary(m);
   m.render(calPayload({}, { state: "pumping", running: true }));
-  assert.equal(m.byId("calwiz-next").disabled, true);
+  assert.ok(blocked(m, "calwiz-next"));
   assert.match(text(m, "calwiz-start-note"), /stop it first/);
+  next(m);
+  await flush();
+  assert.equal(page(m), "4");
+  assert.deepEqual(m.state.sent, []);
+  assert.equal(text(m, "calwiz-error"), "Stop the pump before calibrating");
+  assert.equal(toast(m), "Stop the pump before calibrating");
+  m.render(calPayload({}, { state: "fault", fault: true }));
+  next(m);
+  assert.equal(text(m, "calwiz-error"), "Reset the fault first");
   m.render(calPayload());
-  assert.equal(m.byId("calwiz-next").disabled, false);
+  assert.ok(!blocked(m, "calwiz-next"));
 });
 
 test("a stale result from an earlier test does not end a new one", async () => {
@@ -315,7 +338,7 @@ test("completed: final mL, which must be less than the start", async () => {
   m.render(calPayload({ active: false, rate: 12.5, duration_s: 60, elapsed_s: 60.0, result: "completed" }));
   assert.equal(page(m), "6");
   assert.match(text(m, "calwiz-body"), /Start was 500 mL\. Test ran 60\.0 s\./);
-  assert.equal(m.byId("calwiz-next").disabled, true);
+  assert.ok(blocked(m, "calwiz-next"));
   m.click("calwiz-field-final");
   assert.equal(text(m, "keypad-title"), "Final site glass mL");
   enter(m, "500");
@@ -323,7 +346,7 @@ test("completed: final mL, which must be less than the start", async () => {
   enter(m, "600");
   assert.match(text(m, "keypad-error"), /less than/);
   enter(m, "300");
-  assert.equal(m.byId("calwiz-next").disabled, false);
+  assert.ok(!blocked(m, "calwiz-next"));
   // Back from 6 starts over from the starting reading.
   back(m);
   assert.equal(page(m), "2");
@@ -473,4 +496,259 @@ test("leaving Touch (or Manual) closes the wizard", () => {
   m.click("touch-cal");
   m.render(LEGACY_PAYLOADS.running);
   assert.ok(!wizardOpen(m));
+});
+
+// --- stale sessions (kiosk field bug: CALIBRATE did nothing until a reload) --------
+
+test("stale session: a wizard state without its popover never blocks CALIBRATE", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  m.click("touch-cal");
+  next(m); // page 2
+  // The popover went away without the close path (the kiosk bug's state).
+  m.byId("calwiz").classList.add("hidden");
+  assert.ok(m.hmi._hmi.cal, "stale state set up");
+  m.click("touch-cal");
+  assert.ok(wizardOpen(m));
+  assert.equal(page(m), "1", "a fresh session, not the stale page 2");
+  assert.equal(m.hmi._hmi.cal.startMl, null);
+});
+
+test("stale session: the next update drops it too (self-heal)", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  m.click("touch-cal");
+  m.byId("calwiz").classList.add("hidden");
+  m.render(calPayload());
+  assert.equal(m.hmi._hmi.cal, null);
+  m.click("touch-cal");
+  assert.ok(wizardOpen(m));
+  assert.equal(page(m), "1");
+});
+
+test("stale page 5: CALIBRATE reattaches to the running test from its tags, with the saved inputs", async () => {
+  const m = mountHmi({ url: URL });
+  m.render(calPayload());
+  await toRunning(m);
+  m.byId("calwiz").classList.add("hidden");
+  // Escape never closes page 5, even when stale.
+  m.document.dispatchEvent(new m.dom.window.KeyboardEvent("keydown", { key: "Escape" }));
+  m.click("touch-cal");
+  assert.ok(wizardOpen(m));
+  assert.equal(page(m), "5", "reattached to the countdown, not page 1");
+  assert.ok(m.hmi._hmi.cal.reattached);
+  m.render(calPayload({ active: false, rate: 12.5, duration_s: 60, elapsed_s: 60, result: "completed" }));
+  assert.equal(page(m), "6");
+  assert.match(text(m, "calwiz-body"), /Start was 500 mL/, "saved inputs kept across the stale drop");
+});
+
+test("stale page 5: an update reattaches the countdown on its own", async () => {
+  const m = mountHmi({ url: URL });
+  m.render(calPayload());
+  await toRunning(m);
+  m.byId("calwiz").classList.add("hidden");
+  m.render(calPayload({ active: true, remaining_s: 25, rate: 12.5, duration_s: 60 }, { state: "pumping", running: true }));
+  assert.ok(wizardOpen(m));
+  assert.equal(page(m), "5");
+  assert.equal(text(m, "calwiz-countdown"), "25");
+});
+
+test("stale page 5 whose test has ended opens a fresh page 1", async () => {
+  const m = mountHmi({ url: URL });
+  m.render(calPayload());
+  await toRunning(m);
+  m.byId("calwiz").classList.add("hidden");
+  // No update in between: the tap itself finds the stale state.
+  m.hmi._hmi.data = calPayload({ active: false, result: "cancelled" });
+  m.click("touch-cal");
+  assert.ok(wizardOpen(m));
+  assert.equal(page(m), "1");
+  assert.equal(m.dom.window.localStorage.getItem(CAL_STORE_KEY), null);
+});
+
+test("blocked CALIBRATE always says why (toast), never silently", () => {
+  const cases = [
+    [calPayload({}, { state: "fault", fault: true }), "Reset the fault first"],
+    [calPayload({}, { state: "pumping", running: true }), "Stop the pump before calibrating"],
+    [calPayload({}, { state: "unknown" }), "Waiting for pump controller data"],
+    [{ ...calPayload(), pumps: [] }, "Waiting for pump controller data"],
+  ];
+  for (const [payload, why] of cases) {
+    const m = mountHmi();
+    m.render(payload);
+    m.click("touch-cal");
+    assert.ok(!wizardOpen(m), why);
+    assert.equal(toast(m), why);
+    assert.ok(m.byId("command-toast").classList.contains("error"));
+  }
+});
+
+test("a wizard that fails to render leaves no session behind and says so", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  const hmi = m.hmi._hmi;
+  const orig = hmi.renderCalwiz;
+  hmi.renderCalwiz = () => {
+    throw new Error("boom");
+  };
+  m.click("touch-cal");
+  hmi.renderCalwiz = orig;
+  assert.equal(hmi.cal, null);
+  assert.ok(!wizardOpen(m));
+  assert.match(toast(m), /could not open: boom/);
+  m.click("touch-cal");
+  assert.ok(wizardOpen(m));
+});
+
+// --- taps on the kiosk (WebKitGTK touch) ------------------------------------------
+
+/**
+ * A touch tap as WebKit delivers it: touchstart on the node under the finger
+ * (the button's label text), then `between()` (a data update arriving
+ * mid-tap), touchend, and the synthesized click only if the touchstart node
+ * is still in the page. WebKit drops the click when that node was replaced,
+ * which is what swallowed Start Test and CALIBRATE on the kiosk.
+ */
+function tap(m, id, between = () => {}) {
+  const el = m.byId(id);
+  const win = m.dom.window;
+  const walker = m.document.createTreeWalker(el, win.NodeFilter.SHOW_TEXT);
+  let label = null;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.textContent.trim()) {
+      label = n;
+      break;
+    }
+  }
+  const under = label || el;
+  const target = under.nodeType === 1 ? under : under.parentElement;
+  target.dispatchEvent(new win.TouchEvent("touchstart", { bubbles: true, cancelable: true }));
+  between();
+  target.dispatchEvent(new win.TouchEvent("touchend", { bubbles: true, cancelable: true }));
+  if (!under.isConnected) return false; // WebKit: no click
+  el.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
+  return true;
+}
+
+test("tap harness: a label replaced mid-tap loses the click (the WebKit behaviour)", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  const clicked = tap(m, "touch-cal", () => {
+    // The old per-update rewrite of the tile's caption and value.
+    for (const id of ["touch-cal-caption", "touch-cal-value"]) {
+      const v = m.byId(id);
+      v.textContent = v.textContent;
+    }
+  });
+  assert.equal(clicked, false);
+  assert.ok(!wizardOpen(m));
+});
+
+test("Start Test: a data update between touchstart and touchend still starts the test", async () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  toSummary(m);
+  const clicked = tap(m, "calwiz-next", () => m.render(calPayload()));
+  assert.ok(clicked, "the label under the finger survived the update");
+  await flush();
+  assert.equal(m.state.sent.at(-1).cmd, "start_test_run");
+  assert.equal(page(m), "5");
+});
+
+test("CALIBRATE: a data update mid-tap still opens the wizard", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  assert.ok(tap(m, "touch-cal", () => m.render(calPayload())));
+  assert.ok(wizardOpen(m));
+});
+
+test("an unchanged update does not touch any button's contents", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  toSummary(m); // page 4 open over the touch bar
+  const changed = [];
+  const obs = new m.dom.window.MutationObserver((records) => {
+    for (const r of records) {
+      const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+      const btn = t && t.closest("button");
+      if (btn) changed.push(btn.getAttribute("data-id") || btn.className);
+    }
+  });
+  obs.observe(m.root, { subtree: true, childList: true, characterData: true });
+  m.render(calPayload());
+  m.render(calPayload());
+  const records = obs.takeRecords();
+  obs.disconnect();
+  for (const r of records) {
+    const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+    const btn = t && t.closest("button");
+    if (btn) changed.push(btn.getAttribute("data-id") || btn.className);
+  }
+  assert.deepEqual(changed, []);
+});
+
+// --- commands never fail silently -------------------------------------------------
+
+test("Start Test with no answer: reported after the timeout, and the key is free again", async () => {
+  const m = mountHmi({ commandTimeoutMs: 30 });
+  m.render(calPayload());
+  m.state.deferAcks = true;
+  toSummary(m);
+  next(m);
+  assert.ok(m.byId("calwiz-next").classList.contains("pending"));
+  // A second press while waiting says so instead of doing nothing.
+  next(m);
+  assert.equal(m.state.sent.length, 1);
+  assert.equal(toast(m), "Still waiting for the pump controller to answer");
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(!m.byId("calwiz-next").classList.contains("pending"));
+  assert.equal(toast(m), "No reply from the pump controller");
+  assert.equal(text(m, "calwiz-error"), "No reply from the pump controller");
+  assert.equal(page(m), "4");
+  next(m);
+  assert.equal(m.state.sent.length, 2, "pressing again sends again");
+  assert.equal(m.state.sent[1].cmd, "start_test_run");
+});
+
+test("a stale pending state on the shared Next key is cleared on a page change", async () => {
+  const m = mountHmi({ url: URL });
+  m.render(calPayload());
+  m.state.deferAcks = true;
+  toSummary(m);
+  next(m); // Start Test, no ack yet
+  // The controller runs the test anyway (tags), then completes it.
+  m.render(calPayload({ active: true, remaining_s: 60, rate: 12.5, duration_s: 60 }, { state: "pumping", running: true }));
+  m.render(calPayload({ active: false, rate: 12.5, duration_s: 60, elapsed_s: 60, result: "completed" }));
+  assert.equal(page(m), "6");
+  assert.ok(!m.byId("calwiz-next").classList.contains("pending"));
+  m.click("calwiz-field-final");
+  enter(m, "300");
+  next(m); // 6 -> 7
+  next(m); // Set calibration factor: must go out
+  assert.equal(m.state.sent.at(-1).cmd, "last_calibration_factor");
+});
+
+test("every refused command shows feedback", async () => {
+  // Read Only: the render core refuses with a toast.
+  const m = mountHmi();
+  m.render(LEGACY_PAYLOADS.running);
+  const ack = await m.hmi._hmi.sendCommand("reset_fault", null, null);
+  assert.equal(ack.ok, false);
+  assert.equal(toast(m), "On-screen control is off (HMI Control Mode)");
+  // No command path injected.
+  const n = mountHmi({ sendCommand: undefined });
+  n.render(calPayload());
+  toSummary(n);
+  next(n);
+  await flush();
+  assert.equal(toast(n), "Commands are not available from this screen");
+  assert.equal(text(n, "calwiz-error"), "Commands are not available from this screen");
+  // A thrown / rejected command path.
+  const t = mountHmi({ sendCommand: () => Promise.reject(new Error("socket closed")) });
+  t.render(calPayload());
+  toSummary(t);
+  next(t);
+  await flush();
+  assert.equal(toast(t), "socket closed");
+  assert.equal(page(t), "4");
 });

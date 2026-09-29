@@ -8,6 +8,8 @@ export interface HmiOptions {
   hostLabel?: string;
   title?: string;
   logos?: { remoteCommand?: string; doover?: string };
+  /** No-answer backstop for on-screen commands (default COMMAND_TIMEOUT_MS). */
+  commandTimeoutMs?: number | (() => number);
   /** VSD commissioning RPCs; the gear also needs `setVsdPanel(access)`. */
   vsdPanel?: VsdPanelApi;
 }
@@ -20,6 +22,9 @@ export interface HmiHandle {
 }
 
 export declare const COMMAND_DONE: Record<string, string>;
+export declare const COMMAND_TIMEOUT_MS: number;
+export declare const NO_REPLY_TEXT: string;
+export declare function setNodeText(el: Element | null, text: string | number): void;
 export declare const CAL_TITLE: string;
 export declare const CAL_STORE_KEY: string;
 export declare const RATE_CONFIRM_FRACTION: number;
