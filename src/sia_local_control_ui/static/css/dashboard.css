@@ -656,3 +656,389 @@ body {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* ------------------------------------------------------------------
+   Controller features (VSD). Every element below is
+   hidden unless the controller publishes the feature.
+   ------------------------------------------------------------------ */
+.drive-line-gap {
+    margin-left: 10px;
+}
+
+.action-btn {
+    flex: 1;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 2px solid #bdc3c7;
+    border-radius: 8px;
+    background: #f8f9fa;
+    color: #2c3e50;
+    font-size: clamp(0.8rem, 1.8vw, 1rem);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.action-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.vsd-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.vsd-status {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.state-value.vsd-ok { background: #27ae60; color: white; }
+.state-value.vsd-tripped { background: #e74c3c; color: white; }
+.state-value.vsd-unknown { background: #95a5a6; color: white; }
+
+.vsd-trip {
+    font-size: clamp(0.7rem, 1.6vw, 0.9rem);
+    color: #c0392b;
+    font-weight: 600;
+}
+
+.vsd-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.command-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    max-width: 80vw;
+    padding: 12px 20px;
+    border-radius: 10px;
+    background: #2c3e50;
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.command-toast.error { background: #c0392b; }
+.command-toast.ok { background: #27ae60; }
+
+/* Read Only / Button modes: the VSD card is status only. */
+.vsd-section.readonly .vsd-actions { display: none; }
+
+/* Per-control command feedback (Touch mode). */
+.pending { opacity: 0.6; cursor: wait; }
+.pending::after { content: " \2026"; }
+.action-btn.ok, .touch-btn.ok { box-shadow: 0 0 0 3px #27ae60; }
+.action-btn.error, .touch-btn.error { box-shadow: 0 0 0 3px #e74c3c; }
+
+/* ------------------------------------------------------------------
+   Touch bar (HMI Control Mode = Touch). Fixed to the bottom so Start,
+   Stop and the rate never need a scroll (1024x768 and 800x480).
+   ------------------------------------------------------------------ */
+.dashboard-container.touch-mode .dashboard-content {
+    padding-bottom: 96px;
+}
+
+.touch-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    background: rgba(44, 62, 80, 0.96);
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.25);
+}
+
+.touch-group {
+    display: flex;
+    gap: 6px;
+    flex: 1 1 auto;
+}
+
+.touch-btn {
+    flex: 1 1 0;
+    min-width: 56px;
+    min-height: 64px;
+    padding: 4px 8px;
+    border: 2px solid #bdc3c7;
+    border-radius: 10px;
+    background: #f8f9fa;
+    color: #2c3e50;
+    font-size: clamp(0.85rem, 2vw, 1.1rem);
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+}
+
+.touch-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.touch-start { background: #27ae60; border-color: #27ae60; color: white; }
+.touch-start:disabled { background: #95a5a6; border-color: #95a5a6; }
+
+/* Stop: always available, visually distinct. */
+.touch-stop {
+    background: #c0392b;
+    border-color: #922b21;
+    color: white;
+    font-size: clamp(1rem, 2.4vw, 1.3rem);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.touch-step {
+    flex: 0 0 64px;
+    font-size: 1.8rem;
+}
+
+.touch-rate-group { flex: 1.4 1 auto; }
+
+.touch-value { flex: 1.6 1 0; }
+
+.touch-caption {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #7f8c8d;
+    text-transform: uppercase;
+}
+
+.touch-number { font-size: clamp(1.05rem, 2.6vw, 1.4rem); }
+
+.touch-hint {
+    font-size: 0.6rem;
+    font-weight: 600;
+}
+
+.touch-reset.attention { border-color: #e74c3c; color: #c0392b; }
+
+/* ------------------------------------------------------------------
+   Keypad popover + confirmation (shared modal overlay).
+   ------------------------------------------------------------------ */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 8px;
+}
+
+.keypad,
+.confirm-box {
+    background: white;
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.keypad {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(420px, 96vw);
+    max-height: 100%;
+}
+
+.keypad-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.keypad-title { font-weight: 700; color: #2c3e50; font-size: 1.1rem; }
+
+.keypad-display {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 8px;
+    min-height: 52px;
+    padding: 6px 12px;
+    border: 2px solid #bdc3c7;
+    border-radius: 10px;
+    background: #f8f9fa;
+}
+
+.keypad-entry { font-size: 2rem; font-weight: 700; color: #2c3e50; }
+.keypad-entry.placeholder { color: #bdc3c7; }
+.keypad-unit { color: #7f8c8d; font-weight: 600; }
+.keypad-range { font-size: 0.85rem; color: #7f8c8d; font-weight: 600; }
+.keypad-error { min-height: 1.1em; font-size: 0.85rem; color: #c0392b; font-weight: 700; }
+
+.keypad-keys {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.key {
+    min-height: 56px;
+    min-width: 56px;
+    border: 2px solid #bdc3c7;
+    border-radius: 10px;
+    background: #f8f9fa;
+    color: #2c3e50;
+    font-size: 1.4rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.key-fn { background: #ecf0f1; }
+.key-zero { grid-column: span 4; }
+
+.keypad-actions,
+.confirm-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.keypad-actions .key,
+.confirm-actions .key { flex: 1; font-size: 1.1rem; }
+
+.key-ok { background: #3498db; border-color: #3498db; color: white; }
+
+.confirm-box { width: min(460px, 96vw); }
+.confirm-message { font-size: 1.15rem; font-weight: 600; color: #2c3e50; margin-bottom: 14px; }
+
+/* Short screens (800x480): keypad side by side so it fits without scroll. */
+@media (max-height: 560px) {
+    .keypad {
+        flex-direction: row;
+        width: min(640px, 98vw);
+    }
+    .keypad-info { flex: 1; justify-content: space-between; }
+    .keypad-keys { flex: 1.2; }
+    .key { min-height: 56px; }
+    .dashboard-container.touch-mode .dashboard-content { padding-bottom: 88px; }
+}
+
+/* ======================================================================
+   One-screen layout when a VSD is configured (.has-vsd, set by
+   dashboard.js renderVsd). Tank and VSD share one row, and everything
+   (header, banners, pump control, Tank + VSD, Touch bar) fits 800x480 and
+   1024x768 with no scrolling. Every rule is scoped to .has-vsd, so a skid
+   without a VSD keeps the legacy layout exactly.
+   ====================================================================== */
+.dashboard-container.has-vsd {
+    padding: clamp(4px, 1vh, 10px) clamp(6px, 1vw, 12px);
+}
+
+.dashboard-container.has-vsd .dashboard-header {
+    padding: clamp(6px, 1.2vh, 12px) clamp(10px, 1.5vw, 18px);
+    margin-bottom: clamp(4px, 1vh, 8px);
+}
+
+.dashboard-container.has-vsd .dashboard-header h1 {
+    font-size: clamp(1.1rem, 4.2vh, 1.7rem);
+}
+
+.dashboard-container.has-vsd .header-info { gap: 2px; }
+.dashboard-container.has-vsd .header-info .timestamp { font-size: 0.8rem; }
+
+.dashboard-container.has-vsd .fault-banner,
+.dashboard-container.has-vsd .warning-banner {
+    padding: clamp(4px, 0.8vh, 8px) clamp(10px, 1.5vw, 16px);
+    margin-bottom: clamp(4px, 1vh, 8px);
+    gap: 8px;
+}
+
+.dashboard-container.has-vsd .fault-banner-title,
+.dashboard-container.has-vsd .warning-banner-title,
+.dashboard-container.has-vsd .fault-banner-list,
+.dashboard-container.has-vsd .warning-banner-list {
+    font-size: clamp(0.85rem, 2.6vh, 1.1rem);
+}
+
+.dashboard-container.has-vsd .fault-banner-icon,
+.dashboard-container.has-vsd .warning-banner-icon {
+    font-size: clamp(1rem, 3vh, 1.4rem);
+}
+
+.dashboard-container.has-vsd .dashboard-content {
+    gap: clamp(4px, 1vh, 10px);
+    padding-bottom: 0;
+}
+
+.dashboard-container.has-vsd.touch-mode .dashboard-content {
+    /* room for the fixed Touch bar (72px) */
+    padding-bottom: 76px;
+}
+
+.dashboard-container.has-vsd .control-section {
+    padding: clamp(6px, 1.2vh, 14px) clamp(8px, 1.2vw, 14px);
+}
+
+.dashboard-container.has-vsd .control-section h2 {
+    font-size: clamp(0.9rem, 2.8vh, 1.2rem);
+    margin-bottom: clamp(3px, 0.8vh, 8px);
+    padding-bottom: clamp(2px, 0.5vh, 5px);
+}
+
+.dashboard-container.has-vsd .controls-grid { gap: clamp(4px, 0.8vw, 10px); }
+
+.dashboard-container.has-vsd .control-card {
+    padding: clamp(4px, 1vh, 12px) clamp(6px, 1vw, 12px);
+}
+
+.dashboard-container.has-vsd .control-card h3 {
+    font-size: clamp(0.7rem, 2.2vh, 0.9rem);
+    margin-bottom: clamp(2px, 0.6vh, 8px);
+}
+
+.dashboard-container.has-vsd .value { font-size: clamp(1.05rem, 4.2vh, 1.7rem); }
+.dashboard-container.has-vsd .value-display { gap: 0; }
+.dashboard-container.has-vsd .state-display { margin-bottom: clamp(2px, 0.6vh, 8px); }
+.dashboard-container.has-vsd .secondary-line { margin-top: clamp(2px, 0.5vh, 6px); padding-top: clamp(2px, 0.5vh, 6px); }
+.dashboard-container.has-vsd .flow-range { margin-top: clamp(4px, 0.8vh, 10px); }
+.dashboard-container.has-vsd .progress-bar { margin-top: clamp(4px, 0.8vh, 10px); }
+
+/* Tank + VSD on one row: Tank compressed, VSD to its right. */
+.dashboard-container.has-vsd .secondary-controls-row {
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: clamp(6px, 1vw, 10px);
+}
+
+.dashboard-container.has-vsd .secondary-controls-row > .control-section {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.dashboard-container.has-vsd .secondary-controls-row > .tank-section { flex: 1.1 1 0; }
+.dashboard-container.has-vsd .secondary-controls-row > .vsd-section { flex: 1 1 0; }
+.dashboard-container.has-vsd .secondary-controls-row > .solar-section { flex: 1.6 1 0; }
+
+.dashboard-container.has-vsd .vsd-body { gap: 8px; }
+
+/* Touch target >= 56px for Reset VSD (the legacy .action-btn is 44px). */
+.dashboard-container.has-vsd .action-btn {
+    min-height: 56px;
+    min-width: 96px;
+}
+
+/* Touch bar: 56px targets, a slimmer bar so the page fits 480px high. */
+.dashboard-container.has-vsd ~ .touch-bar {
+    padding: 6px 8px;
+    gap: 8px;
+}
+
+.dashboard-container.has-vsd ~ .touch-bar .touch-btn {
+    min-height: 60px;
+}

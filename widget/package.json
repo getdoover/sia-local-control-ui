@@ -1,0 +1,37 @@
+{
+  "name": "sia-local-control-ui-widget",
+  "version": "0.1.0",
+  "description": "SIA HMI remote component shipped by the sia_local_control_ui app: one widget for the Doovit local widget host and the Doover cloud UI.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "build": "rsbuild build",
+    "build:mock": "rsbuild build -c rsbuild.mock.config.ts",
+    "watch": "rsbuild build --watch --mode development",
+    "serve": "serve -s assets/ -l 8003",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/*.test.mjs",
+    "test:layout": "npm run build:mock && node --test layout/layout.check.mjs layout/commands.check.mjs"
+  },
+  "author": "Doover Team",
+  "license": "ISC",
+  "dependencies": {
+    "@module-federation/enhanced": "^0.21.6",
+    "@module-federation/rsbuild-plugin": "^0.21.6",
+    "@rsbuild/core": "^1.6.14",
+    "@rsbuild/plugin-react": "^1.4.2",
+    "@tanstack/react-query": "~5.90.2",
+    "doover-js": "^0.6.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router": "^7.7.0",
+    "serve": "^14.2.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "jsdom": "^26.1.0",
+    "playwright": "^1.57.0",
+    "typescript": "^5.9.2"
+  }
+}

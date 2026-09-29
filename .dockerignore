@@ -1,1 +1,4 @@
 .venv
+# The widget is published separately (doover app publish uploads it); the
+# device container never needs its sources or node_modules.
+widget/

@@ -25,6 +25,55 @@ _BUTTON_COMMANDS = {
     "flow_down": ("nudge_rate", "-1"),
 }
 
+# --- Controller Modbus Rev 0.4 tags (controller CONTRACT.md) ----------------
+# Every one of these is optional. An older controller never publishes them and
+# a newer one with the features switched off publishes inert defaults, so each
+# feature below is detected from a value that only a configured controller can
+# produce. With none of them the HMI renders and behaves exactly as before.
+# Only ever set when the controller has a motor_controller_app (a VSD).
+_VSD_FLAG_TAGS = (
+    "TripVsd",
+    "TripVsdComms",
+    "TripVsdNoStart",
+    "TripVsdStoppedExt",
+    "WarnVsdOverload",
+    "WarnVsdNotReady",
+    "WarnVsdNoModbusControl",
+)
+# Fallback fault text from the per-cause bits, used only when the controller
+# raises Fault without a FaultReason (it normally sends the same text).
+_TRIP_TEXT = (
+    ("TripVsdComms", "VSD communications lost"),
+    ("TripVsdNoStart", "VSD did not start"),
+    ("TripVsdStoppedExt", "VSD stopped externally"),
+    ("TripVsd", "VSD trip"),
+)
+# RPC error codes answered by the new controller features. Only these get an
+# operator-facing rewrite and a touchscreen notice; every other code is passed
+# through untouched, as before.
+_NOTICE_CODES = ("REMOTE_DENIED", "UNAVAILABLE", "NOT_TRIPPED", "STILL_TRIPPED")
+
+# On-screen (Touch mode) commands: the controller's RPC / UI element names.
+# ``last_calibration_factor`` has no custom handler on the controller; the
+# element's default handler stores the value, so the HMI enforces its range.
+_TOUCH_COMMANDS = frozenset(
+    {
+        "set_pump_state",
+        "set_target_rate",
+        "nudge_rate",
+        "reset_fault",
+        "reset_vsd_fault",
+        "last_calibration_factor",
+    }
+)
+# The controller's last_calibration_factor FloatInput range (app_ui.py).
+CAL_FACTOR_MIN = 0.3
+CAL_FACTOR_MAX = 1.7
+
+# Loop period when there is nothing to refresh: no dashboard, no lamps. The
+# physical buttons are pulse callbacks and do not need the loop at all.
+IDLE_LOOP_PERIOD = 60.0
+
 
 class SiaLocalControlUiApplication(Application):
     config: SiaLocalControlUiConfig
@@ -36,26 +85,78 @@ class SiaLocalControlUiApplication(Application):
     # Lifecycle
     # ------------------------------------------------------------------
     async def setup(self):
+        """The container's two jobs, each only when configured.
+
+        (a) Physical pushbuttons + RUN/TRIP lamps: active whenever configured,
+            in every HMI Control Mode.
+        (b) The legacy Flask dashboard on :8091, only while
+            ``local_dashboard_enabled`` (default on, so existing kiosks see
+            no change). The screen itself is the widget (widget/).
+
+        With neither, the app idles: no web server, no tag reads, one loop
+        pass a minute.
+        """
         self.started: float = time.time()
-        # Buttons are event-driven, so the loop only paces the display refresh.
-        self.loop_target_period = float(self.config.display_refresh_period.value or 0.5)
 
         # Reference to the running event loop so the Flask/SocketIO thread can
         # marshal operator commands back onto the async side.
         self._loop = asyncio.get_running_loop()
 
-        # Dashboard (Flask + SocketIO) in its own daemon thread.
-        self.dashboard = SiaDashboard(
-            host="0.0.0.0",
-            port=int(self.config.dashboard_port.value or 8091),
-            secret_key=str(
-                self.config.dashboard_secret_key.value or "sia_local_control_ui"
-            ),
-            command_handler=self._run_command_sync,
-        )
-        self.dashboard_interface = DashboardInterface(self.dashboard)
-        self.dashboard_interface.start_dashboard()
+        # Legacy dashboard (Flask + SocketIO) in its own daemon thread. FROZEN:
+        # kept for kiosks pointed at :8091; new screen features go in the widget.
+        self.dashboard = None
+        self.dashboard_interface = None
+        if self.config.dashboard_enabled:
+            self.dashboard = SiaDashboard(
+                host="0.0.0.0",
+                port=int(self.config.dashboard_port.value or 8091),
+                secret_key=str(
+                    self.config.dashboard_secret_key.value or "sia_local_control_ui"
+                ),
+                command_handler=self._run_command_sync,
+            )
+            self.dashboard_interface = DashboardInterface(self.dashboard)
+            self.dashboard_interface.start_dashboard()
+            log.info(
+                "Legacy dashboard started on port %s", self.config.dashboard_port.value
+            )
+        else:
+            log.info("Legacy dashboard disabled (local_dashboard_enabled = false)")
 
+        # Physical operator pushbuttons: always registered from their saved
+        # config, whatever the HMI Control Mode (it governs the screen only)
+        # and whether or not the dashboard runs.
+        await self._setup_buttons()
+
+        # Buttons are event-driven, so the loop only paces the display refresh
+        # and the lamps; with neither there is nothing to do but idle.
+        if self.dashboard is not None or self.config.lamp_pins:
+            self.loop_target_period = float(
+                self.config.display_refresh_period.value or 0.5
+            )
+        else:
+            self.loop_target_period = IDLE_LOOP_PERIOD
+            log.info(
+                "No dashboard and no lamps configured: idling (%d button listener(s)).",
+                len(self._pulse_counters),
+            )
+
+        # DO cache for the RUN / TRIP lamps -- write only on change.
+        self._lamp_cache: dict[int, bool] = {}
+
+        # Guard so a held button / slow controller can't stack RPC calls.
+        self._cmd_in_flight = False
+
+        # Latched state for the low-battery warning (see _battery_warnings).
+        self._low_battery_active: dict[str, bool] = {}
+
+        if self.config.primary_controller_key is None:
+            log.warning(
+                "No pump controllers configured -- the HMI will display nothing "
+                "and operator commands have no target."
+            )
+
+    async def _setup_buttons(self):
         # Physical operator pushbuttons -> event-driven platform pulse
         # listeners. DI buttons stream hardware IRQ pulses; AI buttons use the
         # platform's voltage-threshold ("VI+<volts>") events. No polling.
@@ -88,24 +189,9 @@ class SiaLocalControlUiApplication(Application):
             )
             log.info("Button %s -> pulse listener on pin %s (edge=%s)", name, pin, edge)
 
-        # DO cache for the RUN / TRIP lamps -- write only on change.
-        self._lamp_cache: dict[int, bool] = {}
-
-        # Guard so a held button / slow controller can't stack RPC calls.
-        self._cmd_in_flight = False
-
-        # Latched state for the low-battery warning (see _battery_warnings).
-        self._low_battery_active: dict[str, bool] = {}
-
-        if self.config.primary_controller_key is None:
-            log.warning(
-                "No pump controllers configured -- the HMI will display nothing "
-                "and operator commands have no target."
-            )
-
-        log.info("Dashboard started on port %s", self.config.dashboard_port.value)
-
     async def on_shutdown_at(self, dt: datetime) -> None:
+        if getattr(self, "dashboard_interface", None) is None:
+            return
         log.info("Shutdown scheduled at %s -- stopping dashboard server.", dt)
         try:
             self.dashboard_interface.stop_dashboard()
@@ -147,18 +233,74 @@ class SiaLocalControlUiApplication(Application):
             return {"ok": True, "result": result or {}}
         except RPCError as e:
             log.info("RPC %s(%r) -> %s: %s", cmd, value, e.code, e.message)
+            if e.code in _NOTICE_CODES:
+                return self._explain_rpc_error(cmd, value, e.code, e.message, key)
             return {"ok": False, "code": e.code, "message": e.message}
         except Exception as e:
             log.warning("RPC %s(%r) failed: %s", cmd, value, e)
             return {"ok": False, "code": "ERROR", "message": str(e)}
 
+    def _explain_rpc_error(self, cmd, value, code, message, key) -> dict:
+        """Operator text for the errors the new controller features answer.
+
+        Control priority (local HMI > DCS > cloud) is fixed by the controller
+        and its config, not the HMI, so a denial shows the controller's own
+        reason text. Stop and both resets are never denied.
+        """
+        text = message
+        if code == "REMOTE_DENIED":
+            text = f"Command refused by the pump controller: {message}"
+        elif code == "UNAVAILABLE" and cmd == "reset_vsd_fault":
+            text = f"VSD reset unavailable: {message}"
+        elif code == "NOT_TRIPPED":
+            text = "The VSD is not tripped. Use Reset Fault to clear the pump fault."
+        elif code == "STILL_TRIPPED":
+            text = f"VSD still tripped after reset. Check the drive. ({message})"
+        return {"ok": False, "code": code, "message": text, "detail": message}
+
+    def _check_touch_command(self, cmd: str, value) -> dict | None:
+        """Refuse on-screen commands unless HMI Control Mode is Touch.
+
+        Only the touchscreen comes through here; physical buttons dispatch
+        directly and are never gated. Returns an error dict, or None to allow.
+        """
+        if not self.config.touch_enabled:
+            return {
+                "ok": False,
+                "code": "READ_ONLY",
+                "message": "On-screen control is off (HMI Control Mode).",
+            }
+        if cmd not in _TOUCH_COMMANDS:
+            return {"ok": False, "code": "INVALID", "message": f"unknown command {cmd}"}
+        if cmd in ("set_target_rate", "last_calibration_factor"):
+            number = _opt_num(value)
+            if number is None or number != number:
+                return {"ok": False, "code": "INVALID", "message": "enter a number"}
+            if cmd == "last_calibration_factor" and not (
+                CAL_FACTOR_MIN <= number <= CAL_FACTOR_MAX
+            ):
+                return {
+                    "ok": False,
+                    "code": "INVALID",
+                    "message": (
+                        f"Calibration factor must be {CAL_FACTOR_MIN} to "
+                        f"{CAL_FACTOR_MAX}."
+                    ),
+                }
+        return None
+
     def _run_command_sync(self, cmd: str, value) -> dict:
-        """Blocking entry point for the Flask/SocketIO thread.
+        """Blocking entry point for the Flask/SocketIO thread (touchscreen).
 
         Marshals the coroutine onto the app's event loop and blocks the socket
         handler until the controller has physically acted (or errored), so the
         touchscreen can show a spinner then a success/error toast.
         """
+        refused = self._check_touch_command(cmd, value)
+        if refused is not None:
+            return refused
+        if cmd in ("set_target_rate", "last_calibration_factor"):
+            value = float(value)
         loop = getattr(self, "_loop", None)
         if loop is None or not loop.is_running():
             return {
@@ -182,8 +324,21 @@ class SiaLocalControlUiApplication(Application):
     # Main loop
     # ------------------------------------------------------------------
     async def main_loop(self):
-        update = await self._collect_dashboard_data()
-        self.dashboard.update_data(update)
+        if self.dashboard is not None:
+            update = await self._collect_dashboard_data()
+            self.dashboard.update_data(update)
+        elif self.config.lamp_pins:
+            await self._drive_lamps()
+        # else: idle -- buttons are pulse callbacks and need no loop.
+
+    async def _drive_lamps(self):
+        """Lamps only (no dashboard): the primary's Running / Fault, nothing else."""
+        cfg = self.config
+        key = cfg.primary_controller_key
+        running = bool(self.get_tag(cfg.tag_running.value, key)) if key else False
+        fault = bool(self.get_tag(cfg.tag_fault.value, key)) if key else False
+        await self._drive_lamp(cfg.run_lamp_pin.value, running)
+        await self._drive_lamp(cfg.trip_lamp_pin.value, fault)
 
     # ------------------------------------------------------------------
     # Physical buttons
@@ -203,22 +358,44 @@ class SiaLocalControlUiApplication(Application):
             return
 
         cmd, value = _BUTTON_COMMANDS[name]
-        # Start doubles as fault-reset when the pump is tripped.
+        # Start doubles as fault-reset when the pump is tripped. With the drive
+        # itself tripped the VSD reset comes first (two-step reset, REQ-004):
+        # the next press then clears the pump fault. Neither starts the pump.
         if name == "start" and self._primary_fault():
-            cmd, value = "reset_fault", None
+            if self._primary_vsd_tripped():
+                cmd, value = "reset_vsd_fault", None
+            else:
+                cmd, value = "reset_fault", None
 
         log.info("Operator button %s -> %s(%r)", name, cmd, value)
         self._cmd_in_flight = True
         try:
-            await self._dispatch_command(cmd, value)
+            result = await self._dispatch_command(cmd, value)
         finally:
             self._cmd_in_flight = False
+        # Physical presses have no screen of their own: surface the new
+        # feature errors (e.g. a denial) on the legacy touchscreen, when it runs.
+        dashboard = getattr(self, "dashboard", None)
+        if (
+            dashboard is not None
+            and not result.get("ok")
+            and result.get("code") in _NOTICE_CODES
+        ):
+            dashboard.notify(result["message"], level="error")
 
     def _primary_fault(self) -> bool:
         key = self.config.primary_controller_key
         if key is None:
             return False
         return bool(self.get_tag(self.config.tag_fault.value, key))
+
+    def _primary_vsd_tripped(self) -> bool:
+        key = self.config.primary_controller_key
+        if key is None:
+            return False
+        return _vsd_tripped(
+            self.get_tag("VsdTripCode", key), self.get_tag("VsdTripDescription", key)
+        )
 
     # ------------------------------------------------------------------
     # Status readouts + lamps
@@ -256,7 +433,10 @@ class SiaLocalControlUiApplication(Application):
             pumps.append(pump)
             if fault:
                 active_faults.append(
-                    {"pump": pump["name"], "reason": reason or "Pump tripped"}
+                    {
+                        "pump": pump["name"],
+                        "reason": reason or self._trip_text(key) or "Pump tripped",
+                    }
                 )
             if warning:
                 active_warnings.append(
@@ -298,9 +478,24 @@ class SiaLocalControlUiApplication(Application):
             "link_ok": link_ok,
             "units": {
                 "rate": cfg.rate_units.value or "L/Hr",
-                "pressure": cfg.pressure_units.value or "psi",
+                "pressure": self._pressure_units(),
             },
         }
+
+        # New controller features: each key is present only when detected.
+        if primary is not None:
+            vsd = self._collect_vsd(cfg.primary_controller_key)
+            if vsd:
+                data["vsd"] = vsd
+            # On-screen controls (HMI Control Mode = Touch only).
+            if cfg.touch_enabled:
+                data["touch"] = {
+                    "calibration_factor": _opt_num(
+                        self.get_tag("CorrectionFactor", cfg.primary_controller_key)
+                    ),
+                    "calibration_min": CAL_FACTOR_MIN,
+                    "calibration_max": CAL_FACTOR_MAX,
+                }
 
         if solar is not None:
             data["solar"] = solar
@@ -313,6 +508,73 @@ class SiaLocalControlUiApplication(Application):
         if cfg.selector_enabled:
             data["selector"] = {"state": await self._read_selector()}
         return data
+
+    # ------------------------------------------------------------------
+    # New controller features (feature-detected; see _VSD_FLAG_TAGS)
+    # ------------------------------------------------------------------
+    def _vsd_seen(self) -> set:
+        seen = getattr(self, "_vsd_seen_keys", None)
+        if seen is None:
+            seen = self._vsd_seen_keys = set()
+        return seen
+
+    def _collect_vsd(self, key) -> dict | None:
+        """Drive status + reset, when the controller has a VSD configured.
+
+        ``VsdTripCode`` = 0 and false VSD bits are published by every new
+        controller, so detection uses values only a configured motor produces:
+        a drive frequency, any VSD trip / warning bit, or a live drive trip.
+        Once seen it stays shown, so a motor app going stale (frequency
+        becomes null) doesn't make the reset button vanish. A controller that
+        publishes ``VsdConfigured`` is taken at its word instead.
+        """
+        hz = _opt_num(self.get_tag("MotorOutputHz", key))
+        code = self.get_tag("VsdTripCode", key)
+        description = self.get_tag("VsdTripDescription", key)
+        tripped = _vsd_tripped(code, description)
+        # Newer controllers publish VsdConfigured; the heuristics are only for
+        # controllers that predate it.
+        configured = self.get_tag("VsdConfigured", key)
+        if configured is not None:
+            if not configured:
+                return None
+        else:
+            flags = any(bool(self.get_tag(tag, key)) for tag in _VSD_FLAG_TAGS)
+            seen = self._vsd_seen()
+            if hz is not None or flags or tripped:
+                seen.add(key)
+            elif key not in seen:
+                return None
+        return {
+            "tripped": tripped,
+            "trip_code": int(_num(code)) if tripped and code else None,
+            "trip_description": description if tripped else None,
+            "motor_hz": hz,
+            "pump_rpm": _opt_num(self.get_tag("PumpRpm", key)),
+        }
+
+    def _trip_text(self, key) -> str | None:
+        for tag, text in _TRIP_TEXT:
+            if self.get_tag(tag, key):
+                return text
+        return None
+
+    def _pressure_units(self) -> str:
+        """The HMI's own unit when set; otherwise the controller's.
+
+        Every new controller publishes ``PressureUnits`` (``psi`` unless its
+        ``pressure_units`` is changed), so it only replaces the HMI default
+        ``psi``: an HMI configured for another unit keeps it.
+        """
+        cfg = self.config
+        own = cfg.pressure_units.value or "psi"
+        key = cfg.primary_controller_key
+        if own != "psi" or key is None:
+            return own
+        published = self.get_tag("PressureUnits", key)
+        if isinstance(published, str) and published.strip():
+            return published.strip()
+        return own
 
     async def _drive_lamp(self, pin, value: bool):
         if pin is None:
@@ -470,6 +732,11 @@ def _num(value, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _vsd_tripped(code, description) -> bool:
+    """The drive itself is tripped (not just the latched pump fault)."""
+    return bool(_num(code)) or bool(description)
 
 
 def _opt_num(value) -> float | None:

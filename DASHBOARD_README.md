@@ -1,3 +1,8 @@
+> **Frozen.** This legacy Flask dashboard (port 8091) is kept only for kiosks already
+> pointed at it (the Kuwait skids) and runs only while `local_dashboard_enabled` is on.
+> No new features: the HMI screen is the widget in `widget/`. See README.md
+> "Legacy dashboard (frozen)" for the retirement plan.
+
 # SIA Local Control Dashboard
 
 A real-time web dashboard for monitoring and controlling SIA Local Control systems, featuring pump control, solar control, and tank monitoring.

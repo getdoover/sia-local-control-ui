@@ -104,6 +104,17 @@ class SiaDashboard:
         if self.connected_clients:
             self.socketio.emit("data_update", self._payload())
 
+    def notify(self, message: str, level: str = "info"):
+        """One-off operator notice (e.g. a physical-button command denied)."""
+        try:
+            if self.connected_clients:
+                self.socketio.emit(
+                    "notice",
+                    {"message": message, "level": level, "timestamp": _now_iso()},
+                )
+        except Exception as e:
+            log.error("Error sending notice: %s", e)
+
     def update_data(self, payload: dict):
         try:
             if payload:

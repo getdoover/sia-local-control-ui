@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIA HMI mock host</title>
+  <style>
+    html, body { margin: 0; min-height: 100%; font-family: Inter, -apple-system, "Segoe UI", sans-serif; }
+    /* local: the device agent widget host's page (widget-stage has padding) */
+    body.local { background: #f4f6f8; }
+    body.local .widget-stage { max-width: 100rem; margin: 0 auto; padding: 1rem; }
+    /* cloud: a device page column holding the app card */
+    body.cloud { background: #eef1f5; padding: 16px; }
+    body.cloud .card { background: #fff; border: 1px solid #d9dee8; border-radius: 12px; margin: 0 auto;
+      box-shadow: 0 4px 16px rgba(23, 32, 51, 0.06); }
+    body.cloud .card-title { padding: 12px 16px; font-weight: 600; color: #172033; border-bottom: 1px solid #e5e9f0; }
+    body.cloud .card-body { padding: 12px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+</body>
+</html>
