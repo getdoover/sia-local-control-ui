@@ -3,7 +3,7 @@
 - doover_config.json ships the widget the way every widget app does
   (petronash-hmi, and the DEV app petronash_pump_controller): ``widget`` is
   the single built file, ``build_widget_command`` builds it, and the
-  ui_schema carries one ``uiRemoteComponent`` whose ``componentUrl`` is the
+  ui_schema generated at publish carries one ``uiRemoteComponent`` whose ``componentUrl`` is the
   platform-injected ``dv_widget_url``.
 - The Module Federation names match the widget build.
 - Every config key the widget reads exists in this app's schema (the widget
@@ -29,6 +29,14 @@ ADAPTER = WIDGET / "src" / "lib" / "assembleDashboardData.ts"
 
 def _app_record() -> dict:
     return json.loads((ROOT / "doover_config.json").read_text())["sia_local_control_ui"]
+
+
+def _ui_schema(tmp_path) -> dict:
+    """The ui_schema publish generates from app_ui.py (doover_config.json no
+    longer carries one)."""
+    fp = tmp_path / "doover_config.json"
+    SiaLocalControlUiUI(None, None, None).export(fp, "sia_local_control_ui")
+    return json.loads(fp.read_text())["sia_local_control_ui"]["ui_schema"]
 
 
 def _schema_keys() -> set[str]:
@@ -60,10 +68,10 @@ def test_one_dev_app_that_also_ships_the_widget():
     rec = _app_record()
     assert rec["name"] == "sia_local_control_ui"
     assert rec["type"] == "DEV"  # still the device container...
-    assert rec["image_name"] == "ghcr.io/getdoover/sia-local-control-ui:main"
+    assert rec["image_name"] == "registry.doover.com/apps/sia_local_control_ui:main"
     # ...that also ships a widget, referenced exactly as petronash-hmi does.
     assert rec["widget"] == "widget/assets/SiaHmiWidget.js"
-    assert rec["build_widget_command"] == "npm --prefix widget run build"
+    assert rec["build_widget_command"].endswith("npm --prefix widget run build")
 
 
 def test_widget_fields_match_the_reference_widget_apps():
@@ -79,11 +87,13 @@ def test_widget_fields_match_the_reference_widget_apps():
         if field == "widget":
             assert ours.startswith("widget/assets/") and ours.endswith("Widget.js")
         else:
-            assert ours == reference
+            # doover app migrate prefixes an `npm install` so a clean CI
+            # checkout can build; the build itself is the reference command.
+            assert ours.endswith(reference)
 
 
-def test_ui_schema_has_the_remote_component():
-    ui = _app_record()["ui_schema"]
+def test_ui_schema_has_the_remote_component(tmp_path):
+    ui = _ui_schema(tmp_path)
     widget = ui["children"][WIDGET_ELEMENT]
     assert widget["type"] == "uiRemoteComponent"
     assert widget["componentUrl"] == "$config.app().dv_widget_url"
@@ -94,13 +104,6 @@ def test_ui_schema_has_the_remote_component():
     # The widget is the screen: first child.
     first = min(ui["children"].values(), key=lambda c: c["position"])
     assert first["name"] == WIDGET_ELEMENT
-
-
-def test_exported_ui_schema_is_current(tmp_path):
-    fp = tmp_path / "doover_config.json"
-    SiaLocalControlUiUI(None, None, None).export(fp, "sia_local_control_ui")
-    fresh = json.loads(fp.read_text())["sia_local_control_ui"]["ui_schema"]
-    assert _app_record()["ui_schema"] == fresh
 
 
 def test_mf_names_match_the_widget_build():
@@ -207,7 +210,11 @@ def test_vsd_commissioning_options_match_the_widget():
     from sia_local_control_ui.app_config import VSD_COMMISSIONING
 
     props = SiaLocalControlUiConfig.to_schema()["properties"]
-    assert props["vsd_commissioning"]["enum"] == ["Hidden", "Local only", "Local and cloud"]
+    assert props["vsd_commissioning"]["enum"] == [
+        "Hidden",
+        "Local only",
+        "Local and cloud",
+    ]
     assert props["vsd_commissioning"]["default"] == VSD_COMMISSIONING[0] == "Hidden"
     assert props["vsd_motor_app"]["format"] == "doover-resource-application"
     assert props["vsd_motor_app"]["default"] is None
@@ -224,5 +231,10 @@ def test_vsd_panel_calls_the_techtop_rpc_channel():
 
     src = (WIDGET / "src" / "lib" / "vsdPanel.ts").read_text()
     assert f'VSD_RPC_CHANNEL = "{DEFAULT_CHANNEL}"' in src
-    for method in ("get_diagnostics", "get_status", "read_parameters", "write_parameter"):
+    for method in (
+        "get_diagnostics",
+        "get_status",
+        "read_parameters",
+        "write_parameter",
+    ):
         assert f'"{method}"' in src

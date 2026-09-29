@@ -69,13 +69,9 @@ def _plain(value):
 
 
 def _schema():
-    return json.loads((ROOT / "doover_config.json").read_text())[
-        "sia_local_control_ui"
-    ]["config_schema"]
-
-
-def test_exported_schema_is_current():
-    assert _schema() == SiaLocalControlUiConfig.to_schema()
+    # doover_config.json no longer carries the schema: publish generates it
+    # from the config class, so the tests read it from the same place.
+    return SiaLocalControlUiConfig.to_schema()
 
 
 def test_hmi_control_mode_is_first():
