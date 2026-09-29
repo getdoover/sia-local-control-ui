@@ -18,9 +18,21 @@
  */
 
 .sia-hmi {
+    /* Scoped tokens keep the industrial theme inside the widget. */
+    --hmi-chassis: #11171b;
+    --hmi-panel: #252e34;
+    --hmi-instrument: #151c21;
+    --hmi-edge: #48555e;
+    --hmi-text: #f0f3f4;
+    --hmi-muted: #b3c0c8;
+    --hmi-green: #65dc9a;
+    --hmi-red: #ff8a80;
+    --hmi-amber: #ffc568;
+    --hmi-blue: #83c9ed;
+    color-scheme: dark;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: #333;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: var(--hmi-text);
+    background: var(--hmi-chassis);
     text-align: left;
     line-height: normal;
 }
@@ -47,7 +59,7 @@
 
 .sia-hmi.embedded {
     position: relative;
-    border-radius: 12px;
+    border-radius: 3px;
 }
 
 .sia-hmi .dashboard-container {
@@ -79,11 +91,11 @@
 
 /* Header */
 .sia-hmi .dashboard-header {
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: clamp(8px, 1.5vw, 15px);
+    background: var(--hmi-panel);
+    border-radius: 3px;
     padding: clamp(15px, 2vw, 30px);
     margin-bottom: clamp(10px, 2vh, 20px);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    box-shadow: inset 0 0 0 1px var(--hmi-edge), 0 3px 0 #090e11;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -92,7 +104,7 @@
 }
 
 .sia-hmi .dashboard-header h1 {
-    color: #2c3e50;
+    color: var(--hmi-text);
     font-size: clamp(1.5rem, 4vw, 2.2rem);
     font-weight: 600;
     display: flex;
@@ -117,14 +129,14 @@
 
 .sia-hmi .header-info .timestamp {
     font-size: 0.9rem;
-    color: #7f8c8d;
+    color: var(--hmi-muted);
     font-weight: 500;
 }
 
 .sia-hmi .host-badge {
     font-size: 0.72rem;
     font-weight: 700;
-    color: #7f8c8d;
+    color: var(--hmi-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -133,9 +145,9 @@
     display: none;
 }
 
-.sia-hmi .status-connected { color: #27ae60; }
-.sia-hmi .status-disconnected { color: #e74c3c; }
-.sia-hmi .status-warning { color: #f39c12 !important; }
+.sia-hmi .status-connected { color: var(--hmi-green); }
+.sia-hmi .status-disconnected { color: var(--hmi-red); }
+.sia-hmi .status-warning { color: var(--hmi-amber) !important; }
 
 /* Main content */
 .sia-hmi .dashboard-content {
@@ -180,19 +192,19 @@
 
 /* Control sections */
 .sia-hmi .control-section {
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: clamp(8px, 1.5vw, 15px);
+    background: var(--hmi-panel);
+    border-radius: 3px;
     padding: clamp(12px, 2vw, 20px);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    box-shadow: inset 0 0 0 1px var(--hmi-edge), 0 3px 0 #090e11;
     flex-shrink: 0;
 }
 
 .sia-hmi .control-section h2 {
-    color: #2c3e50;
+    color: var(--hmi-text);
     font-size: clamp(1.1rem, 2.5vw, 1.4rem);
     margin-bottom: clamp(8px, 1.5vh, 15px);
     padding-bottom: clamp(4px, 1vh, 8px);
-    border-bottom: 2px solid #ecf0f1;
+    border-bottom: 2px solid #39464f;
 }
 
 .sia-hmi .controls-grid {
@@ -202,15 +214,16 @@
 }
 
 .sia-hmi .control-card {
-    background: #f8f9fa;
-    border-radius: clamp(5px, 1vw, 10px);
+    background: var(--hmi-instrument);
+    border-radius: 3px;
     padding: clamp(8px, 1.5vw, 15px);
     text-align: center;
-    border: 2px solid transparent;
+    border: 2px solid #39464f;
+    box-shadow: inset 0 2px 4px #090e11;
 }
 
 .sia-hmi .control-card h3 {
-    color: #2c3e50;
+    color: var(--hmi-text);
     font-size: clamp(0.7rem, 1.8vw, 0.9rem);
     margin-bottom: clamp(6px, 1vh, 10px);
     font-weight: 600;
@@ -226,12 +239,12 @@
 .sia-hmi .value {
     font-size: clamp(1.2rem, 3.5vw, 1.8rem);
     font-weight: 700;
-    color: #2c3e50;
+    color: var(--hmi-text);
 }
 
 .sia-hmi .unit {
     font-size: clamp(0.6rem, 1.5vw, 0.8rem);
-    color: #7f8c8d;
+    color: var(--hmi-muted);
     font-weight: 500;
 }
 
@@ -249,7 +262,7 @@
 .sia-hmi .tank-level-secondary .value {
     font-size: clamp(1rem, 2.4vw, 1.2rem);
     font-weight: 600;
-    color: #455a64;
+    color: var(--hmi-muted);
 }
 
 .sia-hmi .state-display {
@@ -259,7 +272,7 @@
 .sia-hmi .state-value {
     display: inline-block;
     padding: clamp(4px, 1vw, 8px) clamp(8px, 2vw, 16px);
-    border-radius: clamp(10px, 2vw, 20px);
+    border-radius: 3px;
     font-weight: 600;
     font-size: clamp(0.6rem, 1.8vw, 0.8rem);
     text-transform: uppercase;
@@ -268,33 +281,33 @@
     color: white;
 }
 
-.sia-hmi .state-value.standby { background: #95a5a6; }
-.sia-hmi .state-value.pumping { background: #27ae60; }
-.sia-hmi .state-value.calibration { background: #f39c12; }
+.sia-hmi .state-value.standby { background: #48555e; }
+.sia-hmi .state-value.pumping { background: #185c3b; }
+.sia-hmi .state-value.calibration { background: #624415; }
 .sia-hmi .state-value.error,
-.sia-hmi .state-value.fault { background: #e74c3c; }
-.sia-hmi .state-value.vsd-ok { background: #27ae60; }
-.sia-hmi .state-value.vsd-tripped { background: #e74c3c; }
+.sia-hmi .state-value.fault { background: #922c29; }
+.sia-hmi .state-value.vsd-ok { background: #185c3b; }
+.sia-hmi .state-value.vsd-tripped { background: #922c29; }
 
 .sia-hmi .progress-bar {
     width: 100%;
     height: 8px;
-    background: #ecf0f1;
-    border-radius: 4px;
+    background: #39464f;
+    border-radius: 1px;
     overflow: hidden;
     margin-top: 10px;
 }
 
 .sia-hmi .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #27ae60, #2ecc71);
-    border-radius: 4px;
+    background: var(--hmi-green);
+    border-radius: 1px;
     transition: width 0.5s ease;
     width: 0%;
 }
 
-.sia-hmi .progress-fill.low { background: linear-gradient(90deg, #e74c3c, #c0392b); }
-.sia-hmi .progress-fill.medium { background: linear-gradient(90deg, #f39c12, #e67e22); }
+.sia-hmi .progress-fill.low { background: var(--hmi-red); }
+.sia-hmi .progress-fill.medium { background: var(--hmi-amber); }
 
 .sia-hmi .secondary-line {
     display: flex;
@@ -304,12 +317,12 @@
     gap: clamp(3px, 0.6vw, 6px);
     margin-top: clamp(4px, 0.8vh, 8px);
     padding-top: clamp(4px, 0.8vh, 8px);
-    border-top: 1px solid #ecf0f1;
+    border-top: 1px solid #39464f;
 }
 
 .sia-hmi .secondary-label {
     font-size: clamp(0.55rem, 1.3vw, 0.7rem);
-    color: #7f8c8d;
+    color: var(--hmi-muted);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -318,12 +331,12 @@
 .sia-hmi .secondary-value {
     font-size: clamp(0.8rem, 2vw, 1.1rem);
     font-weight: 700;
-    color: #2c3e50;
+    color: var(--hmi-text);
 }
 
 .sia-hmi .secondary-unit {
     font-size: clamp(0.55rem, 1.3vw, 0.7rem);
-    color: #7f8c8d;
+    color: var(--hmi-muted);
     font-weight: 500;
 }
 
@@ -338,16 +351,16 @@
 .sia-hmi .flow-range-track {
     width: 100%;
     height: 10px;
-    background: #ecf0f1;
-    border-radius: 5px;
+    background: #39464f;
+    border-radius: 1px;
     overflow: hidden;
 }
 
 .sia-hmi .flow-range-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #3498db, #2ecc71);
-    border-radius: 5px;
+    background: var(--hmi-blue);
+    border-radius: 1px;
     transition: width 0.5s ease;
 }
 
@@ -356,7 +369,7 @@
     justify-content: space-between;
     margin-top: clamp(3px, 0.6vh, 6px);
     font-size: clamp(0.55rem, 1.3vw, 0.72rem);
-    color: #7f8c8d;
+    color: var(--hmi-muted);
     font-weight: 600;
 }
 
@@ -370,20 +383,20 @@
     flex-wrap: wrap;
     gap: clamp(8px, 1.2vw, 14px);
     color: #ffffff;
-    border-radius: clamp(8px, 1.5vw, 15px);
+    border-radius: 3px;
     padding: clamp(10px, 1.5vh, 16px) clamp(14px, 2vw, 22px);
     margin-bottom: clamp(10px, 2vh, 20px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
-.sia-hmi .fault-banner { background: #e74c3c; }
-.sia-hmi .warning-banner { background: #e67e22; }
+.sia-hmi .fault-banner { background: #922c29; }
+.sia-hmi .warning-banner { background: #624415; }
 
 .sia-hmi .fault-banner-icon,
 .sia-hmi .warning-banner-icon {
     font-size: clamp(1.2rem, 2.5vw, 1.6rem);
     line-height: 1;
-    animation: sia-hmi-pulse 2s infinite;
+    /* Steady alarms remain readable at a glance. */
 }
 
 .sia-hmi .fault-banner-title,
@@ -409,10 +422,10 @@
     flex: 1;
     min-height: 44px;
     padding: 8px 12px;
-    border: 2px solid #bdc3c7;
-    border-radius: 8px;
-    background: #f8f9fa;
-    color: #2c3e50;
+    border: 2px solid var(--hmi-edge);
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
     font-size: clamp(0.8rem, 1.8vw, 1rem);
     font-weight: 700;
     cursor: pointer;
@@ -434,7 +447,7 @@
 
 .sia-hmi .vsd-trip {
     font-size: clamp(0.7rem, 1.6vw, 0.9rem);
-    color: #c0392b;
+    color: var(--hmi-red);
     font-weight: 600;
 }
 
@@ -477,7 +490,7 @@
     justify-content: space-between;
     gap: 10px;
     padding: 8px 10px;
-    background: rgba(44, 62, 80, 0.96);
+    background: var(--hmi-panel);
     box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.25);
     z-index: 5;
 }
@@ -485,7 +498,7 @@
 .sia-hmi.embedded .touch-bar {
     position: sticky;
     bottom: 0;
-    border-radius: 0 0 12px 12px;
+    border-radius: 0 0 3px 3px;
 }
 
 .sia-hmi .touch-group {
@@ -499,10 +512,10 @@
     min-width: 56px;
     min-height: 64px;
     padding: 4px 8px;
-    border: 2px solid #bdc3c7;
-    border-radius: 10px;
-    background: #f8f9fa;
-    color: #2c3e50;
+    border: 2px solid var(--hmi-edge);
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
     font-size: clamp(0.85rem, 2vw, 1.1rem);
     font-weight: 700;
     cursor: pointer;
@@ -514,13 +527,13 @@
 }
 
 .sia-hmi .touch-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.sia-hmi .touch-start { background: #27ae60; border-color: #27ae60; color: white; }
-.sia-hmi .touch-start:disabled { background: #95a5a6; border-color: #95a5a6; }
+.sia-hmi .touch-start { background: #185c3b; border-color: var(--hmi-green); color: white; }
+.sia-hmi .touch-start:disabled { background: #48555e; border-color: #95a5a6; }
 
 /* Stop: always available, visually distinct. */
 .sia-hmi .touch-stop {
-    background: #c0392b;
-    border-color: #922b21;
+    background: #922c29;
+    border-color: var(--hmi-red);
     color: white;
     font-size: clamp(1rem, 2.4vw, 1.3rem);
     letter-spacing: 1px;
@@ -534,13 +547,13 @@
 .sia-hmi .touch-caption {
     font-size: 0.65rem;
     font-weight: 600;
-    color: #7f8c8d;
+    color: var(--hmi-muted);
     text-transform: uppercase;
 }
 
 .sia-hmi .touch-number { font-size: clamp(1.05rem, 2.6vw, 1.4rem); }
 .sia-hmi .touch-hint { font-size: 0.6rem; font-weight: 600; }
-.sia-hmi .touch-reset.attention { border-color: #e74c3c; color: #c0392b; }
+.sia-hmi .touch-reset.attention { border-color: var(--hmi-red); color: var(--hmi-red); }
 
 /* ------------------------------------------------------------------
    Overlays: loading, keypad, confirmation, toast.
@@ -565,7 +578,7 @@
     height: 56px;
     margin: 0 auto 20px;
     border: 6px solid rgba(255, 255, 255, 0.25);
-    border-top-color: #3498db;
+    border-top-color: var(--hmi-blue);
     border-radius: 50%;
     animation: sia-hmi-spin 0.9s linear infinite;
 }
@@ -583,8 +596,8 @@
 
 .sia-hmi .keypad,
 .sia-hmi .confirm-box {
-    background: white;
-    border-radius: 14px;
+    background: var(--hmi-panel);
+    border-radius: 3px;
     padding: 14px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
@@ -603,7 +616,7 @@
     gap: 6px;
 }
 
-.sia-hmi .keypad-title { font-weight: 700; color: #2c3e50; font-size: 1.1rem; }
+.sia-hmi .keypad-title { font-weight: 700; color: var(--hmi-text); font-size: 1.1rem; }
 
 .sia-hmi .keypad-display {
     display: flex;
@@ -612,16 +625,16 @@
     gap: 8px;
     min-height: 52px;
     padding: 6px 12px;
-    border: 2px solid #bdc3c7;
-    border-radius: 10px;
-    background: #f8f9fa;
+    border: 2px solid var(--hmi-edge);
+    border-radius: 3px;
+    background: var(--hmi-instrument);
 }
 
-.sia-hmi .keypad-entry { font-size: 2rem; font-weight: 700; color: #2c3e50; }
-.sia-hmi .keypad-entry.placeholder { color: #bdc3c7; }
-.sia-hmi .keypad-unit { color: #7f8c8d; font-weight: 600; }
-.sia-hmi .keypad-range { font-size: 0.85rem; color: #7f8c8d; font-weight: 600; }
-.sia-hmi .keypad-error { min-height: 1.1em; font-size: 0.85rem; color: #c0392b; font-weight: 700; }
+.sia-hmi .keypad-entry { font-size: 2rem; font-weight: 700; color: var(--hmi-text); }
+.sia-hmi .keypad-entry.placeholder { color: var(--hmi-muted); }
+.sia-hmi .keypad-unit { color: var(--hmi-muted); font-weight: 600; }
+.sia-hmi .keypad-range { font-size: 0.85rem; color: var(--hmi-muted); font-weight: 600; }
+.sia-hmi .keypad-error { min-height: 1.1em; font-size: 0.85rem; color: var(--hmi-red); font-weight: 700; }
 
 .sia-hmi .keypad-keys {
     display: grid;
@@ -632,16 +645,16 @@
 .sia-hmi .key {
     min-height: 56px;
     min-width: 56px;
-    border: 2px solid #bdc3c7;
-    border-radius: 10px;
-    background: #f8f9fa;
-    color: #2c3e50;
+    border: 2px solid var(--hmi-edge);
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
     font-size: 1.4rem;
     font-weight: 700;
     cursor: pointer;
 }
 
-.sia-hmi .key-fn { background: #ecf0f1; }
+.sia-hmi .key-fn { background: #39464f; }
 .sia-hmi .key-zero { grid-column: span 4; }
 
 .sia-hmi .keypad-actions,
@@ -653,10 +666,10 @@
 .sia-hmi .keypad-actions .key,
 .sia-hmi .confirm-actions .key { flex: 1; font-size: 1.1rem; }
 
-.sia-hmi .key-ok { background: #3498db; border-color: #3498db; color: white; }
+.sia-hmi .key-ok { background: #245b77; border-color: var(--hmi-blue); color: white; }
 
 .sia-hmi .confirm-box { width: min(460px, 96vw); }
-.sia-hmi .confirm-message { font-size: 1.15rem; font-weight: 600; color: #2c3e50; margin-bottom: 14px; }
+.sia-hmi .confirm-message { font-size: 1.15rem; font-weight: 600; color: var(--hmi-text); margin-bottom: 14px; }
 
 .sia-hmi .command-toast {
     position: fixed;
@@ -665,8 +678,8 @@
     transform: translateX(-50%);
     max-width: 80vw;
     padding: 12px 20px;
-    border-radius: 10px;
-    background: #2c3e50;
+    border-radius: 3px;
+    background: var(--hmi-panel);
     color: white;
     font-weight: 600;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -674,16 +687,10 @@
 }
 
 .sia-hmi .command-toast.error { background: #c0392b; }
-.sia-hmi .command-toast.ok { background: #27ae60; }
+.sia-hmi .command-toast.ok { background: #185c3b; }
 
 /* Generic visibility toggle. */
 .sia-hmi .hidden { display: none !important; }
-
-@keyframes sia-hmi-pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
 
 @keyframes sia-hmi-spin {
     to { transform: rotate(360deg); }
@@ -731,7 +738,7 @@
 .sia-hmi.kiosk .dashboard-header {
     padding: 0.8vh 1.4vw;
     margin-bottom: 1.1vh;
-    border-radius: 10px;
+    border-radius: 3px;
 }
 .sia-hmi.kiosk .dashboard-header h1 { font-size: clamp(1.15rem, 5vh, 2rem); }
 .sia-hmi.kiosk .header-info { gap: 0.2vh; }
@@ -743,7 +750,7 @@
     padding: 0.6vh 1.4vw;
     margin-bottom: 1.1vh;
     gap: 0.4vh 1.2vw;
-    border-radius: 10px;
+    border-radius: 3px;
     flex-wrap: nowrap;
 }
 .sia-hmi.kiosk .fault-banner-title,
@@ -765,7 +772,7 @@
 }
 .sia-hmi.kiosk .control-section {
     padding: 0.9vh 1.2vw;
-    border-radius: 10px;
+    border-radius: 3px;
 }
 .sia-hmi.kiosk .control-section h2 {
     font-size: clamp(0.85rem, 2.8vh, 1.3rem);
@@ -778,7 +785,7 @@
 }
 .sia-hmi.kiosk .control-card {
     padding: 0.7vh 0.8vw;
-    border-radius: 8px;
+    border-radius: 3px;
 }
 .sia-hmi.kiosk .control-card h3 {
     font-size: clamp(0.72rem, 2.3vh, 1rem);
@@ -816,6 +823,8 @@
 .sia-hmi.kiosk .status-row:has(> .solar-section:not(.hidden)) > .vsd-section { flex-basis: 23%; }
 .sia-hmi.kiosk .status-row:has(> .solar-section:not(.hidden)) .vsd-body { flex-wrap: wrap; }
 .sia-hmi.kiosk .solar-section .controls-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Four narrow instruments: leave room for five-character numeric readings. */
+.sia-hmi.kiosk .solar-section .value { font-size: clamp(1rem, 4vh, 1.7rem); }
 .sia-hmi.kiosk .status-row .controls-grid { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
 .sia-hmi.kiosk .footer-logo { display: none; }
 .sia-hmi.kiosk .touch-bar { padding: 6px 8px; gap: 8px; }
@@ -826,4 +835,67 @@
     .sia-hmi .keypad { flex-direction: row; width: min(640px, 98vw); }
     .sia-hmi .keypad-info { flex: 1; justify-content: space-between; }
     .sia-hmi .keypad-keys { flex: 1.2; }
+}
+
+/* Panel labels and recessed, tabular instrument readouts. */
+.sia-hmi .dashboard-header {
+    box-shadow: inset 4px 0 0 var(--hmi-muted), inset 0 0 0 1px var(--hmi-edge), 0 3px 0 #090e11;
+}
+
+.sia-hmi .dashboard-header h1,
+.sia-hmi .control-section h2,
+.sia-hmi .control-card h3 {
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.sia-hmi .control-section h2 { border-bottom-color: var(--hmi-edge); }
+.sia-hmi .control-card h3 { color: var(--hmi-muted); }
+
+.sia-hmi .value,
+.sia-hmi .secondary-value,
+.sia-hmi .touch-number,
+.sia-hmi .keypad-entry {
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+.sia-hmi .state-value { box-shadow: inset 3px 0 0 currentColor; }
+.sia-hmi .state-value.pumping,
+.sia-hmi .state-value.vsd-ok { color: var(--hmi-green); }
+.sia-hmi .state-value.calibration { color: var(--hmi-amber); }
+.sia-hmi .fault-banner { box-shadow: inset 4px 0 0 var(--hmi-red); }
+.sia-hmi .warning-banner { box-shadow: inset 4px 0 0 var(--hmi-amber); color: #fff1d8; }
+
+/* Physical-key treatment without moving or shrinking the touch targets. */
+.sia-hmi .touch-btn,
+.sia-hmi .action-btn,
+.sia-hmi .key {
+    box-shadow: inset 0 1px 0 #ffffff26, 0 3px 0 #090e11;
+}
+
+.sia-hmi button:focus-visible {
+    outline: 3px solid var(--hmi-blue);
+    outline-offset: 2px;
+}
+
+.sia-hmi button:enabled:active { box-shadow: inset 0 3px 5px #0009; }
+
+@media (hover: hover) {
+    .sia-hmi button:enabled:hover { filter: brightness(1.18); }
+}
+
+.sia-hmi button:disabled { filter: saturate(0.3); box-shadow: none; }
+.sia-hmi .keypad,
+.sia-hmi .confirm-box {
+    box-shadow: inset 0 0 0 1px var(--hmi-edge), 0 12px 40px #0009;
+}
+.sia-hmi .keypad-display { box-shadow: inset 0 2px 4px #090e11; }
+
+@media (prefers-reduced-motion: reduce) {
+    .sia-hmi *, .sia-hmi *::before, .sia-hmi *::after {
+        animation: none !important;
+        transition: none !important;
+    }
 }
