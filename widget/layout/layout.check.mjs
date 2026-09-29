@@ -15,9 +15,16 @@
 // popover (diagnostics + parameter list) fits the screen with no page
 // scroll; only the parameter list may scroll, inside the popover.
 //
+// 1min Calibration Sequence (controller CalibrationMethod "Manual (HMI)"):
+// the CALIBRATE tile keeps the bar's targets, and every wizard page (1 valve,
+// 2 start mL + keypad, 3 test rate, 4 summary, 5 countdown, 6 final mL,
+// 7 results) fits the screen with no page scroll and no scroll inside the
+// popover, with >= 44 px buttons.
+//
 // Run: npm run test:layout   (builds the mock host first)
 // Screenshots: SHOTS=<dir> npm run test:layout
 // Popover screenshots: VSD_SHOTS=<dir> npm run test:layout  (vsd-panel-<w>x<h>.png)
+// Wizard screenshots (1024x600): CAL_SHOTS=<dir> npm run test:layout  (calwiz-<page>.png)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -48,9 +55,13 @@ const CASES = [
   { name: "tank L + mm", q: "scenario=running&tank=L,mm" },
   { name: "tank L + mm, faulted + warning", q: "scenario=faulted&warning=1&tank=L,mm" },
   { name: "tank L + mm, solar, faulted + warning", q: "scenario=faulted&warning=1&solar=1&tank=L,mm" },
+  // CALIBRATE tile in place of CAL FACTOR (Calibration Method Manual (HMI)).
+  { name: "calibrate tile", q: "scenario=standby&cal=manual" },
+  { name: "calibrate tile, faulted + warning + solar", q: "scenario=faulted&warning=1&solar=1&cal=manual" },
 ];
 const SHOTS = process.env.SHOTS;
 const VSD_SHOTS = process.env.VSD_SHOTS;
+const CAL_SHOTS = process.env.CAL_SHOTS;
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
 
@@ -135,6 +146,7 @@ test.before(async () => {
   browser = await chromium.launch();
   if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
   if (VSD_SHOTS) fs.mkdirSync(VSD_SHOTS, { recursive: true });
+  if (CAL_SHOTS) fs.mkdirSync(CAL_SHOTS, { recursive: true });
 });
 
 test.after(async () => {
@@ -357,4 +369,160 @@ for (const [w, h] of SIZES) {
       });
     }
   }
+}
+
+// --- 1min Calibration Sequence wizard ---------------------------------------------
+
+/** The open wizard: on screen, no scroll, big enough targets. */
+function measureWizard() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const panel = q("calwiz-box");
+  const body = q("calwiz-body");
+  const buttons = [...panel.querySelectorAll("button")].filter(vis).map((b) => ({
+    id: b.dataset.id || b.className, ...box(b), text: b.textContent.trim(),
+    overflowX: b.scrollWidth - b.clientWidth,
+  }));
+  const texts = [...panel.querySelectorAll(".calwiz-row, .calwiz-field, .calwiz-text, .calwiz-note")]
+    .filter(vis)
+    .map((e) => ({ cls: e.className, ...box(e), overflowX: e.scrollWidth - e.clientWidth }));
+  return {
+    open: vis(q("calwiz")),
+    page: body.getAttribute("data-page"),
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    panel: { ...box(panel), sh: panel.scrollHeight, ch: panel.clientHeight, sw: panel.scrollWidth, cw: panel.clientWidth },
+    body: { ...box(body), sh: body.scrollHeight, ch: body.clientHeight },
+    title: q("calwiz-box").querySelector(".calwiz-title").textContent,
+    buttons,
+    texts,
+    countdown: q("calwiz-countdown") ? q("calwiz-countdown").textContent : null,
+  };
+}
+
+function assertWizardFits(m, w, h, label) {
+  const ctx = `${label}: ${JSON.stringify(m)}`;
+  assert.ok(m.open, `wizard not open: ${ctx}`);
+  assert.equal(m.title, "1min Calibration Sequence");
+  assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${ctx}`);
+  const p = m.panel;
+  assert.ok(p.left >= 0 && p.top >= 0 && p.right <= w + 0.5 && p.bottom <= h + 0.5, `wizard off screen: ${ctx}`);
+  assert.ok(p.sh <= p.ch + 1 && p.sw <= p.cw + 1, `wizard overflows: ${ctx}`);
+  assert.ok(m.body.sh <= m.body.ch + 1, `wizard body clipped: ${ctx}`);
+  for (const b of m.buttons) {
+    assert.ok(b.h >= 44 && b.w >= 44, `${b.id} ${b.w}x${b.h} < 44px: ${ctx}`);
+    assert.ok(b.bottom <= p.bottom + 0.5 && b.right <= p.right + 0.5, `${b.id} outside the wizard: ${ctx}`);
+    assert.ok(b.overflowX <= 1, `${b.id} text overflows: ${ctx}`);
+  }
+  for (const t of m.texts) assert.ok(t.overflowX <= 1, `${t.cls} overflows: ${ctx}`);
+}
+
+async function wizardPage(page, id) {
+  await page.waitForFunction(
+    (want) => document.querySelector('.sia-hmi [data-id="calwiz-body"]')?.getAttribute("data-page") === want,
+    id,
+  );
+}
+
+async function keypadEntry(page, keys, w, h) {
+  const k = await page.evaluate(() => {
+    const r = document.querySelector(".sia-hmi .keypad").getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 10);
+    return { top: r.top, bottom: r.bottom, onTop: !!hit?.closest(".keypad"), doc: document.documentElement.scrollHeight };
+  });
+  assert.ok(k.onTop, "keypad is above the wizard");
+  assert.ok(k.top >= 0 && k.bottom <= h && k.doc <= h, `keypad does not fit: ${JSON.stringify(k)}`);
+  await page.click('.sia-hmi [data-key="clear"]');
+  for (const key of keys) await page.click(`.sia-hmi [data-key="${key}"]`);
+  await page.click('.sia-hmi [data-id="keypad-ok"]');
+}
+
+for (const [w, h] of SIZES) {
+  test(`${w}x${h} Touch, 1min Calibration Sequence: every page fits`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    const shoot = CAL_SHOTS && w === 1024 && h === 600;
+    const shot = (name) => shoot && page.screenshot({ path: path.join(CAL_SHOTS, `calwiz-${name}.png`) });
+    try {
+      await page.goto(`${base}?host=local&mode=Touch&scenario=standby&cal=manual&calspeed=15`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await page.waitForTimeout(150);
+      const tile = await page.textContent('.sia-hmi [data-id="touch-cal"]');
+      assert.match(tile, /Calibrate/);
+      assert.match(tile, /Factor 1\.00/);
+
+      await page.click('.sia-hmi [data-id="touch-cal"]');
+      await wizardPage(page, "1");
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 1");
+      await shot("p1");
+
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "2");
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 2");
+      await page.click('.sia-hmi [data-id="calwiz-field-start"]');
+      await keypadEntry(page, ["5", "0", "0"], w, h);
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 2 entered");
+
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "3");
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 3");
+      await shot("p3");
+
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "4");
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 4");
+      await shot("p4");
+
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "5");
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 5");
+      const log = await page.evaluate(() => window.__rpcLog);
+      assert.deepEqual(log.at(-1).request, { rate: 12.5, duration_s: 60 });
+      assert.equal(log.at(-1).method, "start_test_run");
+
+      // 60 s at 15x: the mock controller completes the run in 4 s.
+      await wizardPage(page, "6");
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 6");
+      await page.click('.sia-hmi [data-id="calwiz-field-final"]');
+      await keypadEntry(page, ["3", "0", "0"], w, h);
+      await page.click('.sia-hmi [data-id="calwiz-next"]');
+      await wizardPage(page, "7");
+      const m7 = await page.evaluate(measureWizard);
+      assertWizardFits(m7, w, h, "page 7");
+      await shot("p7");
+
+      await page.click('.sia-hmi [data-id="calwiz-next"]'); // Set calibration factor
+      await page.waitForSelector('.sia-hmi [data-id="calwiz-saved"]');
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 7 saved");
+      const set = await page.evaluate(() => window.__rpcLog.at(-1));
+      assert.equal(set.method, "last_calibration_factor");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test(`${w}x${h} Touch, 1min Calibration Sequence: reattach to a running test, countdown fits`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    try {
+      await page.goto(`${base}?host=local&mode=Touch&scenario=standby&cal=manual&calrun=42`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await wizardPage(page, "5");
+      await page.waitForTimeout(150);
+      const m = await page.evaluate(measureWizard);
+      assertWizardFits(m, w, h, "countdown");
+      assert.equal(m.countdown, "42");
+      assert.ok(m.buttons.some((b) => b.id === "calwiz-cancel" && b.h >= 56), "Cancel is prominent");
+      assert.ok(!m.buttons.some((b) => ["calwiz-back", "calwiz-close", "calwiz-next"].includes(b.id)), "no Back / X while running");
+      if (CAL_SHOTS && w === 1024 && h === 600) {
+        await page.screenshot({ path: path.join(CAL_SHOTS, "calwiz-p5.png") });
+      }
+      await page.click('.sia-hmi [data-id="calwiz-cancel"]');
+      await wizardPage(page, "ended");
+      assertWizardFits(await page.evaluate(measureWizard), w, h, "cancelled");
+    } finally {
+      await page.close();
+    }
+  });
 }

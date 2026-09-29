@@ -20,6 +20,8 @@ export interface HmiHandle {
 }
 
 export declare const COMMAND_DONE: Record<string, string>;
+export declare const CAL_TITLE: string;
+export declare const CAL_STORE_KEY: string;
 export declare const RATE_CONFIRM_FRACTION: number;
 export declare const VSD_POLL_MS: number;
 export declare const EMPTY_VALUE: string;

@@ -263,6 +263,64 @@ test("touch payload otherwise matches read only", () => {
   assert.deepEqual(t, ro);
 });
 
+// --- 1min Calibration Sequence (CalibrationMethod "Manual (HMI)") -------------------
+
+const TOUCH = { hmi_control_mode: "Touch" };
+
+test("calibration: no key without the CalibrationMethod tag (older controller)", () => {
+  assert.ok(!("calibration" in build({ config: TOUCH })));
+});
+
+for (const method of ["None", "Auto", "", null]) {
+  test(`calibration: no key when the method is ${JSON.stringify(method)}`, () => {
+    const data = build({ config: TOUCH, tags: legacyControllerTags({ CalibrationMethod: method }) });
+    assert.ok(!("calibration" in data));
+    assert.ok("touch" in data);
+  });
+}
+
+test("calibration: Manual (HMI) in Touch carries the test run", () => {
+  const data = build({
+    config: TOUCH,
+    tags: legacyControllerTags({
+      CalibrationMethod: "Manual (HMI)",
+      TestRunActive: true,
+      TestRunRemaining_s: 41.5,
+      TestRunRate: 12.5,
+      TestRunDuration_s: 60,
+      TestRunElapsed_s: 18.5,
+      TestRunResult: null,
+    }),
+  });
+  assert.deepEqual(data.calibration, {
+    method: "Manual (HMI)",
+    test_run: { active: true, remaining_s: 41.5, rate: 12.5, duration_s: 60, elapsed_s: 18.5, result: null },
+  });
+});
+
+test("calibration: an unpublished test run reads inactive, an odd result null", () => {
+  const data = build({
+    config: TOUCH,
+    tags: legacyControllerTags({ CalibrationMethod: "Manual (HMI)", TestRunResult: "banana" }),
+  });
+  assert.deepEqual(data.calibration.test_run, {
+    active: false, remaining_s: null, rate: null, duration_s: null, elapsed_s: null, result: null,
+  });
+});
+
+test("calibration: never in Read Only, even with Manual (HMI)", () => {
+  const data = build({ tags: legacyControllerTags({ CalibrationMethod: "Manual (HMI)", TestRunActive: true }) });
+  assert.ok(!("calibration" in data));
+});
+
+test("calibration: the cloud streams the method and test run tags", () => {
+  const ids = liveTagIds(resolveConfig("sia_local_control_ui_1", deployment({})));
+  for (const tag of ["CalibrationMethod", "TestRunActive", "TestRunRemaining_s", "TestRunRate",
+    "TestRunDuration_s", "TestRunElapsed_s", "TestRunResult"]) {
+    assert.ok(ids.includes(`${CTRL}.${tag}`), tag);
+  }
+});
+
 // --- peripherals -----------------------------------------------------------------------
 
 test("no solar key when no solar controllers; card data when configured", () => {

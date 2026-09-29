@@ -37,6 +37,9 @@ export const TOUCH_COMMANDS: readonly string[] = [
   "reset_fault",
   "reset_vsd_fault",
   "last_calibration_factor",
+  // 1min Calibration Sequence (controller calibration_method "Manual (HMI)").
+  "start_test_run",
+  "cancel_test_run",
 ];
 
 export interface Ack {
@@ -77,6 +80,12 @@ export function checkTouchCommand(
       };
     }
   }
+  if (cmd === "start_test_run") {
+    const v = (value ?? {}) as { rate?: unknown; duration_s?: unknown };
+    if (optNum(v.rate) === null || optNum(v.duration_s) === null) {
+      return { ok: false, code: "INVALID", message: "enter a test rate and duration" };
+    }
+  }
   return null;
 }
 
@@ -101,6 +110,10 @@ export function buildRpcRequest(
   let request: unknown = value;
   if (cmd === "set_target_rate" || cmd === "last_calibration_factor") {
     request = optNum(value);
+  }
+  if (cmd === "start_test_run") {
+    const v = (value ?? {}) as { rate?: unknown; duration_s?: unknown };
+    request = { rate: optNum(v.rate), duration_s: optNum(v.duration_s) };
   }
   if (request === null || request === undefined) request = {};
   return {

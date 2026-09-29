@@ -16,6 +16,10 @@
  *   &vsdapp=<key>            vsd_motor_app (default techtop_motor_controller_1
  *                            whenever commission is given)
  *   &legacy=1                an older Techtop app without get_diagnostics
+ *   &cal=manual              controller CalibrationMethod "Manual (HMI)"
+ *                            (cal=none / cal=auto publish "None" / "Auto")
+ *   &calrun=42               a timed test already running, 42 s left
+ *   &calspeed=20             run the mock test clock 20x faster
  */
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -38,6 +42,11 @@ const opts: MockOptions = {
   commissioning: q.get("commission") ?? undefined,
   vsdMotorApp: q.get("vsdapp") ?? (q.get("commission") ? TECHTOP : undefined),
   legacyMotorApp: q.get("legacy") === "1",
+  calibrationMethod: ({ manual: "Manual (HMI)", none: "None", auto: "Auto" } as Record<string, string>)[
+    q.get("cal") ?? ""
+  ],
+  testRunRemaining: q.get("calrun") != null ? Number(q.get("calrun")) : undefined,
+  testRunSpeed: q.get("calspeed") != null ? Number(q.get("calspeed")) : undefined,
 };
 const client = createMockClient(opts);
 const queryClient = new QueryClient();

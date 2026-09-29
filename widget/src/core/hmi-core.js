@@ -29,6 +29,15 @@
  * the widget. Same markup, same rules, same payload in both.
  */
 
+import {
+  CAL_TEST_DURATION_S,
+  computeCalibration,
+  formatMl,
+  validateFinalMl,
+  validateStartMl,
+  validateTestRate,
+} from "./calibration.js";
+
 // Success toasts for the on-screen commands.
 export const COMMAND_DONE = {
   reset_vsd_fault: "VSD reset. Now press Reset Fault.",
@@ -80,6 +89,12 @@ export function rateNeedsConfirm(current, value) {
 
 // Line icons in the panel's own colour (currentColor), sized by CSS.
 const GEAR_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+export const CAL_TITLE = "1min Calibration Sequence";
+// The wizard's inputs are kept here while a test runs, so a reload can
+// reattach to it with the starting reading (lib: per browser, best effort).
+export const CAL_STORE_KEY = "sia-hmi-calwiz";
+const CAL_STORE_MAX_AGE_MS = 30 * 60 * 1000;
+
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 
 // VSD panel diagnostics, in display order: [field, label, unit, decimals].
@@ -316,9 +331,10 @@ function template(opts) {
     </div>
     <div class="touch-group">
       <button type="button" class="touch-btn touch-reset" data-id="touch-reset"><span class="touch-label">Reset Fault</span></button>
-      <button type="button" class="touch-btn touch-value" data-id="touch-cal" aria-label="Enter calibration factor">
-        <span class="touch-caption">Cal factor</span>
+      <button type="button" class="touch-btn touch-value touch-cal" data-id="touch-cal" aria-label="Enter calibration factor">
+        <span class="touch-caption" data-id="touch-cal-caption">Cal factor</span>
         <span class="touch-number" data-id="touch-cal-value">--</span>
+        <span class="touch-hint" data-id="touch-cal-hint"></span>
       </button>
     </div>
   </div>
@@ -342,6 +358,23 @@ function template(opts) {
       <span class="vsd-params-note" data-id="vsd-params-note"></span>
     </div>
     <div class="vsd-params" data-id="vsd-params" role="list"></div>
+  </div>
+</div>
+
+<div data-id="calwiz" class="modal-overlay calwiz-overlay hidden" role="dialog" aria-modal="true" aria-label="${CAL_TITLE}">
+  <div class="calwiz" data-id="calwiz-box">
+    <div class="calwiz-head">
+      <h2 class="calwiz-title">${CAL_TITLE}</h2>
+      <span class="calwiz-step" data-id="calwiz-step"></span>
+      <button type="button" class="icon-btn calwiz-close" data-id="calwiz-close" aria-label="Close">${CLOSE_ICON}</button>
+    </div>
+    <div class="calwiz-body" data-id="calwiz-body"></div>
+    <div class="calwiz-error" data-id="calwiz-error" role="alert"></div>
+    <div class="calwiz-actions">
+      <button type="button" class="key key-cancel calwiz-back" data-id="calwiz-back">Back</button>
+      <button type="button" class="key calwiz-discard hidden" data-id="calwiz-discard">Discard</button>
+      <button type="button" class="key key-ok calwiz-next" data-id="calwiz-next">Confirm</button>
+    </div>
   </div>
 </div>
 
@@ -392,6 +425,7 @@ function template(opts) {
 }
 
 // The open VSD panel re-reads diagnostics this long after each answer.
+
 export const VSD_POLL_MS = 2000;
 
 const CSS_ESCAPE = (id) => String(id).replace(/["\\]/g, "\\$&");
@@ -422,6 +456,8 @@ class Hmi {
     this.vsdDiag = null;
     this.vsdParams = null;
     this.vsdParamState = {};
+    // 1min Calibration Sequence wizard state while open (null when closed).
+    this.cal = null;
 
     root.classList.add("sia-hmi", this.opts.layout === "kiosk" ? "kiosk" : "embedded");
     root.innerHTML = template(this.opts);
@@ -459,7 +495,18 @@ class Hmi {
     on("touch-rate-down", (b) => this.sendCommand("nudge_rate", "-1", b));
     on("touch-reset", (b) => this.sendCommand("reset_fault", null, b));
     on("touch-rate", (b) => this.openRateKeypad(b));
-    on("touch-cal", (b) => this.openCalKeypad(b));
+    on("touch-cal", (b) => (this.data.calibration ? this.calwizOpen() : this.openCalKeypad(b)));
+    on("calwiz-close", () => this.calwizClose());
+    on("calwiz-back", () => this.calwizBack());
+    on("calwiz-next", (b) => this.calwizNext(b));
+    on("calwiz-discard", () => this.calwizClose());
+    const calBody = this.$("calwiz-body");
+    if (calBody) {
+      calBody.addEventListener("click", (e) => {
+        const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+        if (el) this.calwizAction(el.getAttribute("data-act"), el);
+      });
+    }
 
     this.$$(".keypad-keys .key").forEach((btn) => {
       btn.addEventListener("click", () => this.keypadPress(btn.getAttribute("data-key")));
@@ -492,9 +539,10 @@ class Hmi {
       });
     }
     this.onKey = (e) => {
-      if (e.key !== "Escape" || !this.vsdOpen) return;
+      if (e.key !== "Escape") return;
       if (this.keypadIsOpen() || this.confirmOk) return;
-      this.vsdPanelClose();
+      if (this.cal) this.calwizClose();
+      else if (this.vsdOpen) this.vsdPanelClose();
     };
     this.root.ownerDocument.addEventListener("keydown", this.onKey);
   }
@@ -509,7 +557,9 @@ class Hmi {
     const unit = opts.unit ? " " + opts.unit : "";
     this.setText(
       "keypad-range",
-      `Range ${Number(opts.min).toFixed(dp)} to ${Number(opts.max).toFixed(dp)}${unit}`
+      opts.rangeText != null
+        ? opts.rangeText
+        : `Range ${Number(opts.min).toFixed(dp)} to ${Number(opts.max).toFixed(dp)}${unit}`
     );
     this.keypadPlaceholder = opts.value != null ? Number(opts.value).toFixed(dp) : "";
     this.setText("keypad-error", "");
@@ -537,6 +587,11 @@ class Hmi {
     const res = validateKeypadEntry(this.keypadText, this.keypadOpts.min, this.keypadOpts.max);
     if (!res.ok) {
       this.setText("keypad-error", res.error);
+      return;
+    }
+    const invalid = this.keypadOpts.validate ? this.keypadOpts.validate(res.value) : null;
+    if (invalid) {
+      this.setText("keypad-error", invalid);
       return;
     }
     const done = this.keypadOpts.onSubmit;
@@ -690,6 +745,7 @@ class Hmi {
     this.renderSolar(data.solar);
     this.renderTank(data.tank);
     this.renderTouch(data.touch, (data.pumps || [])[0]);
+    this.renderCalwizLive();
     this.renderVsd(data.vsd);
     if (this.vsdOpen) this.renderVsdReset();
     this.setLastUpdate(data.timestamp);
@@ -892,10 +948,536 @@ class Hmi {
       const b = this.$(id);
       if (b) b.disabled = !pump;
     });
-    this.setText(
-      "touch-cal-value",
-      touch.calibration_factor != null ? this.fmt(touch.calibration_factor, 2) : "--"
-    );
+    this.renderCalTile(touch, pump);
+  }
+
+  // Bottom-right tile: CAL FACTOR (manual keypad) as always, or CALIBRATE
+  // (the wizard) when the controller's Calibration Method is Manual (HMI).
+  renderCalTile(touch, pump) {
+    const tile = this.$("touch-cal");
+    const factor = touch.calibration_factor != null ? this.fmt(touch.calibration_factor, 2) : "--";
+    const cal = this.data.calibration;
+    if (!tile) return;
+    tile.classList.toggle("calibrate", !!cal);
+    if (!cal) {
+      tile.setAttribute("aria-label", "Enter calibration factor");
+      this.setText("touch-cal-caption", "Cal factor");
+      this.setText("touch-cal-value", factor);
+      this.setText("touch-cal-hint", "");
+      tile.disabled = false;
+      return;
+    }
+    const active = !!cal.test_run.active;
+    const faulted = !!(pump && pump.fault);
+    const running = !!(pump && (pump.running || pump.state === "pumping"));
+    tile.setAttribute("aria-label", "Calibrate (1min Calibration Sequence)");
+    this.setText("touch-cal-value", active ? "Testing" : "Calibrate");
+    this.setText("touch-cal-caption", `Factor ${factor}`);
+    const hint = active ? "" : faulted ? "Reset fault first" : running ? "Stop pump first" : "";
+    this.setText("touch-cal-hint", hint);
+    tile.disabled = !active && (faulted || running || !pump);
+  }
+
+  // -- 1min Calibration Sequence ------------------------------------------------
+  // Pages: 1 valve shut / site glass open, 2 start mL, 3 test rate, 4 summary
+  // + Start Test (start_test_run), 5 running (countdown from the controller's
+  // TestRunRemaining_s, Cancel = cancel_test_run), "ended" (cancelled or
+  // faulted), 6 final mL, 7 results + Set calibration factor / Discard.
+  // The controller times the run and stops the pump itself; the wizard only
+  // follows its TestRun* tags, so a reload reattaches from TestRunActive.
+
+  calTestRun() {
+    const c = this.data.calibration;
+    return c ? c.test_run : null;
+  }
+
+  calPump() {
+    return (this.data.pumps || [])[0] || null;
+  }
+
+  calwizOpen() {
+    if (!this.touch || !this.data.calibration || this.cal) return;
+    const tr = this.calTestRun();
+    if (tr && tr.active) {
+      this.calwizReattach(tr);
+      return;
+    }
+    const pump = this.calPump();
+    if (pump && (pump.fault || pump.running || pump.state === "pumping")) return;
+    const t = this.data.touch || {};
+    this.cal = {
+      page: 1,
+      startMl: null,
+      rate: null,
+      finalMl: null,
+      oldFactor: t.calibration_factor != null ? Number(t.calibration_factor) : null,
+      run: null,
+      ended: null,
+      elapsedS: null,
+      testRate: null,
+      result: null,
+      saved: null,
+      error: "",
+    };
+    this.show(this.$("calwiz"));
+    this.renderCalwiz();
+  }
+
+  // A test is running (this panel reloaded, or it was started elsewhere):
+  // straight to the countdown, with the inputs saved at Start Test if any.
+  calwizReattach(tr) {
+    const saved = this.calLoad();
+    const t = this.data.touch || {};
+    this.cal = {
+      page: 5,
+      startMl: saved ? saved.startMl : null,
+      rate: saved ? saved.rate : tr.rate,
+      finalMl: null,
+      oldFactor: saved && saved.oldFactor != null
+        ? saved.oldFactor
+        : t.calibration_factor != null ? Number(t.calibration_factor) : null,
+      run: { seenActive: true, startedAt: Date.now(), duration: tr.duration_s || CAL_TEST_DURATION_S, rate: tr.rate },
+      ended: null,
+      elapsedS: null,
+      testRate: null,
+      result: null,
+      saved: null,
+      error: "",
+      reattached: true,
+    };
+    this.show(this.$("calwiz"));
+    this.renderCalwiz();
+  }
+
+  calwizClose(force = false) {
+    if (!this.cal) return;
+    if (this.cal.page === 5 && !force) return; // never while the pump runs
+    this.cal = null;
+    this.calStore(null);
+    if (this.keypadIsOpen() && this.keypadOpts.owner === "calwiz") this.keypadClose();
+    if (this.confirmOwner === "calwiz") this.confirmClose();
+    this.hide(this.$("calwiz"));
+  }
+
+  calwizGo(page) {
+    if (!this.cal) return;
+    this.cal.page = page;
+    this.cal.error = "";
+    this.renderCalwiz();
+  }
+
+  calwizBack() {
+    if (!this.cal) return;
+    const back = { 1: null, 2: 1, 3: 2, 4: 3, 6: 2, 7: 6, ended: 2 }[this.cal.page];
+    if (back === undefined) return; // running: no back
+    if (back === null) {
+      this.calwizClose();
+      return;
+    }
+    if (back === 2) {
+      // A new test needs a new starting reading.
+      this.cal.finalMl = null;
+      this.cal.result = null;
+      this.cal.saved = null;
+    }
+    this.calwizGo(back);
+  }
+
+  calwizNext(btn) {
+    const c = this.cal;
+    if (!c) return;
+    const fail = (msg) => {
+      c.error = msg;
+      this.setText("calwiz-error", msg);
+    };
+    switch (c.page) {
+      case 1:
+        return this.calwizGo(2);
+      case 2: {
+        const err = validateStartMl(c.startMl);
+        if (err) return fail(err);
+        if (c.rate == null) {
+          const pump = this.calPump();
+          if (pump && pump.target_rate != null) c.rate = Number(pump.target_rate);
+        }
+        return this.calwizGo(3);
+      }
+      case 3: {
+        const pump = this.calPump() || {};
+        const err = validateTestRate(c.rate, pump.min_rate, pump.max_rate);
+        if (err) return fail(err);
+        return this.calwizGo(4);
+      }
+      case 4:
+        return this.calwizStart(btn);
+      case 6: {
+        const err = validateStartMl(c.startMl) || validateFinalMl(c.finalMl, c.startMl);
+        if (err) return fail(err);
+        const res = this.calResult();
+        if (!res.ok) return fail(res.error);
+        c.result = res;
+        return this.calwizGo(7);
+      }
+      case 7:
+        if (c.saved != null) return this.calwizClose();
+        return this.calwizSetFactor(btn);
+      case "ended":
+        return this.calwizClose();
+      default:
+        return undefined;
+    }
+  }
+
+  calResult() {
+    const c = this.cal;
+    return computeCalibration({
+      startMl: c.startMl,
+      finalMl: c.finalMl,
+      elapsedS: c.elapsedS,
+      targetRate: c.testRate != null ? c.testRate : c.rate,
+      oldFactor: c.oldFactor,
+      rateUnits: this.units.rate,
+    });
+  }
+
+  calwizStart(btn) {
+    const c = this.cal;
+    const payload = { rate: c.rate, duration_s: CAL_TEST_DURATION_S };
+    const t = this.data.touch || {};
+    if (t.calibration_factor != null) c.oldFactor = Number(t.calibration_factor);
+    const sent = this.sendCommand("start_test_run", payload, btn);
+    if (!sent) return;
+    sent.then((ack) => {
+      if (this.cal !== c || c.page !== 4) return;
+      if (ack && ack.ok) {
+        c.run = { seenActive: false, startedAt: Date.now(), duration: CAL_TEST_DURATION_S, rate: null };
+        this.calStore({ startMl: c.startMl, rate: c.rate, oldFactor: c.oldFactor, at: Date.now() });
+        this.calwizGo(5);
+        this.renderCalwizLive();
+      } else {
+        c.error = (ack && ack.message) || "The test did not start";
+        this.setText("calwiz-error", c.error);
+      }
+    });
+  }
+
+  calwizSetFactor(btn) {
+    const c = this.cal;
+    if (!c.result || !c.result.ok) return;
+    const value = c.result.newFactor;
+    const sent = this.sendCommand("last_calibration_factor", value, btn);
+    if (!sent) return;
+    sent.then((ack) => {
+      if (this.cal !== c) return;
+      if (ack && ack.ok) {
+        c.saved = value;
+        this.calStore(null);
+        this.renderCalwiz();
+      } else {
+        c.error = (ack && ack.message) || "The calibration factor was not set";
+        this.setText("calwiz-error", c.error);
+      }
+    });
+  }
+
+  calwizAction(act, el) {
+    const c = this.cal;
+    if (!c) return;
+    const pump = this.calPump() || {};
+    if (act === "manual") {
+      // The existing manual entry, unchanged: the wizard steps aside.
+      this.calwizClose();
+      this.openCalKeypad(this.$("touch-cal"));
+    } else if (act === "edit-start") {
+      this.keypadOpen({
+        owner: "calwiz",
+        title: "Site glass mL",
+        value: c.startMl,
+        min: null,
+        max: null,
+        rangeText: "Must be more than 0 mL",
+        decimals: 1,
+        unit: "mL",
+        validate: validateStartMl,
+        onSubmit: (value) => {
+          c.startMl = value;
+          if (c.finalMl != null && validateFinalMl(c.finalMl, value)) c.finalMl = null;
+          this.renderCalwiz();
+        },
+      });
+    } else if (act === "edit-rate") {
+      this.keypadOpen({
+        owner: "calwiz",
+        title: "Test rate",
+        value: c.rate,
+        min: pump.min_rate,
+        max: pump.max_rate,
+        decimals: 2,
+        unit: this.units.rate,
+        validate: (v) => validateTestRate(v, pump.min_rate, pump.max_rate),
+        onSubmit: (value) => {
+          c.rate = value;
+          this.renderCalwiz();
+        },
+      });
+    } else if (act === "edit-final") {
+      this.keypadOpen({
+        owner: "calwiz",
+        title: "Final site glass mL",
+        value: c.finalMl,
+        min: null,
+        max: null,
+        rangeText: c.startMl != null ? `Less than the starting ${formatMl(c.startMl)} mL` : "Less than the starting reading",
+        decimals: 1,
+        unit: "mL",
+        validate: (v) => validateFinalMl(v, c.startMl),
+        onSubmit: (value) => {
+          c.finalMl = value;
+          this.renderCalwiz();
+        },
+      });
+    } else if (act === "cancel") {
+      const sent = this.sendCommand("cancel_test_run", null, el);
+      if (sent) {
+        sent.then((ack) => {
+          if (this.cal === c && c.run && ack && ack.ok) {
+            // The result arrives with the tags; this one is fresh.
+            c.run.seenActive = true;
+            this.renderCalwizLive();
+          }
+        });
+      }
+    }
+  }
+
+  calStore(value) {
+    try {
+      const store = this.root.ownerDocument.defaultView.localStorage;
+      if (value) store.setItem(CAL_STORE_KEY, JSON.stringify(value));
+      else store.removeItem(CAL_STORE_KEY);
+    } catch {
+      // no storage: a reload then asks for the starting reading again
+    }
+  }
+
+  calLoad() {
+    try {
+      const store = this.root.ownerDocument.defaultView.localStorage;
+      const v = JSON.parse(store.getItem(CAL_STORE_KEY) || "null");
+      if (!v || typeof v !== "object" || !(Date.now() - Number(v.at) < CAL_STORE_MAX_AGE_MS)) return null;
+      return v;
+    } catch {
+      return null;
+    }
+  }
+
+  // Per payload: follow the controller's test run, and keep the wizard in
+  // step with it (reattach, countdown, end of the run).
+  renderCalwizLive() {
+    if (!this.touch || !this.data.calibration) {
+      if (this.cal) this.calwizClose(true);
+      return;
+    }
+    const tr = this.calTestRun();
+    if (!this.cal) {
+      if (tr.active) this.calwizReattach(tr);
+      return;
+    }
+    const c = this.cal;
+    if (c.page !== 5) {
+      // Started from another screen while this one was on pages 1 to 4.
+      if (tr.active && [1, 2, 3, 4].includes(c.page)) {
+        c.run = { seenActive: true, startedAt: Date.now(), duration: tr.duration_s || CAL_TEST_DURATION_S, rate: tr.rate };
+        this.calwizGo(5);
+      } else {
+        this.renderCalwizActions();
+        return;
+      }
+    }
+    const run = c.run;
+    if (tr.active) {
+      run.seenActive = true;
+      if (tr.rate != null) run.rate = tr.rate;
+      if (tr.duration_s) run.duration = tr.duration_s;
+    } else if (
+      tr.result &&
+      (run.seenActive || Date.now() - run.startedAt > (run.duration + 30) * 1000)
+    ) {
+      if (tr.result === "completed") {
+        c.elapsedS = tr.elapsed_s;
+        c.testRate = run.rate != null ? run.rate : tr.rate != null ? tr.rate : c.rate;
+        this.calwizGo(6);
+      } else {
+        const pump = this.calPump() || {};
+        c.ended = {
+          result: tr.result,
+          reason: tr.result === "faulted" ? pump.fault_reason || "the pump tripped" : "",
+          elapsedS: tr.elapsed_s,
+        };
+        this.calStore(null);
+        this.calwizGo("ended");
+      }
+      return;
+    }
+    this.renderCalwizRunning();
+  }
+
+  renderCalwizRunning() {
+    const tr = this.calTestRun();
+    const c = this.cal;
+    if (!c || c.page !== 5 || !tr) return;
+    const duration = (c.run && c.run.duration) || CAL_TEST_DURATION_S;
+    const remaining = tr.active && tr.remaining_s != null ? tr.remaining_s : duration;
+    this.setText("calwiz-countdown", String(Math.max(0, Math.ceil(remaining - 1e-6))));
+    const fill = this.$("calwiz-progress");
+    if (fill) fill.style.width = `${Math.max(0, Math.min(1, 1 - remaining / duration)) * 100}%`;
+    const pump = this.calPump();
+    this.setText("calwiz-flow", pump ? this.fmt(pump.flow_rate, 2) : "--");
+    const rate = c.run && c.run.rate != null ? c.run.rate : c.rate;
+    this.setText("calwiz-run-rate", rate != null ? this.fmt(rate, 2) : "--");
+  }
+
+  renderCalwiz() {
+    const c = this.cal;
+    const body = this.$("calwiz-body");
+    if (!c || !body) return;
+    const u = escapeHtml(this.units.rate);
+    const pump = this.calPump() || {};
+    const field = (act, label, value, unit, note) =>
+      `<button type="button" class="calwiz-field" data-act="${act}" data-id="calwiz-field-${act.slice(5)}">` +
+      `<span class="calwiz-field-label">${label}</span>` +
+      `<span class="calwiz-field-value${value == null ? " empty" : ""}">${value == null ? "Tap to enter" : escapeHtml(value)}` +
+      `${value == null || !unit ? "" : `<span class="calwiz-unit">${unit}</span>`}</span>` +
+      (note ? `<span class="calwiz-field-note">${note}</span>` : "") +
+      `</button>`;
+    const row = (label, value, unit = "", id = "") =>
+      `<div class="calwiz-row"${id ? ` data-id="${id}"` : ""}><span class="calwiz-row-label">${label}</span>` +
+      `<span class="calwiz-row-value">${value}${unit ? ` <span class="calwiz-unit">${unit}</span>` : ""}</span></div>`;
+    const ml = (v) => (v == null ? "--" : formatMl(v));
+    const steps = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, ended: 5, 6: 6, 7: 7 };
+    this.setText("calwiz-step", `Step ${steps[c.page]} of 7`);
+    let html = "";
+    switch (c.page) {
+      case 1:
+        html =
+          `<p class="calwiz-text calwiz-lead">Please confirm the tank valve is shut off and the site glass is open</p>` +
+          `<button type="button" class="calwiz-link" data-act="manual" data-id="calwiz-manual">Set factor manually</button>`;
+        break;
+      case 2:
+        html =
+          field("edit-start", "Site glass mL", c.startMl == null ? null : formatMl(c.startMl), "mL", "Read the site glass before the test.");
+        break;
+      case 3:
+        html = field(
+          "edit-rate",
+          "Test rate",
+          c.rate == null ? null : this.fmt(c.rate, 2),
+          u,
+          pump.min_rate != null && pump.max_rate != null
+            ? `Range ${this.fmt(pump.min_rate, 2)} to ${this.fmt(pump.max_rate, 2)} ${u}`
+            : "",
+        );
+        break;
+      case 4:
+        html =
+          `<div class="calwiz-rows">` +
+          row("Start site glass", ml(c.startMl), "mL") +
+          row("Test rate", this.fmt(c.rate, 2), u) +
+          row("Duration", String(CAL_TEST_DURATION_S), "s") +
+          `</div>` +
+          `<p class="calwiz-note" data-id="calwiz-start-note">The pump will run for 1 minute at the test rate, then stop by itself.</p>`;
+        break;
+      case 5:
+        html =
+          `<div class="calwiz-run">` +
+          `<div class="calwiz-count"><span class="calwiz-count-value" data-id="calwiz-countdown">--</span>` +
+          `<span class="calwiz-count-unit">s remaining</span></div>` +
+          `<div class="calwiz-progress"><div class="calwiz-progress-fill" data-id="calwiz-progress"></div></div>` +
+          `<div class="calwiz-run-side">` +
+          row("Flow rate", `<span data-id="calwiz-flow">--</span>`, u) +
+          row("Test rate", `<span data-id="calwiz-run-rate">--</span>`, u) +
+          `<button type="button" class="key calwiz-cancel" data-act="cancel" data-id="calwiz-cancel">Cancel</button>` +
+          `</div></div>`;
+        break;
+      case "ended": {
+        const e = c.ended || {};
+        const what = e.result === "faulted"
+          ? `The test stopped because the pump faulted: ${escapeHtml(e.reason)}.`
+          : "The test was cancelled and the pump stopped.";
+        html =
+          `<p class="calwiz-text calwiz-lead calwiz-ended" data-id="calwiz-ended">${what}</p>` +
+          `<p class="calwiz-note">No calibration factor was changed. Go back to read the site glass and run the test again.</p>`;
+        break;
+      }
+      case 6:
+        html =
+          (c.reattached && c.startMl == null
+            ? field("edit-start", "Site glass mL at the start", null, "mL", "Not known on this screen: enter it.")
+            : "") +
+          field("edit-final", "Final site glass mL", c.finalMl == null ? null : formatMl(c.finalMl), "mL",
+            `Start was ${ml(c.startMl)} mL. Test ran ${c.elapsedS != null ? this.fmt(c.elapsedS, 1) : "--"} s.`);
+        break;
+      case 7: {
+        const r = c.result;
+        const clampNote = r.clamped
+          ? `<p class="calwiz-note calwiz-warn" data-id="calwiz-clamped">Calculated ${this.fmt(r.rawFactor, 2)} is outside 0.3 to 1.7, so it is limited to ${this.fmt(r.newFactor, 2)}. Check the readings and the pump.</p>`
+          : "";
+        const saved = c.saved != null
+          ? `<p class="calwiz-note calwiz-ok" data-id="calwiz-saved">Calibration factor set to ${this.fmt(c.saved, 2)}.</p>`
+          : "";
+        html =
+          `<div class="calwiz-rows calwiz-results">` +
+          row("Delivered volume", formatMl(r.deliveredMl), "mL", "calwiz-delivered") +
+          row("Measured flow rate", this.fmt(r.measuredRate, 2), u, "calwiz-measured") +
+          row("Target flow rate", this.fmt(r.targetRate, 2), u, "calwiz-target") +
+          row("Calibration factor", `${this.fmt(r.oldFactor, 2)} \u2192 <strong data-id="calwiz-new-factor">${this.fmt(r.newFactor, 2)}</strong>`, "", "calwiz-factor") +
+          `</div>` + clampNote + saved;
+        break;
+      }
+      default:
+        html = "";
+    }
+    body.innerHTML = html;
+    body.setAttribute("data-page", String(c.page));
+    this.setText("calwiz-error", c.error || "");
+    this.renderCalwizActions();
+    if (c.page === 5) this.renderCalwizRunning();
+  }
+
+  renderCalwizActions() {
+    const c = this.cal;
+    if (!c) return;
+    const back = this.$("calwiz-back");
+    const next = this.$("calwiz-next");
+    const discard = this.$("calwiz-discard");
+    const close = this.$("calwiz-close");
+    const running = c.page === 5;
+    this.toggle(back, !running);
+    this.toggle(close, !running);
+    this.toggle(next, !running);
+    this.toggle(discard, c.page === 7 && c.saved == null);
+    if (!next) return;
+    const labels = { 1: "Confirm", 2: "Confirm", 3: "Confirm", 4: "Start Test", 6: "Confirm", 7: "Set calibration factor", ended: "Close" };
+    next.textContent = c.page === 7 && c.saved != null ? "Close" : labels[c.page] || "Confirm";
+    next.classList.toggle("calwiz-go", c.page === 4 || (c.page === 7 && c.saved == null));
+    const pump = this.calPump() || {};
+    let disabled = false;
+    if (c.page === 2) disabled = !!validateStartMl(c.startMl);
+    if (c.page === 3) disabled = !!validateTestRate(c.rate, pump.min_rate, pump.max_rate);
+    if (c.page === 4) disabled = !!(pump.fault || pump.running || pump.state === "pumping");
+    if (c.page === 6) disabled = !!(validateStartMl(c.startMl) || validateFinalMl(c.finalMl, c.startMl));
+    next.disabled = disabled;
+    if (c.page === 4) {
+      const note = this.$("calwiz-start-note");
+      if (note) {
+        note.textContent = pump.fault
+          ? "The pump is faulted: reset the fault first."
+          : pump.running || pump.state === "pumping"
+            ? "The pump is running: stop it first."
+            : "The pump will run for 1 minute at the test rate, then stop by itself.";
+        note.classList.toggle("calwiz-warn", disabled);
+      }
+    }
   }
 
   renderVsd(vsd) {
