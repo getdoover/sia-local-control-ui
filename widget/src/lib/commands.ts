@@ -13,8 +13,8 @@
  *
  * The controller patches `status` onto that message (`success` + `response`,
  * or `error` + `{code, message}`); doover-js's `RpcDispatcher` (`client.rpc`)
- * posts it and waits for that status. Local alarm writes poll the exact
- * persisted message receipt to avoid depending on a live reply subscription.
+ * posts it and waits for that status in both hosts: the cloud client through
+ * the data API, the device agent's `DdaDataClient` through the local broker.
  *
  * `last_calibration_factor` has no custom handler on the controller: the
  * UI element's default handler stores the value (auto_update), so the RPC
@@ -199,23 +199,7 @@ export function explainRpcError(code: string, message: string): Ack {
   };
 }
 
-interface LocalMessage {
-  id?: string;
-  message_id?: string;
-  data?: { status?: { code?: string; message?: unknown }; response?: unknown };
-}
-
 interface RpcClientLike {
-  clientId?: string;
-  aggregates?: {
-    getAggregate: (
-      channel: { agentId: string; channelName: string },
-    ) => Promise<{ data?: Record<string, unknown> }>;
-  };
-  messages?: {
-    postMessage: (channel: { agentId: string; channelName: string }, body: Record<string, unknown>) => Promise<LocalMessage>;
-    listMessages: (channel: { agentId: string; channelName: string }, options: { limit: number; before: string; after: string }) => Promise<LocalMessage[]>;
-  };
   rpc?: {
     send: (
       channel: { agentId: string; channelName: string },
@@ -223,99 +207,6 @@ interface RpcClientLike {
       options?: { timeoutMs?: number; onStatus?: (status: unknown) => void },
     ) => Promise<unknown>;
   };
-}
-
-/** Local alarm writes use the persisted RPC message as their receipt. Polling
- * its exact ID avoids both subscription startup and early-reply races. Never
- * resend a write, and never treat a matching old threshold as acknowledgement.
- */
-async function sendLocalAlarm(
-  client: RpcClientLike,
-  opts: SendCommandOptions,
-  body: RpcRequestBody,
-): Promise<Ack> {
-  const channel = { agentId: opts.agentId!, channelName: UI_CMDS_CHANNEL };
-  let stopped = false;
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  let delay: ReturnType<typeof setTimeout> | undefined;
-  let wake: (() => void) | undefined;
-  const work = async (): Promise<Ack> => {
-    const posted = await client.messages!.postMessage(channel, { type: "rpc", ...body });
-    const id = posted.message_id ?? posted.id;
-    if (!id || !/^\d+$/.test(String(id))) throw new Error("No valid message ID returned for alarm write");
-    // DDA cursors are exclusive numeric message IDs. Bound the read to this
-    // receipt so channel history or concurrent commands cannot crowd it out.
-    const cursor = BigInt(id);
-    const query = { limit: 1, after: String(cursor - 1n), before: String(cursor + 1n) };
-    while (!stopped) {
-      try {
-        const messages = await client.messages!.listMessages(channel, query);
-        if (stopped) break;
-        const receipt = messages.find((message) => String(message.id ?? message.message_id) === String(id));
-        const status = receipt?.data?.status;
-        if (status?.code === "success") return { ok: true, result: receipt?.data?.response ?? {} };
-        if (status?.code === "error") {
-          return { ok: false, ...rpcErrorOf({ status }) };
-        }
-      } catch {
-        // A transient read failure is safe to retry; the write is sent once.
-      }
-      if (!stopped) await new Promise<void>((resolve) => {
-        wake = resolve;
-        delay = setTimeout(resolve, 200);
-      });
-    }
-    return { ok: false, code: "TIMEOUT", message: "RPC timed out" };
-  };
-  try {
-    return await Promise.race([
-      work(),
-      new Promise<Ack>((resolve) => {
-        deadline = setTimeout(() => resolve({ ok: false, code: "TIMEOUT", message: "RPC timed out" }), opts.timeoutMs);
-      }),
-    ]);
-  } catch (error) {
-    return { ok: false, ...rpcErrorOf(error) };
-  } finally {
-    stopped = true;
-    clearTimeout(deadline);
-    clearTimeout(delay);
-    wake?.();
-  }
-}
-
-/** Read the local controller's persisted threshold after a lost RPC reply.
- * Only the local DDA client is used: a cloud cache cannot verify a device write.
- * This is a read, never a retry of the command.
- */
-async function verifyAlarmWrite(
-  client: RpcClientLike,
-  opts: SendCommandOptions,
-): Promise<boolean> {
-  if (
-    client.clientId !== "local-dda-http" ||
-    !ALARM_SETTING_COMMANDS.includes(opts.cmd) ||
-    (opts.channelName ?? UI_CMDS_CHANNEL) !== UI_CMDS_CHANNEL ||
-    !client.aggregates?.getAggregate ||
-    !opts.agentId ||
-    !opts.appKey
-  ) return false;
-  const requested = optNum(opts.value);
-  if (requested === null) return false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const aggregate = await Promise.race([
-      client.aggregates.getAggregate({ agentId: opts.agentId, channelName: UI_CMDS_CHANNEL }),
-      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), 2_000); }),
-    ]);
-    const values = aggregate?.data?.[opts.appKey];
-    if (!values || typeof values !== "object") return false;
-    return optNum((values as Record<string, unknown>)[opts.cmd]) === requested;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export interface SendCommandOptions {
@@ -349,13 +240,6 @@ export async function sendCommand(opts: SendCommandOptions): Promise<Ack> {
     return { ok: false, code: "UNSUPPORTED", message: "Commands are not available from this screen." };
   }
   const body = buildRpcRequest(opts.cmd, opts.value, opts.appKey, opts.actor);
-  if (
-    client.clientId === "local-dda-http" &&
-    ALARM_SETTING_COMMANDS.includes(opts.cmd) &&
-    (opts.channelName ?? UI_CMDS_CHANNEL) === UI_CMDS_CHANNEL &&
-    typeof client.messages?.postMessage === "function" && typeof client.messages?.listMessages === "function"
-  ) return sendLocalAlarm(client, opts, body);
-
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error("RPC timed out")), opts.timeoutMs + 2_000);
@@ -372,9 +256,6 @@ export async function sendCommand(opts: SendCommandOptions): Promise<Ack> {
     return { ok: true, result: result ?? {} };
   } catch (error) {
     const { code, message } = rpcErrorOf(error);
-    if (code === "TIMEOUT" && await verifyAlarmWrite(client, opts)) {
-      return { ok: true, result: { verified: true } };
-    }
     return { ok: false, code, message };
   } finally {
     clearTimeout(timer);
