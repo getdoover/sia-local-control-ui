@@ -736,6 +736,8 @@
     font-weight: 600;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     z-index: 1200;
+    /* Informational only: a tap on whatever is under it goes through. */
+    pointer-events: none;
 }
 
 .sia-hmi .command-toast.error { background: #c0392b; }
@@ -1535,8 +1537,8 @@
 
 /* ------------------------------------------------------------------
    Alarm settings: the gears on the Tank / Skid tiles and their popover
-   (same overlay, head and insets as the VSD panel; two large rows, no
-   scrolling).
+   (same overlay, head and insets as the VSD panel; two or three large
+   rows, no scrolling).
    ------------------------------------------------------------------ */
 .sia-hmi .alarm-panel {
     display: flex;
@@ -1609,6 +1611,7 @@
     color: var(--hmi-amber);
 }
 .sia-hmi .alarm-trip .alarm-kind { color: var(--hmi-red); }
+.sia-hmi .alarm-delay .alarm-kind { color: var(--hmi-blue); }
 .sia-hmi .alarm-range { font-size: 0.8rem; font-weight: 600; color: var(--hmi-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sia-hmi .alarm-note {
     grid-column: 1 / -1;

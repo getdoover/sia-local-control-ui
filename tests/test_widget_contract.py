@@ -241,16 +241,23 @@ def test_alarm_settings_access_options_match_the_widget():
         == "Hidden"
     )
     assert "alarm_settings_access" in _widget_config_keys()
-    # The four thresholds are the pump controller's "Alarm Settings" element
-    # names, written over ui_cmds like last_calibration_factor.
+    # The four thresholds and the tank alarm delay are the pump controller's
+    # "Alarm Settings" element names, written over ui_cmds like
+    # last_calibration_factor; the delay reads back from its own tag.
     commands = (WIDGET / "src" / "lib" / "commands.ts").read_text()
     for name in (
         "low_tank_level",
         "low_low_tank_level",
+        "tank_level_timeout",
         "high_pressure",
         "high_high_pressure",
     ):
         assert f'"{name}"' in commands
+    assembled = (WIDGET / "src" / "lib" / "assembleDashboardData.ts").read_text()
+    assert '"SetpointTankLevelTimeout"' in assembled
+    # The config editor tells whoever picks the access level that the gear
+    # also changes the tank alarm delay, not just the thresholds.
+    assert "alarm delay" in props["alarm_settings_access"]["description"]
 
 
 def test_vsd_panel_calls_the_techtop_rpc_channel():

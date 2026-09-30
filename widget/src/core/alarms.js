@@ -13,6 +13,10 @@
  *   low_low_tank_level    LL trip      0 to 100 %, step 0.1, 0 = off, unless
  *                                      tank_ll_validation_enabled with a tank
  *                                      sensor: 0.1 to 100 (never off)
+ *   tank_level_timeout    delay        1 to 600 s, whole seconds (never off):
+ *                                      how long the level must stay below L
+ *                                      / LL before the warning / trip, read
+ *                                      back from SetpointTankLevelTimeout
  *   high_pressure         H warning    0 to 4000 psi, 0 = off
  *   high_high_pressure    HH trip      110 to 4000 psi (never off)
  *
@@ -37,6 +41,13 @@ export const ALARM_FIELDS = {
     short: "LL",
     kind: "Trip",
   },
+  tank_level_timeout: {
+    group: "tank",
+    key: "delay",
+    label: "Alarm delay",
+    short: "Delay",
+    kind: "Delay",
+  },
   high_pressure: {
     group: "pressure",
     key: "high",
@@ -53,11 +64,11 @@ export const ALARM_FIELDS = {
   },
 };
 
-/** The four ui_cmds commands, in display order per group. */
+/** The ui_cmds commands, in display order per group. */
 export const ALARM_COMMANDS = Object.keys(ALARM_FIELDS);
 
 export const ALARM_GROUPS = {
-  tank: { title: "Tank Level Alarms", fields: ["low_tank_level", "low_low_tank_level"] },
+  tank: { title: "Tank Level Alarms", fields: ["low_tank_level", "low_low_tank_level", "tank_level_timeout"] },
   pressure: { title: "Discharge Pressure Alarms", fields: ["high_pressure", "high_high_pressure"] },
 };
 
@@ -68,13 +79,22 @@ export function pressureFactor(units) {
 
 const round1 = (v) => Math.round(v * 10) / 10;
 
+/** The tank alarm delay (tank_level_timeout): whole seconds, never off. */
+export const TANK_DELAY_FIELD = "tank_level_timeout";
+export const TANK_DELAY_MIN_S = 1;
+export const TANK_DELAY_MAX_S = 600;
+
 /**
- * {min, max, step, offAllowed, unit} for one field. `settings` is the
- * payload's `alarm_settings` ({tank: {ll_required}, pressure: {units}}).
+ * {min, max, step, offAllowed, unit} for one field (plus `whole` for the
+ * tank alarm delay). `settings` is the payload's `alarm_settings` ({tank:
+ * {ll_required}, pressure: {units}}).
  */
 export function alarmRange(field, settings) {
   const f = ALARM_FIELDS[field];
   if (!f) return null;
+  if (field === TANK_DELAY_FIELD) {
+    return { min: TANK_DELAY_MIN_S, max: TANK_DELAY_MAX_S, step: 1, offAllowed: false, unit: "s", whole: true };
+  }
   if (f.group === "tank") {
     const required = field === "low_low_tank_level" && !!(settings && settings.tank && settings.tank.ll_required);
     return { min: required ? 0.1 : 0, max: 100, step: 0.1, offAllowed: !required, unit: "%" };
@@ -101,10 +121,13 @@ export function alarmDecimals(field, settings) {
   return r && r.step < 1 ? 1 : 0;
 }
 
-/** Display text: "Off" for 0, the number with its unit, or the empty dash. */
+/**
+ * Display text: "Off" for 0 (never for the alarm delay), the number with its
+ * unit, or the empty dash.
+ */
 export function formatAlarmValue(field, value, settings, empty = "—") {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return empty;
-  if (Number(value) <= 0) return "Off";
+  if (Number(value) <= 0 && field !== TANK_DELAY_FIELD) return "Off";
   const r = alarmRange(field, settings);
   return `${Number(value).toFixed(alarmDecimals(field, settings))} ${r.unit}`;
 }
@@ -112,13 +135,20 @@ export function formatAlarmValue(field, value, settings, empty = "—") {
 /**
  * Why `value` cannot be set for `field` ("" when it can): the range, the
  * off rule, and the order L above LL / H below HH (each unless the other is
- * off). The other threshold is the controller's current one.
+ * off). The other threshold is the controller's current one. The alarm
+ * delay has only its range, in whole seconds.
  */
 export function validateAlarmValue(field, value, settings) {
   const r = alarmRange(field, settings);
   if (!r) return "Unknown setting";
   const v = Number(value);
   if (!Number.isFinite(v)) return "Enter a number";
+  if (r.whole) {
+    const range = `The alarm delay must be ${r.min} to ${r.max} ${r.unit}`;
+    if (v < r.min || v > r.max) return range;
+    if (!Number.isInteger(v)) return "The alarm delay is whole seconds (no decimals)";
+    return "";
+  }
   if (v === 0 && !r.offAllowed) {
     return field === "low_low_tank_level"
       ? "The LL trip can't be off while tank LL validation is on"

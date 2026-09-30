@@ -371,12 +371,13 @@ export interface CalibrationData {
 }
 
 /**
- * The controller's tank / discharge pressure alarm thresholds (0 = off),
- * for the alarm settings popovers (core/alarms.js). A group is present only
- * when its sensor app is configured on the HMI.
+ * The controller's tank / discharge pressure alarm thresholds (0 = off) and
+ * the tank alarm delay (seconds), for the alarm settings popovers
+ * (core/alarms.js). A group is present only when its sensor app is
+ * configured on the HMI.
  */
 export interface AlarmSettingsData {
-  tank?: { low: number | null; low_low: number | null; ll_required: boolean };
+  tank?: { low: number | null; low_low: number | null; delay: number | null; ll_required: boolean };
   pressure?: { high: number | null; high_high: number | null; units: string };
 }
 
@@ -384,7 +385,9 @@ export interface AlarmSettingsData {
  * Alarm thresholds from the primary controller's Setpoint* tags, with the
  * two controller config facts the editor needs: its pressure unit (the
  * PressureUnits tag, else its pressure_units config) and whether tank LL
- * may be off (tank_ll_validation_enabled with a tank_app: it may not).
+ * may be off (tank_ll_validation_enabled with a tank_app: it may not). The
+ * tank alarm delay is SetpointTankLevelTimeout (null on an older controller
+ * that does not publish it, as for the thresholds).
  */
 export function collectAlarmSettings(
   get: TagReader,
@@ -398,6 +401,7 @@ export function collectAlarmSettings(
     out.tank = {
       low: optNum(get("SetpointTankL", key)),
       low_low: optNum(get("SetpointTankLL", key)),
+      delay: optNum(get("SetpointTankLevelTimeout", key)),
       ll_required: cc.tank_ll_validation_enabled === true && asString(cc.tank_app) !== null,
     };
   }
@@ -784,6 +788,7 @@ export function liveTagIds(cfg: HmiConfig): string[] {
     // Alarm settings readback.
     "SetpointTankL",
     "SetpointTankLL",
+    "SetpointTankLevelTimeout",
     "SetpointPressureH",
     "SetpointPressureHH",
   ];

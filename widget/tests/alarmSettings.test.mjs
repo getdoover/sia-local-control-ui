@@ -1,7 +1,7 @@
 // Alarm settings: the gears on the Tank / Skid tiles, the controller's tank
-// L / LL and discharge pressure H / HH thresholds (read back from its
-// Setpoint* tags), the keypad range and ordering rules, and the ui_cmds
-// writes, governed by alarm_settings_access.
+// L / LL and discharge pressure H / HH thresholds and the tank alarm delay
+// (read back from its Setpoint* tags), the keypad range and ordering rules,
+// and the ui_cmds writes, governed by alarm_settings_access.
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -42,7 +42,7 @@ const LOCAL = { enabled: true, canWrite: true, writeBlockedReason: "" };
 const VIEW_ONLY = { enabled: true, canWrite: false, writeBlockedReason: ALARM_LOCAL_ONLY_TEXT };
 
 const SETTINGS = {
-  tank: { low: 20, low_low: 10, ll_required: false },
+  tank: { low: 20, low_low: 10, delay: 600, ll_required: false },
   pressure: { high: 0, high_high: 6894.8, units: "kPa" },
 };
 
@@ -71,10 +71,17 @@ function assemble(hmi, tags, controllerCfg = {}) {
 }
 
 test("payload: thresholds from the Setpoint* tags, only for configured sensors", () => {
-  const tags = { SetpointTankL: 20, SetpointTankLL: 10, SetpointPressureH: 0, SetpointPressureHH: 6894.8, PressureUnits: "kPa" };
+  const tags = {
+    SetpointTankL: 20,
+    SetpointTankLL: 10,
+    SetpointTankLevelTimeout: 600,
+    SetpointPressureH: 0,
+    SetpointPressureHH: 6894.8,
+    PressureUnits: "kPa",
+  };
   const both = assemble({ tank_level_app: TANK, pressure_sensor_app: PRESSURE }, tags);
   assert.deepEqual(both.alarm_settings, {
-    tank: { low: 20, low_low: 10, ll_required: false },
+    tank: { low: 20, low_low: 10, delay: 600, ll_required: false },
     pressure: { high: 0, high_high: 6894.8, units: "kPa" },
   });
   const tankOnly = assemble({ tank_level_app: TANK }, tags);
@@ -82,7 +89,10 @@ test("payload: thresholds from the Setpoint* tags, only for configured sensors",
   assert.equal(assemble({}, tags).alarm_settings, undefined);
   // An older controller without the tags: values unknown, not zero.
   const old = assemble({ tank_level_app: TANK }, {});
-  assert.deepEqual(old.alarm_settings.tank, { low: null, low_low: null, ll_required: false });
+  assert.deepEqual(old.alarm_settings.tank, { low: null, low_low: null, delay: null, ll_required: false });
+  // A controller with the thresholds but not the alarm delay yet.
+  const noDelay = assemble({ tank_level_app: TANK }, { SetpointTankL: 20, SetpointTankLL: 10 });
+  assert.deepEqual(noDelay.alarm_settings.tank, { low: 20, low_low: 10, delay: null, ll_required: false });
 });
 
 test("payload: tank LL required from the controller's tank_ll_validation_enabled with a tank_app", () => {
@@ -101,7 +111,7 @@ test("payload: pressure unit falls back to the controller config, then psi", () 
 
 test("live tags: the cloud claims the Setpoint tags", () => {
   const ids = liveTagIds(resolveConfig(APP, deployment({ pump_controllers: [CTRL] }, APP)));
-  for (const t of ["SetpointTankL", "SetpointTankLL", "SetpointPressureH", "SetpointPressureHH"]) {
+  for (const t of ["SetpointTankL", "SetpointTankLL", "SetpointTankLevelTimeout", "SetpointPressureH", "SetpointPressureHH"]) {
     assert.ok(ids.includes(`${CTRL}.${t}`), t);
   }
 });
@@ -118,6 +128,10 @@ test("ranges mirror the controller's sliders, pressure scaled to its unit", () =
   assert.deepEqual(alarmRange("high_high_pressure", psi), { min: 110, max: 4000, step: 1, offAllowed: false, unit: "psi" });
   assert.deepEqual(alarmRange("high_high_pressure", SETTINGS), { min: 758.4, max: 27579, step: 1, offAllowed: false, unit: "kPa" });
   assert.deepEqual(alarmRange("high_pressure", { pressure: { units: "bar" } }), { min: 0, max: 275.8, step: 0.1, offAllowed: true, unit: "bar" });
+  // The tank alarm delay: whole seconds, never off, whatever the LL rule.
+  const delay = { min: 1, max: 600, step: 1, offAllowed: false, unit: "s", whole: true };
+  assert.deepEqual(alarmRange("tank_level_timeout", SETTINGS), delay);
+  assert.deepEqual(alarmRange("tank_level_timeout", req), delay);
 });
 
 test("display: Off for 0, the unit otherwise, a dash when unknown", () => {
@@ -125,6 +139,9 @@ test("display: Off for 0, the unit otherwise, a dash when unknown", () => {
   assert.equal(formatAlarmValue("high_pressure", 0, SETTINGS), "Off");
   assert.equal(formatAlarmValue("high_high_pressure", 6894.8, SETTINGS), "6895 kPa");
   assert.equal(formatAlarmValue("low_tank_level", null, SETTINGS), "—");
+  assert.equal(formatAlarmValue("tank_level_timeout", 600, SETTINGS), "600 s");
+  assert.equal(formatAlarmValue("tank_level_timeout", 0, SETTINGS), "0 s", "the delay is never Off");
+  assert.equal(formatAlarmValue("tank_level_timeout", null, SETTINGS), "—");
 });
 
 test("validation: L above LL and H below HH, each unless the other is off", () => {
@@ -146,6 +163,19 @@ test("validation: L above LL and H below HH, each unless the other is off", () =
   assert.match(validateAlarmValue("low_tank_level", 101, SETTINGS), /Out of range/);
 });
 
+test("validation: the tank alarm delay is 1 to 600 whole seconds, with no ordering rule", () => {
+  assert.equal(validateAlarmValue("tank_level_timeout", 1, SETTINGS), "");
+  assert.equal(validateAlarmValue("tank_level_timeout", 600, SETTINGS), "");
+  assert.equal(validateAlarmValue("tank_level_timeout", 30, SETTINGS), "");
+  assert.equal(validateAlarmValue("tank_level_timeout", 0, SETTINGS), "The alarm delay must be 1 to 600 s");
+  assert.equal(validateAlarmValue("tank_level_timeout", 601, SETTINGS), "The alarm delay must be 1 to 600 s");
+  assert.equal(validateAlarmValue("tank_level_timeout", 1.5, SETTINGS), "The alarm delay is whole seconds (no decimals)");
+  for (const v of [0, 601, 1.5]) assert.doesNotMatch(validateAlarmValue("tank_level_timeout", v, SETTINGS), /HH|trip|off/, String(v));
+  // Not tied to L / LL (either way round, or with LL required).
+  assert.equal(validateAlarmValue("tank_level_timeout", 5, { tank: { low: 20, low_low: 10, ll_required: true } }), "");
+  assert.equal(validateAlarmValue("tank_level_timeout", 50, { tank: { low: 20, low_low: 10 } }), "");
+});
+
 test("validation: tank LL can't be off while the controller's LL validation is on", () => {
   const req = { tank: { low: 20, low_low: 10, ll_required: true } };
   assert.equal(validateAlarmValue("low_low_tank_level", 0, req), "The LL trip can't be off while tank LL validation is on");
@@ -154,7 +184,7 @@ test("validation: tank LL can't be off while the controller's LL validation is o
 
 // --- commands --------------------------------------------------------------------
 
-test("commands: the four element names, allowed by access (not HMI Control Mode)", () => {
+test("commands: the five element names, allowed by access (not HMI Control Mode)", () => {
   assert.deepEqual([...ALARM_SETTING_COMMANDS].sort(), [...ALARM_COMMANDS].sort());
   for (const c of ALARM_SETTING_COMMANDS) assert.ok(TOUCH_COMMANDS.includes(c), c);
   // Read Only with access: allowed. Touch without access: refused.
@@ -163,6 +193,16 @@ test("commands: the four element names, allowed by access (not HMI Control Mode)
   assert.equal(refused.ok, false);
   assert.equal(refused.message, "Alarm settings can't be changed from this screen.");
   assert.equal(checkTouchCommand(false, "high_pressure", "x", true).code, "INVALID");
+  // The tank alarm delay: whole seconds 1 to 600, and access like the rest.
+  assert.ok(ALARM_SETTING_COMMANDS.includes("tank_level_timeout"));
+  assert.equal(checkTouchCommand(false, "tank_level_timeout", 120, true), null);
+  assert.equal(checkTouchCommand(true, "tank_level_timeout", 120, false).code, "READ_ONLY");
+  for (const v of [0, 601, 1.5, "x"]) assert.equal(checkTouchCommand(true, "tank_level_timeout", v, true)?.code, "INVALID", String(v));
+  assert.deepEqual(buildRpcRequest("tank_level_timeout", "120", CTRL, undefined), {
+    method: "tank_level_timeout",
+    request: 120,
+    app_key: CTRL,
+  });
   // The body: the value as a float, like last_calibration_factor.
   assert.deepEqual(buildRpcRequest("high_high_pressure", "6894.8", CTRL, { name: "Local HMI" }), {
     method: "high_high_pressure",
@@ -231,21 +271,33 @@ test("gears show in Read Only too (governed by access, not HMI Control Mode)", (
   assert.ok(!isHidden(m.byId("tank-gear")));
 });
 
-test("tank popover: title, both thresholds from the readback, Off for 0, updated in place", () => {
+test("tank popover: title, both thresholds and the delay from the readback, Off for 0, updated in place", () => {
   const m = mount();
   m.click("tank-gear");
   assert.ok(!isHidden(m.byId("alarm-panel")));
   assert.equal(m.byId("alarm-panel-title").textContent, "Tank Level Alarms");
+  const ids = [...m.byId("alarm-rows").querySelectorAll("[data-alarm]")].map((r) => r.getAttribute("data-alarm"));
+  assert.deepEqual(ids, ["low_tank_level", "low_low_tank_level", "tank_level_timeout"]);
   assert.equal(rowValue(m, "low_tank_level"), "20.0 %");
   assert.equal(rowValue(m, "low_low_tank_level"), "10.0 %");
+  assert.equal(rowValue(m, "tank_level_timeout"), "600 s");
   assert.match(row(m, "low_tank_level").textContent, /Low \(L\) warning/);
   assert.match(row(m, "low_low_tank_level").textContent, /Low-Low \(LL\) trip/);
+  assert.match(row(m, "tank_level_timeout").textContent, /Alarm delay/);
+  assert.match(row(m, "tank_level_timeout").textContent, /1 to 600 s/);
+  assert.doesNotMatch(row(m, "tank_level_timeout").textContent, /0 = off/);
+  assert.ok(row(m, "tank_level_timeout").classList.contains("alarm-delay"));
   const before = row(m, "low_tank_level");
   const label = before.querySelector(".alarm-label").firstChild;
-  m.render(payload({ alarm_settings: { ...SETTINGS, tank: { low: 0, low_low: 10, ll_required: false } } }));
+  m.render(payload({ alarm_settings: { ...SETTINGS, tank: { low: 0, low_low: 10, delay: 45, ll_required: false } } }));
   assert.equal(row(m, "low_tank_level"), before, "row kept (no rebuild under a tap)");
   assert.ok(label.isConnected, "label text node kept");
   assert.equal(rowValue(m, "low_tank_level"), "Off");
+  assert.equal(rowValue(m, "tank_level_timeout"), "45 s");
+  // An older controller without SetpointTankLevelTimeout: the row stays, value unknown.
+  m.render(payload({ alarm_settings: { ...SETTINGS, tank: { low: 20, low_low: 10, delay: null, ll_required: false } } }));
+  assert.equal(rowValue(m, "tank_level_timeout"), "—");
+  assert.equal(rowValue(m, "low_tank_level"), "20.0 %");
   m.click("alarm-panel-close");
   assert.ok(isHidden(m.byId("alarm-panel")));
 });
@@ -307,6 +359,54 @@ test("edit: setting a threshold to 0 turns it off where allowed; HH never", asyn
   m.click("confirm-ok");
   await flush();
   assert.deepEqual(m.state.sent.at(-1), { cmd: "high_pressure", value: 0 });
+});
+
+test("edit: the tank alarm delay, whole seconds 1 to 600, confirm old -> new and the send", async () => {
+  const m = mount();
+  m.click("tank-gear");
+  m.click("alarm-row-tank_level_timeout");
+  assert.ok(!isHidden(m.byId("keypad")));
+  assert.equal(m.byId("keypad-title").textContent, "Alarm delay");
+  assert.equal(m.byId("keypad-range").textContent, "Range 1 to 600 s, whole seconds");
+  typeKeys(m, "0");
+  m.click("keypad-ok");
+  assert.match(m.byId("keypad-error").textContent, /Out of range/);
+  typeKeys(m, "601");
+  m.click("keypad-ok");
+  assert.match(m.byId("keypad-error").textContent, /Out of range/);
+  typeKeys(m, "30.5");
+  m.click("keypad-ok");
+  assert.equal(m.byId("keypad-error").textContent, "The alarm delay is whole seconds (no decimals)");
+  assert.deepEqual(m.state.sent, []);
+  // Below the LL value and the L value: no ordering rule.
+  typeKeys(m, "5");
+  m.click("keypad-ok");
+  assert.ok(isHidden(m.byId("keypad")));
+  assert.equal(m.byId("confirm-message").textContent, "Change Alarm delay from 600 s → 5 s?");
+  m.click("confirm-ok");
+  await flush();
+  assert.deepEqual(m.state.sent, [{ cmd: "tank_level_timeout", value: 5 }]);
+  assert.match(row(m, "tank_level_timeout").textContent, /Saved · 5 s/);
+  assert.equal(toast(m), "Alarm delay set to 5 s");
+  m.render(payload({ alarm_settings: { ...SETTINGS, tank: { ...SETTINGS.tank, delay: 5 } } }));
+  assert.equal(rowValue(m, "tank_level_timeout"), "5 s");
+});
+
+test("edit: the delay from an older controller (no readback) still opens, from the dash", async () => {
+  const m = mount(LOCAL, payload({ alarm_settings: { ...SETTINGS, tank: { ...SETTINGS.tank, delay: null } } }));
+  m.click("tank-gear");
+  m.click("alarm-row-tank_level_timeout");
+  typeKeys(m, "120");
+  m.click("keypad-ok");
+  assert.equal(m.byId("confirm-message").textContent, "Change Alarm delay from — → 120 s?");
+});
+
+test("view only: the delay row is locked like the thresholds", () => {
+  const m = mount(VIEW_ONLY);
+  m.click("tank-gear");
+  assert.equal(row(m, "tank_level_timeout").tagName, "DIV");
+  row(m, "tank_level_timeout").click();
+  assert.ok(isHidden(m.byId("keypad")));
 });
 
 test("edit: tank LL can't be off with the controller's LL validation", () => {

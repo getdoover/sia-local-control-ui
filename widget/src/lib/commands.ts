@@ -44,17 +44,26 @@ export const TOUCH_COMMANDS: readonly string[] = [
   // by alarm_settings_access, not HMI Control Mode: see checkTouchCommand.
   "low_tank_level",
   "low_low_tank_level",
+  "tank_level_timeout",
   "high_pressure",
   "high_high_pressure",
 ];
 
-/** Threshold writes: numbers, allowed by alarm_settings_access on this host. */
+/**
+ * Threshold (and tank alarm delay) writes: numbers, allowed by
+ * alarm_settings_access on this host.
+ */
 export const ALARM_SETTING_COMMANDS: readonly string[] = [
   "low_tank_level",
   "low_low_tank_level",
+  "tank_level_timeout",
   "high_pressure",
   "high_high_pressure",
 ];
+
+/** The tank alarm delay (tank_level_timeout): whole seconds, 1 to 600. */
+export const TANK_LEVEL_TIMEOUT_MIN_S = 1;
+export const TANK_LEVEL_TIMEOUT_MAX_S = 600;
 
 export const ALARM_WRITE_BLOCKED_TEXT = "Alarm settings can't be changed from this screen.";
 
@@ -82,6 +91,16 @@ export function checkTouchCommand(
     if (!alarmWrite) return { ok: false, code: "READ_ONLY", message: ALARM_WRITE_BLOCKED_TEXT };
     const n = optNum(value);
     if (n === null || n < 0) return { ok: false, code: "INVALID", message: "enter a number" };
+    if (
+      cmd === "tank_level_timeout" &&
+      (!Number.isInteger(n) || n < TANK_LEVEL_TIMEOUT_MIN_S || n > TANK_LEVEL_TIMEOUT_MAX_S)
+    ) {
+      return {
+        ok: false,
+        code: "INVALID",
+        message: `The alarm delay must be whole seconds, ${TANK_LEVEL_TIMEOUT_MIN_S} to ${TANK_LEVEL_TIMEOUT_MAX_S}.`,
+      };
+    }
     return null;
   }
   if (!touchEnabled) {

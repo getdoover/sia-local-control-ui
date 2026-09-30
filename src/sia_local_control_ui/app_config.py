@@ -457,19 +457,20 @@ class SiaLocalControlUiConfig(config.Schema):
 
     # --- Alarm settings (widget only) -----------------------------------------
     # Gears on the Tank and Skid (discharge pressure) tiles open the pump
-    # controller's alarm thresholds: tank L / LL and pressure H / HH, read
-    # back from its Setpoint* tags and written to its "Alarm Settings"
-    # elements over ui_cmds. Hidden by default, so existing configs show no
-    # gears. Governed by this setting, not HMI Control Mode.
+    # controller's alarm settings: tank L / LL and the tank alarm delay, and
+    # pressure H / HH, read back from its Setpoint* tags and written to its
+    # "Alarm Settings" elements over ui_cmds. Hidden by default, so existing
+    # configs show no gears. Governed by this setting, not HMI Control Mode.
     alarm_settings_access = config.Enum(
         "Alarm Settings Access",
         choices=list(ALARM_SETTINGS_ACCESS),
         default=ALARM_SETTINGS_ACCESS[0],
         description=(
-            "Alarm threshold gears on the HMI widget's Tank and Skid pressure "
-            "tiles (tank L / LL, discharge pressure H / HH). Hidden: no gears. "
-            "Local only: values shown everywhere, changes only from the local "
-            "panel. Local and cloud: changes from the local panel and the cloud UI."
+            "Alarm settings gears on the HMI widget's Tank and Skid pressure "
+            "tiles (tank L / LL and alarm delay, discharge pressure H / HH). "
+            "Hidden: no gears. Local only: values shown everywhere, changes "
+            "only from the local panel. Local and cloud: changes from the "
+            "local panel and the cloud UI."
         ),
     )
 

@@ -100,6 +100,7 @@ export function scenarioTags(opts: MockOptions): Json {
       PressureUnits: opts.pressureUnits ?? "psi",
       SetpointTankL: 20,
       SetpointTankLL: 10,
+      SetpointTankLevelTimeout: 600,
       SetpointPressureH: 0,
       SetpointPressureHH: opts.pressureUnits === "kPa" ? 6894.8 : opts.pressureUnits === "bar" ? 68.9 : 1000,
       ...(opts.calibrationMethod ? { CalibrationMethod: opts.calibrationMethod } : {}),
@@ -266,19 +267,24 @@ export function createMockClient(opts: MockOptions) {
         return { active: false, result: "cancelled" };
       case "low_tank_level":
       case "low_low_tank_level":
+      case "tank_level_timeout":
       case "high_pressure":
       case "high_high_pressure": {
         const v = Number(req.request);
         if (req.method === "low_low_tank_level" && opts.tankLlRequired && !(v > 0)) {
           throw rpcError("INVALID", "the low-low tank level must be above 0 while a tank sensor is configured");
         }
+        if (req.method === "tank_level_timeout" && !(v >= 1 && v <= 600)) {
+          throw rpcError("INVALID", "the tank level alarm delay must be 1 to 600 seconds");
+        }
         const tag = {
           low_tank_level: "SetpointTankL",
           low_low_tank_level: "SetpointTankLL",
+          tank_level_timeout: "SetpointTankLevelTimeout",
           high_pressure: "SetpointPressureH",
           high_high_pressure: "SetpointPressureHH",
         }[req.method] as string;
-        patchTags({ [tag]: v });
+        patchTags({ [tag]: req.method === "tank_level_timeout" ? Math.round(v) : v });
         return { [req.method]: v };
       }
       case "last_calibration_factor":

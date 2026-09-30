@@ -1030,11 +1030,38 @@ class Hmi {
 
   // Keep the toast clear of the touch bar wherever the bar is on screen (the
   // bottom edge on the kiosk, sticky in the cloud, one or two rows high).
+  // With a popover open (alarm, VSD, calibration) the bar is under it and
+  // the toast would sit over its lower rows (the alarm delay row at
+  // 800x480), so it goes in the larger gap above or below the popover
+  // instead, or at the top of the screen, over the popover's header, when
+  // neither gap is tall enough. It never takes taps (pointer-events: none).
   placeToast(el) {
     el.style.bottom = "";
-    const bar = this.$("touch-bar");
+    el.style.top = "";
     const win = this.root.ownerDocument.defaultView;
-    if (!bar || bar.classList.contains("hidden") || !win) return;
+    if (!win) return;
+    const pop = ["alarm-panel", "vsd-panel", "calwiz"].find((id) => {
+      const o = this.$(id);
+      return o && !o.classList.contains("hidden");
+    });
+    if (pop) {
+      const r = this.$(`${pop}-box`).getBoundingClientRect();
+      const inset = parseFloat(win.getComputedStyle(this.root).getPropertyValue("--hmi-kiosk-inset")) || 0;
+      const h = el.offsetHeight;
+      const above = r.top - inset;
+      const below = win.innerHeight - inset - r.bottom;
+      const top =
+        Math.max(above, below) < h + 8
+          ? inset + 8
+          : above >= below
+            ? inset + (above - h) / 2
+            : r.bottom + (below - h) / 2;
+      el.style.top = `${Math.round(top)}px`;
+      el.style.bottom = "auto";
+      return;
+    }
+    const bar = this.$("touch-bar");
+    if (!bar || bar.classList.contains("hidden")) return;
     const r = bar.getBoundingClientRect();
     if (!r.height || r.top >= win.innerHeight) return;
     el.style.bottom = `${Math.max(24, win.innerHeight - r.top + 12)}px`;
@@ -2067,7 +2094,9 @@ class Hmi {
       max: r.max,
       rangeText: r.offAllowed
         ? `0 = off, or up to ${rangeNum(r.max)} ${r.unit}`
-        : `Range ${rangeNum(r.min)} to ${rangeNum(r.max)} ${r.unit} (can't be off)`,
+        : r.whole
+          ? `Range ${rangeNum(r.min)} to ${rangeNum(r.max)} ${r.unit}, whole seconds`
+          : `Range ${rangeNum(r.min)} to ${rangeNum(r.max)} ${r.unit} (can't be off)`,
       decimals: dp,
       unit: r.unit,
       validate: (v) => validateAlarmValue(field, v, settings()) || null,

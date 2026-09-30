@@ -76,6 +76,7 @@ test("the touch command list is exactly the controller contract", () => {
     "set_pump_state",
     "set_target_rate",
     "start_test_run",
+    "tank_level_timeout",
   ]);
 });
 

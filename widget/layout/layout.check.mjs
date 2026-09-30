@@ -26,8 +26,8 @@
 // Popover screenshots: VSD_SHOTS=<dir> npm run test:layout  (vsd-panel-<w>x<h>.png)
 // Wizard screenshots (1024x600): CAL_SHOTS=<dir> npm run test:layout  (calwiz-<page>.png)
 // Alarm settings (alarm_settings_access): the Tank / Skid gears fit their
-// tiles, and each popover (tank L / LL, pressure H / HH) and its keypad fit
-// at every size, with and without the insets. Screenshots:
+// tiles, and each popover (tank L / LL / alarm delay, pressure H / HH) and
+// its keypad fit at every size, with and without the insets. Screenshots:
 // ALARM_SHOTS=<dir> (alarm-tank.png, alarm-pressure.png at 1024x600 inset)
 // Cover-plate insets (kiosk_inset_mm 2 + popover_inset_mm 10) at every size:
 // the whole HMI inside the inset, the VSD popover (with its up / down scroll
@@ -869,9 +869,9 @@ for (const [w, h] of SIZES) {
           }
         }
 
-        for (const [gear, title, file] of [
-          ["tank-gear", "Tank Level Alarms", "alarm-tank.png"],
-          ["pressure-gear", "Discharge Pressure Alarms", "alarm-pressure.png"],
+        for (const [gear, title, file, rows] of [
+          ["tank-gear", "Tank Level Alarms", "alarm-tank.png", ["low_tank_level", "low_low_tank_level", "tank_level_timeout"]],
+          ["pressure-gear", "Discharge Pressure Alarms", "alarm-pressure.png", ["high_pressure", "high_high_pressure"]],
         ]) {
           await page.click(`.sia-hmi [data-id="${gear}"]`);
           await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
@@ -881,7 +881,7 @@ for (const [w, h] of SIZES) {
           assert.ok(p.doc[0] <= w && p.doc[1] <= h, `page scrolls with the popover: ${ctx}`);
           assertInside(p.panel, w, h, gap, title);
           assert.ok(p.panel.sh <= p.panel.ch + 1 && p.panel.sw <= p.panel.cw + 1, `popover overflows: ${ctx}`);
-          assert.equal(p.rows.length, 2, ctx);
+          assert.deepEqual(p.rows.map((r) => r.id), rows, ctx);
           for (const r of p.rows) {
             assert.ok(r.h >= 56, `${r.id} row ${r.h}px < 56`);
             assert.ok(r.overflowX <= 1, `${r.id} row overflows: ${ctx}`);
@@ -924,6 +924,49 @@ for (const [w, h] of SIZES) {
         const sent = await page.evaluate(() => window.__rpcLog.at(-1));
         assert.equal(sent.method, "low_tank_level");
         assert.equal(sent.request, 25);
+
+        // The "saved" toast is up, clear of every row, and takes no taps: each
+        // row's centre still hits that row (the delay row sat under it at
+        // 800x480, and a tap there was lost for the toast's 3 s).
+        const t = await page.evaluate(() => {
+          const toast = document.querySelector('.sia-hmi [data-id="command-toast"]');
+          const r = toast.getBoundingClientRect();
+          return {
+            shown: !toast.classList.contains("hidden") && r.height > 0,
+            box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
+            rows: [...document.querySelectorAll(".sia-hmi .alarm-row")].map((row) => {
+              const b = row.getBoundingClientRect();
+              const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+              return {
+                id: row.dataset.alarm,
+                left: b.left, top: b.top, right: b.right, bottom: b.bottom,
+                hit: hit?.closest(".alarm-row")?.dataset.alarm ?? hit?.className ?? null,
+              };
+            }),
+          };
+        });
+        const tctx = JSON.stringify(t);
+        assert.ok(t.shown, `no toast after the save: ${tctx}`);
+        assertInside(t.box, w, h, insetQ ? INSET_PX : 0, "toast");
+        for (const r of t.rows) {
+          assert.equal(r.hit, r.id, `a tap on ${r.id} does not reach it: ${tctx}`);
+          const b = t.box;
+          const overlap = b.left < r.right && r.left < b.right && b.top < r.bottom && r.top < b.bottom;
+          assert.ok(!overlap, `toast over ${r.id}: ${tctx}`);
+        }
+
+        // And the tank alarm delay: 600 -> 45 s, read back from its tag.
+        await page.click('.sia-hmi [data-alarm="tank_level_timeout"]');
+        await page.click('.sia-hmi [data-key="clear"]');
+        for (const key of ["4", "5"]) await page.click(`.sia-hmi [data-key="${key}"]`);
+        await page.click('.sia-hmi [data-id="keypad-ok"]');
+        await page.click('.sia-hmi [data-id="confirm-ok"]');
+        await page.waitForFunction(
+          () => document.querySelector('.sia-hmi [data-alarm="tank_level_timeout"] [data-alarm-value]')?.textContent === "45 s",
+        );
+        const delay = await page.evaluate(() => window.__rpcLog.at(-1));
+        assert.equal(delay.method, "tank_level_timeout");
+        assert.equal(delay.request, 45);
       } finally {
         await page.close();
       }
