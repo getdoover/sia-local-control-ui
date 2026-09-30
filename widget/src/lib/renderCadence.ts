@@ -9,7 +9,7 @@
  * pressure, tank, drive) — and rendering each one as it arrives made 10+
  * frames a second out of readings the controller only refreshes about once
  * a second. Measured on the CM4 this was ~60% of a core across the two kiosk
- * processes; at 2 frames a second it is roughly half that.
+ * processes. Four frames a second balances responsiveness and paint cost.
  *
  * Rules:
  *   - Leading edge: a change that arrives after a quiet spell renders at once.
@@ -23,7 +23,7 @@
  * (tests/renderCadence.test.mjs).
  */
 
-export const RENDER_CADENCE_MS = 500;
+export const RENDER_CADENCE_MS = 250;
 
 export interface RenderStatus {
   connected: boolean;

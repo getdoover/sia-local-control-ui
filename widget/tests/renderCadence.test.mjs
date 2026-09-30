@@ -48,8 +48,8 @@ function harness(cadenceMs = 100) {
 
 const ok = { connected: true };
 
-test("the default cadence is two frames a second", () => {
-  assert.equal(RENDER_CADENCE_MS, 500);
+test("the default cadence is four frames a second", () => {
+  assert.equal(RENDER_CADENCE_MS, 250);
 });
 
 test("the first payload renders at once (leading edge)", () => {

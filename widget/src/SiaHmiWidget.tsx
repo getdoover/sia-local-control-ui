@@ -27,6 +27,7 @@ import { overlayLiveValues } from "./lib/liveTags.ts";
 import { useLiveTags } from "./lib/useLiveTags.ts";
 import { createRenderScheduler, type RenderScheduler } from "./lib/renderCadence.ts";
 import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
+import { pollLocalDashboard, type LocalReader, type LocalSnapshot } from "./lib/localDashboard.ts";
 import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
 
 /**
@@ -124,9 +125,26 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     typeof window !== "undefined" ? window.location.search : undefined,
   );
 
-  const { data: deploymentConfig } = useAgentChannel(agentId, "deployment_config");
-  const { data: tagValues, last_updated } = useAgentChannel(agentId, "tag_values");
-  const { data: uiCmds } = useAgentChannel(agentId, "ui_cmds");
+  const local = host.kind === "local";
+  const streamAgent = local ? undefined : agentId;
+  const cloudConfig = useAgentChannel(streamAgent, "deployment_config");
+  const cloudTags = useAgentChannel(streamAgent, "tag_values");
+  const cloudCommands = useAgentChannel(streamAgent, "ui_cmds");
+  const [localSnapshot, setLocalSnapshot] = useState<LocalSnapshot | null>(null);
+  const [localConnected, setLocalConnected] = useState(false);
+  useEffect(() => {
+    if (!local || !agentId) return;
+    setLocalSnapshot(null);
+    setLocalConnected(false);
+    return pollLocalDashboard(client as unknown as LocalReader, agentId, (snapshot) => {
+      setLocalSnapshot(snapshot);
+      setLocalConnected(true);
+    }, () => setLocalConnected(false));
+  }, [local, agentId, client]);
+  const deploymentConfig = local ? localSnapshot?.deploymentConfig.data : cloudConfig.data;
+  const tagValues = local ? localSnapshot?.tagValues.data : cloudTags.data;
+  const uiCmds = local ? localSnapshot?.uiCmds.data : cloudCommands.data;
+  const last_updated = local ? localSnapshot?.tagValues.last_updated : cloudTags.last_updated;
 
   const cfg = useMemo(
     () => resolveConfig(appKey, deploymentConfig as Record<string, unknown> | undefined),
@@ -140,7 +158,8 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   const aggregateAt = useMemo(() => Date.now(), [tagValues]);
 
   const memory = useRef(createFeatureMemory());
-  const connected = useConnected(client);
+  const gatewayConnected = useConnected(client);
+  const connected = local ? localConnected : gatewayConnected;
   const user = useCloudUser(client, host.kind === "cloud");
   const actor = useMemo(() => resolveActor(host.kind, user), [host.kind, user]);
   const vsdAccess = useMemo(
