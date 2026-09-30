@@ -366,6 +366,19 @@ class SiaLocalControlUiConfig(config.Schema):
         description="Units label shown against the skid pressure figure.",
     )
 
+    # --- Widget header ---------------------------------------------------------
+    # The device's Doover display name is not delivered to the device (the
+    # device agent only knows the agent id), so each panel's title is set here,
+    # like Pump Tag. Blank keeps the default title.
+    header_title = config.String(
+        "Header Title",
+        default="",
+        description=(
+            "Title across the top of the HMI, e.g. the panel's Doover display "
+            "name (CI-24101-A). Blank shows \"SIA Remote Command\"."
+        ),
+    )
+
     # --- Kiosk display (widget, local panel only) ----------------------------
     # A cover plate over the panel's edges hides the outer few millimetres of
     # the screen. The local (kiosk) layout pads the whole HMI inward by

@@ -54,6 +54,16 @@ test("battery thresholds come from the deployed keys low_battery_warning_ / _v",
   assert.equal(cfg.rpcTimeoutMs, 7000);
 });
 
+test("header title: from Header Title, trimmed; blank or absent keeps the default", () => {
+  assert.equal(resolveConfig(APP, deployment(kuwait(), APP)).headerTitle, null);
+  assert.equal(resolveConfig(APP, deployment(kuwait({ header_title: "" }), APP)).headerTitle, null);
+  assert.equal(resolveConfig(APP, deployment(kuwait({ header_title: "   " }), APP)).headerTitle, null);
+  assert.equal(
+    resolveConfig(APP, deployment(kuwait({ header_title: " CI-24101-A " }), APP)).headerTitle,
+    "CI-24101-A",
+  );
+});
+
 test("Touch on a Kuwait config enables on-screen control, Button stays read only", () => {
   assert.equal(resolveConfig(APP, deployment(kuwait({ hmi_control_mode: "Touch" }), APP)).touchEnabled, true);
   assert.equal(resolveConfig(APP, deployment(kuwait({ hmi_control_mode: "Button" }), APP)).touchEnabled, false);

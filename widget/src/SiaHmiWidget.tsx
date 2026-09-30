@@ -225,6 +225,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
       // Backstop only: `run` itself answers by the RPC timeout + 2 s.
       commandTimeoutMs: () => latest.current.cfg.rpcTimeoutMs + 5_000,
       logos: { remoteCommand: remoteCommandLogo, doover: dooverLogo },
+      title: latest.current.cfg.headerTitle ?? undefined,
       vsdPanel,
     });
     hmiRef.current.setVsdPanel(latest.current.vsdAccess);
@@ -247,6 +248,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.setDisplay(display);
   }, [display]);
+
+  useEffect(() => {
+    hmiRef.current?.setTitle(cfg.headerTitle);
+  }, [cfg.headerTitle]);
 
   useEffect(() => {
     hmiRef.current?.setAlarmAccess(alarmAccess);

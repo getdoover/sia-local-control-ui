@@ -153,6 +153,8 @@ export function normaliseCommissioning(value: unknown): VsdCommissioning {
 }
 
 export interface HmiConfig {
+  /** Header title; null keeps the widget's default title. */
+  headerTitle: string | null;
   hmiMode: HmiMode;
   touchEnabled: boolean;
   controllers: string[];
@@ -265,6 +267,7 @@ export function resolveConfig(
     tags[field] = asString(c[key]) ?? fallback;
   }
   return {
+    headerTitle: asString(c.header_title),
     hmiMode,
     // "Button" is reserved and deliberately behaves exactly like Read Only.
     touchEnabled: hmiMode === "touch",
