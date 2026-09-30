@@ -108,6 +108,80 @@ test("banner lists follow every change of their reasons", () => {
   assert.ok(!isHidden(m.byId("fault-banner")));
 });
 
+// --- Last Update clock -------------------------------------------------------------------
+
+test("Last Update shows exactly what toLocaleTimeString gives, across the day", () => {
+  const m = mountLive();
+  const base = Date.UTC(2026, 8, 28, 0, 0, 0);
+  const stamps = [0, 999, 1000, 59_999, 3_599_000, 43_200_000, 86_399_000, 86_399_999, 86_400_000];
+  for (let i = 0; i < 400; i++) stamps.push(Math.floor((i * 86_400_000) / 400) + (i % 7) * 131);
+  for (const d of stamps) {
+    const iso = new Date(base + d).toISOString();
+    m.render(live({ timestamp: iso }));
+    assert.equal(m.byId("last-update").textContent, new Date(iso).toLocaleTimeString("en-US", CLOCK), iso);
+  }
+  // Backwards in time, then an unparseable stamp (keeps the last text).
+  m.render(live({ timestamp: "2026-09-28T05:06:07.000Z" }));
+  const shown = m.byId("last-update").textContent;
+  m.render(live({ timestamp: "not a date" }));
+  assert.equal(m.byId("last-update").textContent, shown);
+});
+
+test("Last Update follows a time zone change within the same second", () => {
+  // The clock text is reused while the second is unchanged; a new UTC
+  // offset (the device's zone set, or daylight saving) must still show.
+  const saved = process.env.TZ;
+  try {
+    process.env.TZ = "UTC";
+    const m = mountLive();
+    const iso = "2026-09-28T01:02:03.100Z";
+    m.render(live({ timestamp: iso }));
+    assert.equal(m.byId("last-update").textContent, "01:02:03");
+    process.env.TZ = "Asia/Kuwait";
+    m.render(live({ timestamp: "2026-09-28T01:02:03.600Z" }));
+    assert.equal(m.byId("last-update").textContent, "04:02:03");
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
+});
+
+test("Last Update with no timestamp shows the time now", () => {
+  const m = mountLive();
+  const before = new Date().toLocaleTimeString("en-US", CLOCK);
+  m.render(live({ timestamp: null }));
+  const after = new Date().toLocaleTimeString("en-US", CLOCK);
+  assert.ok([before, after].includes(m.byId("last-update").textContent));
+});
+
+// --- element cache ---------------------------------------------------------------------------
+
+test("rebuilt wizard nodes are found again (countdown after the page is redrawn)", async () => {
+  const m = mountLive();
+  const standby = { state: "standby", running: false, flow_rate: 0 };
+  const cal = (tr, p = standby) => live({ warnings: [], pumps: [pump(p)], calibration: { method: "Manual (HMI)", test_run: run(tr) } });
+  m.render(cal({}));
+  m.click("touch-cal");
+  m.click("calwiz-next");
+  m.click("calwiz-field-start");
+  for (const k of ["clear", "5", "0", "0"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
+  m.click("keypad-ok");
+  m.click("calwiz-next");
+  m.click("calwiz-next");
+  m.click("calwiz-next");
+  await flush();
+  const running = { state: "pumping", running: true, flow_rate: 12.1 };
+  m.render(cal({ active: true, remaining_s: 50, rate: 12.5, duration_s: 60 }, running));
+  const first = m.byId("calwiz-countdown");
+  assert.equal(first.textContent, "50");
+  m.hmi._hmi.calwizGo(5); // body redrawn: a new countdown node
+  const second = m.byId("calwiz-countdown");
+  assert.notEqual(second, first);
+  assert.ok(!first.isConnected);
+  m.render(cal({ active: true, remaining_s: 42, rate: 12.5, duration_s: 60 }, running));
+  assert.equal(second.textContent, "42");
+});
+
 // --- attribute semantics kept ----------------------------------------------------------------
 
 test("VSD Reset keeps an empty title attribute in Touch mode", async () => {

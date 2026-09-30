@@ -541,6 +541,9 @@ const CSS_ESCAPE = (id) => String(id).replace(/["\\]/g, "\\$&");
 
 const MODE_LABELS = { read_only: "Read Only", touch: "Touch", button: "Button" };
 
+// Alarm settings gears: [alarm group, gear, the tile section it sits on].
+const ALARM_GEAR_SPECS = [["tank", "tank-gear", "tank-section"], ["pressure", "pressure-gear", "skid-section"]];
+
 class Hmi {
   constructor(root, opts) {
     this.root = root;
@@ -575,14 +578,41 @@ class Hmi {
     // without it is stale and is dropped (calwizDropStale).
     this.cal = null;
     this.resizeObserver = null;
+    // Elements found by $ / $in (an update looks up some 60 of them).
+    this.els = new Map();
+    // Last Update: the epoch second and UTC offset clockText was made for.
+    this.clockSec = null;
+    this.clockOff = null;
+    this.clockText = "";
 
     root.classList.add("sia-hmi", this.opts.layout === "kiosk" ? "kiosk" : "embedded");
     root.innerHTML = template(this.opts);
     this.bind();
   }
 
+  // Cached while the element is still in the page, instead of a selector
+  // search of the whole widget per lookup. A rebuilt node (wizard body,
+  // alarm rows, VSD Retry) replaces a now-disconnected one and is looked up
+  // again; a miss is never cached. No data-id appears twice in the page.
   $(id) {
-    return this.root.querySelector(`[data-id="${id}"]`);
+    const hit = this.els.get(id);
+    if (hit && hit.isConnected) return hit;
+    const el = this.root.querySelector(`[data-id="${id}"]`);
+    if (el) this.els.set(id, el);
+    else this.els.delete(id);
+    return el;
+  }
+
+  // First match of sel inside [data-id=id], cached the same way.
+  $in(id, sel) {
+    const key = id + "\u0000" + sel;
+    const hit = this.els.get(key);
+    if (hit && hit.isConnected) return hit;
+    const c = this.$(id);
+    const el = c ? c.querySelector(sel) : null;
+    if (el) this.els.set(key, el);
+    else this.els.delete(key);
+    return el;
   }
 
   $$(selector) {
@@ -992,7 +1022,7 @@ class Hmi {
     this.setValue("flow-rate", this.fmt(pump.flow_rate, 1), rate);
     this.setTotal(pump.total, this.volumeUnit(rate));
     this.renderFlowRange(pump);
-    const st = this.root.querySelector('[data-id="pump-state"] .state-value');
+    const st = this.$in("pump-state", ".state-value");
     if (st) {
       setNodeText(st, state);
       setClassName(st, "state-value " + stateClass + (pump.fault ? " error" : ""));
@@ -1000,11 +1030,9 @@ class Hmi {
   }
 
   setTotal(value, unit) {
-    const el = this.$("flow-total");
-    if (!el) return;
-    const v = el.querySelector(".secondary-value");
-    setNodeText(v, this.fmt(value, 2));
-    setNodeText(el.querySelector(".secondary-unit"), unit);
+    if (!this.$("flow-total")) return;
+    setNodeText(this.$in("flow-total", ".secondary-value"), this.fmt(value, 2));
+    setNodeText(this.$in("flow-total", ".secondary-unit"), unit);
   }
 
   // "L/Day" -> "L", "Gal/Hr" -> "Gal": strip the time denominator.
@@ -1117,7 +1145,7 @@ class Hmi {
         primary.unit,
       );
     } else {
-      const u = this.$("tank-level-mm")?.querySelector(".unit");
+      const u = this.$in("tank-level-mm", ".unit");
       if (u && u.textContent !== "mm") u.textContent = "mm";
       if (t.tank_level_mm != null) this.setValue("tank-level-mm", Math.round(t.tank_level_mm));
     }
@@ -1803,7 +1831,7 @@ class Hmi {
     this.show(line);
     this.setText("pump-rpm", vsd.pump_rpm != null ? this.fmt(vsd.pump_rpm, 0) : "--");
     this.setText("motor-hz", vsd.motor_hz != null ? this.fmt(vsd.motor_hz, 1) : "--");
-    const st = this.root.querySelector('[data-id="vsd-status"] .state-value');
+    const st = this.$in("vsd-status", ".state-value");
     if (st) {
       setNodeText(st, vsd.tripped ? "Tripped" : "OK");
       setClassName(st, "state-value " + (vsd.tripped ? "vsd-tripped" : "vsd-ok"));
@@ -1843,7 +1871,7 @@ class Hmi {
   }
 
   renderAlarmGears() {
-    for (const [group, id, section] of [["tank", "tank-gear", "tank-section"], ["pressure", "pressure-gear", "skid-section"]]) {
+    for (const [group, id, section] of ALARM_GEAR_SPECS) {
       const on = this.alarmAvailable(group);
       this.toggle(this.$(id), on);
       const sec = this.$(section);
@@ -2239,11 +2267,9 @@ class Hmi {
   }
 
   setValue(id, value, unit) {
-    const c = this.$(id);
-    if (!c) return;
-    const v = c.querySelector(".value");
-    setNodeText(v, value);
-    if (unit !== undefined) setNodeText(c.querySelector(".unit"), unit);
+    if (!this.$(id)) return;
+    setNodeText(this.$in(id, ".value"), value);
+    if (unit !== undefined) setNodeText(this.$in(id, ".unit"), unit);
   }
 
   setText(id, text) {
@@ -2267,16 +2293,26 @@ class Hmi {
 
   setLastUpdate(ts) {
     const t = ts ? new Date(ts) : new Date();
-    if (isNaN(t.getTime())) return;
-    this.setText(
-      "last-update",
-      t.toLocaleTimeString("en-US", {
+    const ms = t.getTime();
+    if (isNaN(ms)) return;
+    // The text depends only on the second and the UTC offset, so the
+    // formatter (a new ICU formatter per call; ~55 us in JavaScriptCore)
+    // runs once per second shown rather than once per update. Exact, time
+    // zone changes included, where a cached Intl.DateTimeFormat would keep
+    // the zone it was made in.
+    const sec = Math.floor(ms / 1000);
+    const off = t.getTimezoneOffset();
+    if (sec !== this.clockSec || off !== this.clockOff) {
+      this.clockSec = sec;
+      this.clockOff = off;
+      this.clockText = t.toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
         hour12: false,
-      })
-    );
+      });
+    }
+    this.setText("last-update", this.clockText);
   }
 
   setBar(id, pct) {
@@ -2308,6 +2344,7 @@ class Hmi {
     this.root.style.removeProperty("--hmi-popover-inset");
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
+    this.els.clear();
     this.root.innerHTML = "";
     this.root.classList.remove("sia-hmi", "kiosk", "embedded");
   }
