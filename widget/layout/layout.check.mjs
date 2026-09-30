@@ -16,8 +16,8 @@
 // scroll; only the parameter list may scroll, inside the popover.
 //
 // 1min Calibration Sequence (controller CalibrationMethod "Manual (HMI)"):
-// the CALIBRATE tile keeps the bar's targets, and every wizard page (1 valve,
-// 2 start mL + keypad, 3 test rate, 4 summary, 5 countdown, 6 final mL,
+// the CALIBRATE tile keeps the bar's targets, and every wizard page (start: Run /
+// enter manually, 1 valve, 2 start mL + keypad, 3 test rate, 4 summary, 5 countdown, 6 final mL,
 // 7 results) fits the screen with no page scroll and no scroll inside the
 // popover, with >= 44 px buttons.
 //
@@ -479,6 +479,17 @@ for (const [w, h] of SIZES) {
       assert.match(tile, /Factor 1\.00/);
 
       await page.click('.sia-hmi [data-id="touch-cal"]');
+      await wizardPage(page, "start");
+      const m0 = await page.evaluate(measureWizard);
+      assertWizardFits(m0, w, h, "first page");
+      for (const id of ["calwiz-run", "calwiz-manual"]) {
+        const key = m0.buttons.find((b) => b.id === id);
+        assert.ok(key, `${id} shown`);
+        assert.ok(key.h >= 56, `${id} ${key.h}px < 56`);
+        assert.ok(key.w >= m0.panel.w * 0.8, `${id} not full width: ${key.w} of ${m0.panel.w}`);
+      }
+      await shot("p0");
+      await page.click('.sia-hmi [data-id="calwiz-run"]');
       await wizardPage(page, "1");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 1");
       await shot("p1");
@@ -515,7 +526,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "2");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 2");
       await page.click('.sia-hmi [data-id="calwiz-field-start"]');
-      await keypadEntry(page, ["5", "0", "0"], w, h);
+      await keypadEntry(page, ["5", "0"], w, h);
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 2 entered");
 
       await page.click('.sia-hmi [data-id="calwiz-next"]');
@@ -539,7 +550,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "6");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 6");
       await page.click('.sia-hmi [data-id="calwiz-field-final"]');
-      await keypadEntry(page, ["7", "0", "0"], w, h); // the site glass reads up as it drains
+      await keypadEntry(page, ["2", "5", "0"], w, h); // the site glass reads up as it drains
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "7");
       const m7 = await page.evaluate(measureWizard);
@@ -775,13 +786,17 @@ for (const [w, h] of SIZES) {
       await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
       await page.waitForTimeout(150);
       await page.click('.sia-hmi [data-id="touch-cal"]');
-      await wizardPage(page, "1");
-      const m1 = await fits("page 1");
-      const manual = m1.buttons.find((b) => b.id === "calwiz-manual");
+      await wizardPage(page, "start");
+      const m0 = await fits("first page");
+      const manual = m0.buttons.find((b) => b.id === "calwiz-manual");
       assert.ok(manual, "manual entry key shown");
       assert.ok(manual.h >= 56, `manual key ${manual.h}px < 56`);
-      assert.ok(manual.w >= m1.panel.w * 0.8, `manual key not full width: ${manual.w} of ${m1.panel.w}`);
+      assert.ok(manual.w >= m0.panel.w * 0.8, `manual key not full width: ${manual.w} of ${m0.panel.w}`);
       assert.equal(manual.text, "Enter calibration factor manually");
+      if (shoot) await page.screenshot({ path: path.join(INSET_SHOTS, "inset-calwiz-p0.png") });
+      await page.click('.sia-hmi [data-id="calwiz-run"]');
+      await wizardPage(page, "1");
+      await fits("page 1");
       if (shoot) await page.screenshot({ path: path.join(INSET_SHOTS, "inset-calwiz-p1.png") });
 
       await page.click('.sia-hmi [data-id="calwiz-next"]');
@@ -793,7 +808,7 @@ for (const [w, h] of SIZES) {
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
       });
       assertInside(k, w, h, POP_PX, "keypad");
-      await keypadEntry(page, ["5", "0", "0"], w, h);
+      await keypadEntry(page, ["5", "0"], w, h);
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "3");
       await fits("page 3");
@@ -806,7 +821,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "6");
       await fits("page 6");
       await page.click('.sia-hmi [data-id="calwiz-field-final"]');
-      await keypadEntry(page, ["7", "0", "0"], w, h); // the site glass reads up as it drains
+      await keypadEntry(page, ["2", "5", "0"], w, h); // the site glass reads up as it drains
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "7");
       await fits("page 7");
@@ -814,7 +829,7 @@ for (const [w, h] of SIZES) {
       await page.waitForSelector('.sia-hmi [data-id="calwiz"].hidden', { state: "attached" }); // set: it closes
       // The confirmation (manual factor) sits inside the inset too.
       await page.click('.sia-hmi [data-id="touch-cal"]');
-      await wizardPage(page, "1");
+      await wizardPage(page, "start");
       await page.click('.sia-hmi [data-id="calwiz-manual"]');
       await page.click('.sia-hmi [data-key="clear"]');
       for (const key of ["1", ".", "1"]) await page.click(`.sia-hmi [data-key="${key}"]`);

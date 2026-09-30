@@ -47,8 +47,9 @@ function enter(m, keys) {
 }
 
 /** Pages 1 to 4, ready to Start Test. */
-function toSummary(m, { start = "500", rate = null } = {}) {
+function toSummary(m, { start = "50", rate = null } = {}) {
   m.click("touch-cal");
+  m.click("calwiz-run"); // start -> 1
   next(m); // 1 -> 2
   m.click("calwiz-field-start");
   enter(m, start);
@@ -67,7 +68,7 @@ async function toRunning(m, opts) {
   m.render(calPayload({ active: true, remaining_s: 60, rate: 12.5, duration_s: 60 }, { state: "pumping", running: true, flow_rate: 12.1 }));
 }
 
-async function toResults(m, { final = "700", elapsed = 60 } = {}) {
+async function toResults(m, { final = "250", elapsed = 60 } = {}) {
   await toRunning(m);
   m.render(calPayload({ active: false, remaining_s: 0, rate: 12.5, duration_s: 60, elapsed_s: elapsed, result: "completed" }));
   m.click("calwiz-field-final");
@@ -100,7 +101,7 @@ test("tile: CALIBRATE with the factor underneath when the method is Manual (HMI)
   assert.equal(tile.disabled, false);
   m.click("touch-cal");
   assert.ok(wizardOpen(m));
-  assert.equal(page(m), "1");
+  assert.equal(page(m), "start");
   assert.ok(isHidden(m.byId("keypad")));
 });
 
@@ -158,17 +159,19 @@ test("the ? opens the calibration factor help over the wizard; its X closes only
   m.click("cal-help-close");
   assert.ok(isHidden(help));
   assert.ok(wizardOpen(m));
-  assert.equal(page(m), "1");
+  assert.equal(page(m), "start");
 });
 
 test("the ? is on the calibration factor keypad only", () => {
   const m = mountHmi();
   m.render(calPayload());
   m.click("touch-cal");
+  m.click("calwiz-run");
   next(m);
   m.click("calwiz-field-start"); // Site glass mL keypad: no ?
   assert.ok(isHidden(m.byId("keypad-help")));
   m.click("keypad-cancel");
+  back(m);
   back(m);
   m.click("calwiz-manual"); // Calibration factor keypad
   assert.equal(text(m, "keypad-title"), "Calibration factor");
@@ -182,40 +185,56 @@ test("the ? is on the calibration factor keypad only", () => {
 
 // --- pages ----------------------------------------------------------------------
 
-test("every page carries the title; page 1 asks about the valve and site glass", () => {
+test("the first page is the choice: Run calibration, or enter the factor manually", () => {
   const m = mountHmi();
   m.render(calPayload());
   m.click("touch-cal");
   assert.equal(m.root.querySelector(".calwiz-title").textContent, CAL_TITLE);
   assert.equal(CAL_TITLE, "1min Calibration Sequence");
-  assert.match(text(m, "calwiz-body"), /Please confirm the tank valve is shut off and the site glass has fluid in it\./);
-  assert.equal(text(m, "calwiz-next"), "Confirm");
+  assert.equal(page(m), "start");
+  assert.equal(m.byId("calwiz-box").getAttribute("data-page"), "start");
+  assert.equal(text(m, "calwiz-step"), "", "no step number until the sequence starts");
+  const run = m.byId("calwiz-run");
+  const manual = m.byId("calwiz-manual");
+  assert.equal(text(m, "calwiz-run"), "Run calibration");
+  assert.equal(text(m, "calwiz-manual"), "Enter calibration factor manually");
+  // Both in the body, Run first; no Back and no Confirm: the X closes.
+  assert.ok(m.byId("calwiz-body").contains(run) && m.byId("calwiz-body").contains(manual));
+  assert.ok(run.compareDocumentPosition(manual) & 4);
+  assert.ok(isHidden(m.byId("calwiz-back")));
+  assert.ok(isHidden(m.byId("calwiz-next")));
   assert.ok(!isHidden(m.byId("calwiz-close")));
+  m.click("calwiz-run");
+  assert.equal(page(m), "1");
+  assert.equal(text(m, "calwiz-step"), "Step 1 of 7");
 });
 
-test("page 1 has no Back, and the manual entry sits below Confirm on page 1 only", () => {
+test("page 1: the valve is shut and the level is visible; Back returns to the choice", () => {
   const m = mountHmi();
   m.render(calPayload());
   m.click("touch-cal");
-  assert.ok(isHidden(m.byId("calwiz-back")));
-  const manual = m.byId("calwiz-manual");
-  assert.ok(!isHidden(manual));
-  // After the prompt + Confirm box, not inside the body above Confirm.
-  assert.ok(!m.byId("calwiz-body").contains(manual));
-  assert.ok(m.byId("calwiz-next").compareDocumentPosition(manual) & 4);
+  m.click("calwiz-run");
+  const body = text(m, "calwiz-body");
+  assert.match(body, /Make sure the tank valve is shut, AND make sure you can see the fluid level in the site glass\./);
+  assert.match(body, /You may need to manually start the pump to bring the level down if the tank is over half full\./);
+  assert.equal(text(m, "calwiz-next"), "Confirm");
+  assert.ok(!isHidden(m.byId("calwiz-back")));
+  assert.ok(!isHidden(m.byId("calwiz-close")));
   assert.equal(m.byId("calwiz-box").getAttribute("data-page"), "1");
   next(m);
-  assert.ok(!isHidden(m.byId("calwiz-back")));
-  assert.ok(isHidden(manual));
+  assert.equal(page(m), "2");
   back(m);
-  assert.ok(isHidden(m.byId("calwiz-back")));
-  assert.ok(!isHidden(manual));
+  assert.equal(page(m), "1");
+  back(m);
+  assert.equal(page(m), "start");
+  assert.ok(wizardOpen(m));
 });
 
 test("forward through pages 1 to 4, and Back from each", () => {
   const m = mountHmi();
   m.render(calPayload());
   m.click("touch-cal");
+  m.click("calwiz-run");
   next(m);
   assert.equal(page(m), "2");
   back(m);
@@ -223,22 +242,23 @@ test("forward through pages 1 to 4, and Back from each", () => {
   next(m);
   m.click("calwiz-field-start");
   assert.equal(text(m, "keypad-title"), "Site glass mL");
-  enter(m, "500");
-  assert.match(text(m, "calwiz-body"), /500/);
+  enter(m, "50");
+  assert.match(text(m, "calwiz-body"), /50/);
   next(m);
   assert.equal(page(m), "3");
   back(m);
   assert.equal(page(m), "2");
-  assert.match(text(m, "calwiz-body"), /500/); // kept
+  assert.match(text(m, "calwiz-body"), /50/); // kept
   next(m);
-  // Test rate defaults to the current target.
+  // Test rate defaults to the current target; the range is capped by the
+  // glass (218 mL of room over 60 s is 13.08 L/Hr).
   assert.match(text(m, "calwiz-body"), /12\.50/);
-  assert.match(text(m, "calwiz-body"), /Range 2\.00 to 92\.16 L\/Hr/);
+  assert.match(text(m, "calwiz-body"), /Range 2\.00 to 13\.08 L\/Hr/);
   next(m);
   assert.equal(page(m), "4");
   assert.equal(text(m, "calwiz-next"), "Start Test");
   const body = text(m, "calwiz-body");
-  assert.match(body, /Start site glass\s*500\s*mL/);
+  assert.match(body, /Start site glass\s*50\s*mL/);
   assert.match(body, /Test rate\s*12\.50\s*L\/Hr/);
   assert.match(body, /Duration\s*60\s*s/);
   assert.match(body, /The pump will run for 1 minute/);
@@ -246,13 +266,14 @@ test("forward through pages 1 to 4, and Back from each", () => {
   assert.equal(page(m), "3");
 });
 
-test("Back on page 1 and X close the wizard without sending anything", async () => {
+test("X closes the wizard from the choice and from a page without sending anything", async () => {
   const m = mountHmi();
   m.render(calPayload());
   m.click("touch-cal");
-  back(m);
+  m.click("calwiz-close");
   assert.ok(!wizardOpen(m));
   m.click("touch-cal");
+  m.click("calwiz-run");
   next(m);
   m.click("calwiz-close");
   assert.ok(!wizardOpen(m));
@@ -264,6 +285,7 @@ test("validation: start mL entered (0 allowed; Confirm disabled until valid)", (
   const m = mountHmi();
   m.render(calPayload());
   m.click("touch-cal");
+  m.click("calwiz-run");
   next(m);
   assert.ok(blocked(m, "calwiz-next"));
   next(m); // a tap while blocked stays and says why
@@ -273,42 +295,105 @@ test("validation: start mL entered (0 allowed; Confirm disabled until valid)", (
   enter(m, "0"); // an empty-looking site glass is a valid starting reading
   assert.ok(isHidden(m.byId("keypad")));
   m.click("calwiz-field-start");
+  enter(m, "268"); // the bottom of the scale: no room for a test
+  assert.match(text(m, "keypad-error"), /less than 268 mL/);
   enter(m, "250.5");
   assert.ok(isHidden(m.byId("keypad")));
   assert.ok(!blocked(m, "calwiz-next"));
 });
 
-test("validation: the test rate stays within the pump range", () => {
+test("validation: the test rate stays within the pump range and the glass's room", () => {
   const m = mountHmi();
   m.render(calPayload());
-  toSummary(m);
+  toSummary(m); // start 50: 218 mL of room, 13.08 L/Hr
   back(m); // page 3
   m.click("calwiz-field-rate");
-  assert.equal(text(m, "keypad-range"), "Range 2.00 to 92.16 L/Hr");
+  assert.equal(text(m, "keypad-range"), "Range 2.00 to 13.08 L/Hr (site glass limit)");
   enter(m, "100");
-  assert.match(text(m, "keypad-error"), /Out of range/);
+  assert.match(text(m, "keypad-error"), /Above 13\.08 the site glass would run past 268 mL in 60 s/);
   enter(m, "1");
-  assert.match(text(m, "keypad-error"), /Out of range/);
-  enter(m, "30");
+  assert.match(text(m, "keypad-error"), /Out of range \(2\.00 to 13\.08\)/);
+  enter(m, "13.08");
   next(m);
-  assert.match(text(m, "calwiz-body"), /Test rate\s*30\.00/);
+  assert.match(text(m, "calwiz-body"), /Test rate\s*13\.08/);
+});
+
+test("the rate page says what the glass allows: 180 mL start, 88 mL of room, 5.28 L/Hr", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  toSummary(m, { start: "180" });
+  back(m); // page 3
+  const note = text(m, "calwiz-glass-note");
+  assert.match(note, /Site glass: 180 mL now, 268 mL at the bottom of the scale, so 88 mL of room\./);
+  assert.match(note, /Over the 60 s test the rate is limited to 5\.28 L\/Hr: any faster and the level would drop below what the glass can measure\./);
+  assert.ok(m.byId("calwiz-glass-note").classList.contains("calwiz-warn"));
+  assert.match(text(m, "calwiz-body"), /Range 2\.00 to 5\.28 L\/Hr/);
+  // The default rate (the 12.50 target) was brought down to the limit.
+  assert.match(text(m, "calwiz-body"), /Test rate\s*5\.28/);
+  assert.ok(!blocked(m, "calwiz-next"));
+  next(m);
+  assert.match(text(m, "calwiz-body"), /Test rate\s*5\.28\s*L\/Hr/);
+});
+
+test("a start reading with room for the whole pump range says so, without a limit", () => {
+  const m = mountHmi();
+  m.render(calPayload({}, { min_rate: 2, max_rate: 4 }));
+  toSummary(m, { start: "180", rate: "3" });
+  back(m);
+  const note = text(m, "calwiz-glass-note");
+  assert.match(note, /88 mL of room\. That is enough for the pump's full range over the 60 s test\./);
+  assert.ok(!m.byId("calwiz-glass-note").classList.contains("calwiz-warn"));
+  assert.match(text(m, "calwiz-body"), /Range 2\.00 to 4\.00 L\/Hr/);
+  m.click("calwiz-field-rate");
+  assert.equal(text(m, "keypad-range"), "Range 2.00 to 4.00 L/Hr");
+  m.click("keypad-cancel");
+});
+
+test("a change of start reading brings an entered rate back under the new limit", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  toSummary(m, { start: "50", rate: "13" });
+  back(m); // 3
+  back(m); // 2
+  m.click("calwiz-field-start");
+  enter(m, "180");
+  next(m); // 3
+  assert.match(text(m, "calwiz-body"), /Test rate\s*5\.28/);
+  assert.ok(!blocked(m, "calwiz-next"));
+});
+
+test("too little room for even the pump's minimum rate: Confirm is blocked and says to go back", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  m.click("touch-cal");
+  m.click("calwiz-run");
+  next(m);
+  m.click("calwiz-field-start");
+  enter(m, "260"); // 8 mL of room: 0.48 L/Hr, under the 2.00 minimum
+  next(m);
+  assert.equal(page(m), "3");
+  assert.ok(blocked(m, "calwiz-next"));
+  next(m);
+  assert.equal(page(m), "3");
+  assert.match(text(m, "calwiz-error"), /Only 8 mL of room in the site glass/);
+  assert.match(text(m, "calwiz-error"), /Go back and start with a lower reading/);
 });
 
 test("Start Test sends start_test_run {rate, duration_s: 60}, then the countdown", async () => {
   const m = mountHmi();
   m.render(calPayload());
-  toSummary(m, { rate: "30" });
+  toSummary(m, { rate: "13" });
   next(m);
   await flush();
-  assert.deepEqual(m.state.sent, [{ cmd: "start_test_run", value: { rate: 30, duration_s: 60 } }]);
+  assert.deepEqual(m.state.sent, [{ cmd: "start_test_run", value: { rate: 13, duration_s: 60 } }]);
   assert.equal(page(m), "5");
   // Running: no Back, no X, no Confirm; a Cancel.
   for (const id of ["calwiz-back", "calwiz-close", "calwiz-next"]) assert.ok(isHidden(m.byId(id)), id);
   assert.ok(!isHidden(m.byId("calwiz-cancel")));
-  m.render(calPayload({ active: true, remaining_s: 41.2, rate: 30, duration_s: 60 }, { state: "pumping", running: true, flow_rate: 29.4 }));
+  m.render(calPayload({ active: true, remaining_s: 41.2, rate: 13, duration_s: 60 }, { state: "pumping", running: true, flow_rate: 12.9 }));
   assert.equal(text(m, "calwiz-countdown"), "42");
-  assert.equal(text(m, "calwiz-flow"), "29.40");
-  assert.equal(text(m, "calwiz-run-rate"), "30.00");
+  assert.equal(text(m, "calwiz-flow"), "12.90");
+  assert.equal(text(m, "calwiz-run-rate"), "13.00");
   assert.equal(m.byId("calwiz-progress").style.width, `${(1 - 41.2 / 60) * 100}%`);
   // The tile reads Testing and cannot close the wizard.
   assert.equal(text(m, "touch-cal-value"), "Testing");
@@ -395,15 +480,15 @@ test("completed: final mL, which must be more than the start", async () => {
   await toRunning(m);
   m.render(calPayload({ active: false, rate: 12.5, duration_s: 60, elapsed_s: 60.0, result: "completed" }));
   assert.equal(page(m), "6");
-  assert.match(text(m, "calwiz-body"), /Start was 500 mL\. Test ran 60\.0 s\./);
+  assert.match(text(m, "calwiz-body"), /Start was 50 mL\. Test ran 60\.0 s\./);
   assert.ok(blocked(m, "calwiz-next"));
   m.click("calwiz-field-final");
   assert.equal(text(m, "keypad-title"), "Final site glass mL");
-  enter(m, "500");
-  assert.equal(text(m, "keypad-error"), "Must be more than the starting 500 mL");
-  enter(m, "400");
-  assert.match(text(m, "keypad-error"), /more than/);
-  enter(m, "700");
+  enter(m, "50");
+  assert.equal(text(m, "keypad-error"), "Must be more than the starting 50 mL");
+  enter(m, "300");
+  assert.equal(text(m, "keypad-error"), "The site glass reads at most 268 mL");
+  enter(m, "250");
   assert.ok(!blocked(m, "calwiz-next"));
   // Back from 6 starts over from the starting reading.
   back(m);
@@ -443,7 +528,7 @@ test("results: uses the controller's actual run time", async () => {
 test("results: a clamped factor says so", async () => {
   const m = mountHmi();
   m.render(calPayload());
-  await toResults(m, { final: "550" });
+  await toResults(m, { final: "100" }); // 50 mL in 60 s: 3 L/Hr against 12.5
   assert.equal(text(m, "calwiz-new-factor"), "1.70");
   assert.match(text(m, "calwiz-clamped"), /outside 0\.3 to 1\.7, so it is limited to 1\.70/);
 });
@@ -513,9 +598,9 @@ test("reload mid-test: reattaches to the running test with the saved inputs", as
   assert.equal(text(again, "calwiz-countdown"), "30");
   again.render(calPayload({ active: false, rate: 12.5, duration_s: 60, elapsed_s: 60, result: "completed" }));
   assert.equal(page(again), "6");
-  assert.match(text(again, "calwiz-body"), /Start was 500 mL/);
+  assert.match(text(again, "calwiz-body"), /Start was 50 mL/);
   again.click("calwiz-field-final");
-  enter(again, "700");
+  enter(again, "250");
   next(again);
   assert.equal(text(again, "calwiz-new-factor"), "1.04");
 });
@@ -529,9 +614,9 @@ test("reattach without saved inputs asks for the starting reading too", async ()
   assert.equal(page(m), "6");
   assert.ok(m.byId("calwiz-field-start"));
   m.click("calwiz-field-start");
-  enter(m, "500");
+  enter(m, "50");
   m.click("calwiz-field-final");
-  enter(m, "700");
+  enter(m, "250");
   next(m);
   assert.equal(text(m, "calwiz-new-factor"), "1.04");
 });
@@ -569,7 +654,7 @@ test("stale session: a wizard state without its popover never blocks CALIBRATE",
   assert.ok(m.hmi._hmi.cal, "stale state set up");
   m.click("touch-cal");
   assert.ok(wizardOpen(m));
-  assert.equal(page(m), "1", "a fresh session, not the stale page 2");
+  assert.equal(page(m), "start", "a fresh session, not the stale page 2");
   assert.equal(m.hmi._hmi.cal.startMl, null);
 });
 
@@ -582,7 +667,7 @@ test("stale session: the next update drops it too (self-heal)", () => {
   assert.equal(m.hmi._hmi.cal, null);
   m.click("touch-cal");
   assert.ok(wizardOpen(m));
-  assert.equal(page(m), "1");
+  assert.equal(page(m), "start");
 });
 
 test("stale page 5: CALIBRATE reattaches to the running test from its tags, with the saved inputs", async () => {
@@ -598,7 +683,7 @@ test("stale page 5: CALIBRATE reattaches to the running test from its tags, with
   assert.ok(m.hmi._hmi.cal.reattached);
   m.render(calPayload({ active: false, rate: 12.5, duration_s: 60, elapsed_s: 60, result: "completed" }));
   assert.equal(page(m), "6");
-  assert.match(text(m, "calwiz-body"), /Start was 500 mL/, "saved inputs kept across the stale drop");
+  assert.match(text(m, "calwiz-body"), /Start was 50 mL/, "saved inputs kept across the stale drop");
 });
 
 test("stale page 5: an update reattaches the countdown on its own", async () => {
@@ -612,7 +697,7 @@ test("stale page 5: an update reattaches the countdown on its own", async () => 
   assert.equal(text(m, "calwiz-countdown"), "25");
 });
 
-test("stale page 5 whose test has ended opens a fresh page 1", async () => {
+test("stale page 5 whose test has ended opens a fresh first page", async () => {
   const m = mountHmi({ url: URL });
   m.render(calPayload());
   await toRunning(m);
@@ -621,7 +706,7 @@ test("stale page 5 whose test has ended opens a fresh page 1", async () => {
   m.hmi._hmi.data = calPayload({ active: false, result: "cancelled" });
   m.click("touch-cal");
   assert.ok(wizardOpen(m));
-  assert.equal(page(m), "1");
+  assert.equal(page(m), "start");
   assert.equal(m.dom.window.localStorage.getItem(CAL_STORE_KEY), null);
 });
 
@@ -781,7 +866,7 @@ test("a stale pending state on the shared Next key is cleared on a page change",
   assert.equal(page(m), "6");
   assert.ok(!m.byId("calwiz-next").classList.contains("pending"));
   m.click("calwiz-field-final");
-  enter(m, "700");
+  enter(m, "250");
   next(m); // 6 -> 7
   next(m); // Set calibration factor: must go out
   assert.equal(m.state.sent.at(-1).cmd, "last_calibration_factor");
