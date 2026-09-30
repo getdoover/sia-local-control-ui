@@ -22,6 +22,8 @@ export interface HmiDisplay {
 }
 
 export interface HmiHandle {
+  /** `data` must not be changed afterwards: the next payload is compared
+   * against it, and one that differs only in `timestamp` skips the render. */
   update(data: DashboardData | null, status?: { connected?: boolean }): void;
   notify(message: string, level?: "ok" | "error"): void;
   setVsdPanel(access: VsdPanelAccess): void;
@@ -56,4 +58,5 @@ export declare function scrollState(el: { scrollTop: number; scrollHeight: numbe
   atBottom: boolean;
 };
 export declare function scrollPageStep(clientHeight: number): number;
+export declare function samePayloadButTime(a: object | null | undefined, b: object | null | undefined): boolean;
 export declare function createHmi(root: HTMLElement, opts: HmiOptions): HmiHandle;

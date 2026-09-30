@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { flush, isHidden, mountHmi, pump, withFeatures } from "./helpers.mjs";
+import { samePayloadButTime } from "../src/core/hmi-core.js";
 
 const CLOCK = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false };
 const SETTINGS = {
@@ -152,6 +153,122 @@ test("Last Update with no timestamp shows the time now", () => {
   m.render(live({ timestamp: null }));
   const after = new Date().toLocaleTimeString("en-US", CLOCK);
   assert.ok([before, after].includes(m.byId("last-update").textContent));
+});
+
+// --- skipped payloads never hide a change of state -----------------------------------
+
+test("the same payload after a null one is drawn again (connection line)", () => {
+  const m = mountLive();
+  m.render(live({ link_ok: false }), { connected: true });
+  assert.equal(m.byId("connection-status").textContent, "● No controller");
+  m.render(null, { connected: true });
+  assert.equal(m.byId("connection-status").textContent, "● Connected");
+  m.render(live({ link_ok: false, timestamp: "2026-09-28T01:02:05.000Z" }), { connected: true });
+  assert.equal(m.byId("connection-status").textContent, "● No controller");
+  assert.ok(m.byId("connection-status").classList.contains("status-warning"));
+});
+
+test("the same payload with the connection flipped is drawn again", () => {
+  const m = mountLive();
+  m.render(live(), { connected: true });
+  m.render(live({ timestamp: "2026-09-28T01:02:04.000Z" }), { connected: false });
+  assert.equal(m.byId("connection-status").textContent, "● Disconnected");
+  assert.equal(m.byId("connection-status").className, "status-disconnected");
+  m.render(live({ timestamp: "2026-09-28T01:02:05.000Z" }), { connected: true });
+  assert.equal(m.byId("connection-status").textContent, "● Connected");
+  assert.equal(m.byId("connection-status").className, "status-connected");
+});
+
+test("calibration: identical payloads still end a run on the wall-clock backstop", async () => {
+  // A stale result from an earlier run is ignored until this run was seen
+  // active, or its duration + 30 s has passed (hmi-core.js renderCalwizLive).
+  const stale = (ts) =>
+    live({
+      warnings: [],
+      pumps: [pump({ state: "standby", running: false, flow_rate: 0 })],
+      calibration: { method: "Manual (HMI)", test_run: run({ result: "completed", elapsed_s: 60, rate: 12.5, duration_s: 60 }) },
+      timestamp: ts,
+    });
+  const m = mountLive();
+  m.render(stale("2026-09-28T01:00:00.000Z"));
+  m.click("touch-cal");
+  m.click("calwiz-next"); // 1 -> 2
+  m.click("calwiz-field-start");
+  for (const k of ["clear", "5", "0", "0"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
+  m.click("keypad-ok");
+  m.click("calwiz-next"); // 2 -> 3
+  m.click("calwiz-next"); // 3 -> 4
+  m.click("calwiz-next"); // Start Test
+  await flush();
+  const page = () => m.byId("calwiz-body").getAttribute("data-page");
+  assert.equal(page(), "5");
+  m.render(stale("2026-09-28T01:00:01.000Z"));
+  assert.equal(page(), "5", "the stale result is ignored at first");
+  const realNow = Date.now;
+  Date.now = () => realNow.call(Date) + 91_000;
+  try {
+    m.render(stale("2026-09-28T01:00:02.000Z")); // identical but for the timestamp
+    assert.equal(page(), "6");
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("a stale wizard session is still dropped by an identical payload", async () => {
+  const m = mountLive();
+  m.render(live({ warnings: [], pumps: [pump({ state: "standby", running: false, flow_rate: 0 })] }));
+  m.click("touch-cal");
+  assert.ok(!isHidden(m.byId("calwiz")));
+  m.byId("calwiz").classList.add("hidden"); // popover gone without a close
+  m.render(live({ warnings: [], pumps: [pump({ state: "standby", running: false, flow_rate: 0 })], timestamp: "2026-09-28T01:02:04.000Z" }));
+  assert.equal(m.hmi._hmi.cal, null);
+});
+
+test("[perf] a payload identical but for its timestamp skips the render", () => {
+  const m = mountLive();
+  const h = m.hmi._hmi;
+  let renders = 0;
+  const renderPump = h.renderPump;
+  h.renderPump = (...a) => {
+    renders++;
+    return renderPump.apply(h, a);
+  };
+  m.render(live());
+  m.render(live({ timestamp: "2026-09-28T01:02:05.000Z" }));
+  assert.equal(renders, 1);
+  assert.equal(m.byId("last-update").textContent, new Date("2026-09-28T01:02:05.000Z").toLocaleTimeString("en-US", CLOCK));
+  m.render(live({ skid: { skid_pressure: 351 }, timestamp: "2026-09-28T01:02:06.000Z" }));
+  assert.equal(renders, 2);
+});
+
+test("alarm access changed between identical payloads still shows and hides the gears", () => {
+  const m = mountHmi();
+  m.render(live());
+  assert.ok(isHidden(m.byId("tank-gear")));
+  m.hmi.setAlarmAccess({ enabled: true, canWrite: true, writeBlockedReason: "" });
+  m.render(live({ timestamp: "2026-09-28T01:02:04.000Z" }));
+  assert.ok(!isHidden(m.byId("tank-gear")));
+  m.hmi.setAlarmAccess({ enabled: false, canWrite: false, writeBlockedReason: "" });
+  m.render(live({ timestamp: "2026-09-28T01:02:05.000Z" }));
+  assert.ok(isHidden(m.byId("tank-gear")));
+});
+
+test("samePayloadButTime: only the top-level timestamp is ignored", () => {
+  const same = samePayloadButTime;
+  const p = live();
+  assert.ok(same(p, live({ timestamp: "2030-01-01T00:00:00.000Z" })));
+  assert.ok(same(p, { ...p, timestamp: null }));
+  assert.ok(!same(p, live({ skid: { skid_pressure: 350.3 } })));
+  assert.ok(!same(p, live({ tank: { ...p.tank, level_primary: { value: 850, unit: "mm", decimals: 1 } } })));
+  assert.ok(!same(p, live({ warnings: [] })));
+  assert.ok(!same({ a: 0, timestamp: 1 }, { a: -0, timestamp: 1 }), "-0 vs 0 counts as a change (errs toward a full render)");
+  assert.ok(same({ a: NaN, timestamp: 1 }, { a: NaN, timestamp: 2 }));
+  assert.ok(!same({ a: undefined, timestamp: 1 }, { timestamp: 1 }), "undefined key vs missing key");
+  assert.ok(!same({ a: [1, 2], timestamp: 1 }, { a: { 0: 1, 1: 2 }, timestamp: 1 }));
+  assert.ok(!same({ a: null, timestamp: 1 }, { a: {}, timestamp: 1 }));
+  assert.ok(!same(p, { ...p, extra: 1 }));
+  assert.ok(!same({ timestamp: 1 }, { ts: 1 }));
+  assert.ok(!same(null, p));
 });
 
 // --- element cache ---------------------------------------------------------------------------

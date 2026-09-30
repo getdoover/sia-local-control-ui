@@ -539,6 +539,44 @@ export const VSD_POLL_MS = 2000;
 
 const CSS_ESCAPE = (id) => String(id).replace(/["\\]/g, "\\$&");
 
+/** Deep equality of payload values: the same own keys, arrays compared by
+ * index, Object.is on leaves (so -0 vs 0, or an undefined key vs a missing
+ * one, counts as a change and errs toward a full render). */
+function sameValue(a, b) {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  const arr = Array.isArray(a);
+  if (arr !== Array.isArray(b)) return false;
+  if (arr) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!sameValue(a[i], b[i])) return false;
+    return true;
+  }
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  for (const k of ka) {
+    if (!Object.prototype.hasOwnProperty.call(b, k) || !sameValue(a[k], b[k])) return false;
+  }
+  return true;
+}
+
+/** Two payloads that differ at most in their top-level timestamp (pure,
+ * unit-tested). Over half the live feed is exactly that: the controller
+ * re-sends unchanged tags, and each event restamps the aggregate. */
+export function samePayloadButTime(a, b) {
+  if (!a || !b) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  for (const k of ka) {
+    if (k === "timestamp") {
+      if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+      continue;
+    }
+    if (!Object.prototype.hasOwnProperty.call(b, k) || !sameValue(a[k], b[k])) return false;
+  }
+  return true;
+}
+
 const MODE_LABELS = { read_only: "Read Only", touch: "Touch", button: "Button" };
 
 // Alarm settings gears: [alarm group, gear, the tile section it sits on].
@@ -578,6 +616,9 @@ class Hmi {
     // without it is stale and is dropped (calwizDropStale).
     this.cal = null;
     this.resizeObserver = null;
+    // The last payload fully rendered and the connection it was drawn with
+    // (update's fast path); null until then, and after a null payload.
+    this.rendered = null;
     // Elements found by $ / $in (an update looks up some 60 of them).
     this.els = new Map();
     // Last Update: the epoch second and UTC offset clockText was made for.
@@ -979,12 +1020,31 @@ class Hmi {
   }
 
   // -- render -------------------------------------------------------------------
+  // A payload must not be changed after it is passed in: the next one is
+  // compared against it (the data adapter builds a new object every call).
   update(data, status) {
     if (status && typeof status.connected === "boolean") this.connected = status.connected;
     if (!data) {
+      this.rendered = null;
       this.setConnection(this.connected, undefined);
       return;
     }
+    const prev = this.rendered;
+    if (prev && prev.connected === this.connected && samePayloadButTime(prev.data, data)) {
+      // Same payload but for its timestamp: every render below would write
+      // nothing, as each depends only on the payload and the connection, or
+      // on state that redraws itself when it changes (alarm / VSD access, an
+      // alarm write). Only the clock and the wizard's time-based steps (the
+      // wall-clock backstop, a stale session, reattach) can move.
+      this.data = data;
+      if (data.units) this.units = data.units;
+      this.renderCalwizLive();
+      this.setLastUpdate(data.timestamp);
+      return;
+    }
+    // Cleared first: a render that throws part-way leaves no snapshot, so
+    // the next payload (even one equal to the last good one) renders in full.
+    this.rendered = null;
     this.data = data;
     if (data.units) this.units = data.units;
     this.hide(this.$("loading-overlay"));
@@ -1004,6 +1064,7 @@ class Hmi {
     this.renderVsd(data.vsd);
     if (this.vsdOpen) this.renderVsdReset();
     this.setLastUpdate(data.timestamp);
+    this.rendered = { data, connected: this.connected };
   }
 
   renderHostBadge(mode) {
