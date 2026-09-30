@@ -698,9 +698,10 @@
 
 /* The kiosk's bold sans-serif (Noto Sans Bold) has no U+232B, the keypad's
    backspace key, so WebKit falls back to DejaVu Sans, and the first keypad
-   open after a load paid for that font lookup in the tap (137-159 ms cold vs 10-12 ms warm,
-   Chromium at 6x). This laid-out but invisible copy of the glyph does the
-   lookup at load. Same font as the key: the .sia-hmi family (buttons
+   open after a load paid for that font lookup in the tap (83-102 ms cold
+   vs 8-11 ms warm in Chromium at 6x on the mock; not measured on the
+   kiosk's WebKitGTK). This laid-out but invisible copy of the glyph does
+   the lookup at load. Same font as the key: the .sia-hmi family (buttons
    inherit it), .key's size and weight, and the normal style and stretch a
    button's UA font resets to. Not the key class: its minimum size would
    give the span a box. */

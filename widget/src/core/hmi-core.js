@@ -542,23 +542,35 @@ export const VSD_POLL_MS = 2000;
 
 const CSS_ESCAPE = (id) => String(id).replace(/["\\]/g, "\\$&");
 
+// Deeper than any payload nests: past it two values count as different, so
+// a cyclic one takes a full render instead of overflowing the stack.
+const SAME_VALUE_DEPTH = 32;
+
+const isPlain = (o) => {
+  const p = Object.getPrototypeOf(o);
+  return p === Object.prototype || p === Array.prototype || p === null;
+};
+
 /** Deep equality of payload values: the same own keys, arrays compared by
  * index, Object.is on leaves (so -0 vs 0, or an undefined key vs a missing
- * one, counts as a change and errs toward a full render). */
-function sameValue(a, b) {
+ * one, counts as a change and errs toward a full render). Payloads are plain
+ * JSON-shaped data: two distinct objects of any other kind (a Date, a Map,
+ * a class instance) also count as a change, as does a cycle. */
+function sameValue(a, b, depth = 0) {
   if (Object.is(a, b)) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (depth >= SAME_VALUE_DEPTH || !isPlain(a) || !isPlain(b)) return false;
   const arr = Array.isArray(a);
   if (arr !== Array.isArray(b)) return false;
   if (arr) {
     if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) if (!sameValue(a[i], b[i])) return false;
+    for (let i = 0; i < a.length; i++) if (!sameValue(a[i], b[i], depth + 1)) return false;
     return true;
   }
   const ka = Object.keys(a);
   if (ka.length !== Object.keys(b).length) return false;
   for (const k of ka) {
-    if (!Object.prototype.hasOwnProperty.call(b, k) || !sameValue(a[k], b[k])) return false;
+    if (!Object.prototype.hasOwnProperty.call(b, k) || !sameValue(a[k], b[k], depth + 1)) return false;
   }
   return true;
 }
@@ -637,7 +649,9 @@ class Hmi {
   // Cached while the element is still in the page, instead of a selector
   // search of the whole widget per lookup. A rebuilt node (wizard body,
   // alarm rows, VSD Retry) replaces a now-disconnected one and is looked up
-  // again; a miss is never cached. No data-id appears twice in the page.
+  // again; a miss is never cached. No data-id appears twice in the widget,
+  // and nothing moves a node out of the root, so one still in the document
+  // is still the one inside this.root.
   $(id) {
     const hit = this.els.get(id);
     if (hit && hit.isConnected) return hit;
@@ -1036,11 +1050,15 @@ class Hmi {
     if (prev && prev.connected === this.connected && samePayloadButTime(prev.data, data)) {
       // Same payload but for its timestamp: every render below would write
       // nothing, as each depends only on the payload and the connection, or
-      // on state that redraws itself when it changes (alarm / VSD access, an
-      // alarm write). Only the clock and the wizard's time-based steps (the
-      // wall-clock backstop, a stale session, reattach) can move.
+      // on state that redraws itself when it changes (alarm / VSD access).
+      // Only the clock, the wizard's time-based steps (the wall-clock
+      // backstop, a stale session, reattach) and the open alarm popover can
+      // move: the command feedback timer takes a written row's Saved / error
+      // ring off after FEEDBACK_MS, and each update puts it back from
+      // alarmState (its writes are guarded, so an idle one writes nothing).
       this.data = data;
       if (data.units) this.units = data.units;
+      if (this.alarmOpen) this.renderAlarmValues();
       this.renderCalwizLive();
       this.setLastUpdate(data.timestamp);
       return;

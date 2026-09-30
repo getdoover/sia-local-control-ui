@@ -97,6 +97,10 @@ test("banner lists follow every change of their reasons", () => {
   m.render(live({ warnings: [{ pump: null, reason: "a\nb" }, { pump: null, reason: "c" }] }));
   m.render(live({ warnings: [{ pump: null, reason: "a" }, { pump: null, reason: "b\nc" }] }));
   assert.deepEqual(list(), ["a", "b\nc"]);
+  // Nor a plain concatenation.
+  m.render(live({ warnings: [{ pump: null, reason: "ab" }, { pump: null, reason: "c" }] }));
+  m.render(live({ warnings: [{ pump: null, reason: "a" }, { pump: null, reason: "bc" }] }));
+  assert.deepEqual(list(), ["a", "bc"]);
   m.render(live({ warnings: [{ pump: null, reason: null }] }));
   assert.deepEqual(list(), ["Warning"]);
   m.render(live({ warnings: [] }));
@@ -241,6 +245,60 @@ test("[perf] a payload identical but for its timestamp skips the render", () => 
   assert.equal(renders, 2);
 });
 
+test("after a render that throws part-way, the last good payload renders in full", () => {
+  // The failed render drew the new skid pressure before the tank threw; the
+  // last good payload coming back must not take the fast path past it.
+  const m = mountLive();
+  const h = m.hmi._hmi;
+  const pressure = () => m.root.querySelector('[data-id="skid-pressure"] .value').textContent;
+  m.render(live());
+  const renderTank = h.renderTank;
+  h.renderTank = () => {
+    h.renderTank = renderTank;
+    throw new Error("renderer failed");
+  };
+  assert.throws(() => m.render(live({ skid: { skid_pressure: 351.5 }, timestamp: "2026-09-28T01:02:04.000Z" })), /renderer failed/);
+  assert.equal(pressure(), "351.5");
+  m.render(live({ timestamp: "2026-09-28T01:02:05.000Z" }));
+  assert.equal(pressure(), "350.2");
+});
+
+test("an alarm row's Saved ring comes back after the feedback timer on an unchanged feed", async () => {
+  // sendCommand's feedback timer takes the ring off after 2.5 s; every
+  // update while the popover is open puts it back from the write's state.
+  const { mock } = test;
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const m = mountLive();
+    const settle = async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    };
+    const at = (s, over) => live({ timestamp: `2026-09-28T01:00:${String(s).padStart(2, "0")}.000Z`, ...over });
+    m.render(at(0));
+    m.click("tank-gear");
+    m.click("alarm-row-low_tank_level");
+    for (const k of ["clear", "2", "5"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
+    m.click("keypad-ok");
+    m.click("confirm-ok");
+    await settle();
+    const row = m.byId("alarm-row-low_tank_level");
+    assert.ok(row.classList.contains("ok"));
+    const readback = { alarm_settings: { ...SETTINGS, tank: { ...SETTINGS.tank, low: 25 } } };
+    m.render(at(1, readback));
+    mock.timers.tick(2600);
+    assert.ok(!row.classList.contains("ok"), "the feedback timer took the ring off");
+    m.render(at(2, readback)); // identical but for the timestamp
+    assert.ok(row.classList.contains("ok"));
+    assert.match(row.textContent, /Saved/);
+    const done = watch(m);
+    m.render(at(2, readback));
+    assert.deepEqual(done(), [], "an idle update with the popover open writes nothing");
+    m.hmi.destroy();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test("alarm access changed between identical payloads still shows and hides the gears", () => {
   const m = mountHmi();
   m.render(live());
@@ -269,6 +327,20 @@ test("samePayloadButTime: only the top-level timestamp is ignored", () => {
   assert.ok(!same(p, { ...p, extra: 1 }));
   assert.ok(!same({ timestamp: 1 }, { ts: 1 }));
   assert.ok(!same(null, p));
+  // Payloads are plain data: other objects count as a change unless the same one.
+  assert.ok(!same({ a: new Date(0), timestamp: 1 }, { a: new Date(5e12), timestamp: 2 }));
+  assert.ok(!same({ a: new Map([[1, 2]]), timestamp: 1 }, { a: new Map(), timestamp: 2 }));
+  assert.ok(!same({ a: new (class Reading {})(), timestamp: 1 }, { a: {}, timestamp: 2 }));
+  const d = new Date(0);
+  assert.ok(same({ a: d, timestamp: 1 }, { a: d, timestamp: 2 }));
+  assert.ok(same({ a: Object.assign(Object.create(null), { x: 1 }), timestamp: 1 }, { a: { x: 1 }, timestamp: 2 }));
+  // A cycle takes a full render instead of overflowing the stack.
+  const cyc = () => {
+    const o = { n: 1 };
+    o.self = o;
+    return { a: o, timestamp: 1 };
+  };
+  assert.ok(!same(cyc(), cyc()));
 });
 
 // --- element cache ---------------------------------------------------------------------------
@@ -314,13 +386,14 @@ test("the backspace glyph is warmed at load, hidden from assistive tech", () => 
 
 // --- attribute semantics kept ----------------------------------------------------------------
 
-test("VSD Reset keeps an empty title attribute in Touch mode", async () => {
+test("VSD Reset keeps an empty title attribute in Touch mode", async (t) => {
   const vsdPanel = {
     diagnostics: async () => ({ ok: true, result: {} }),
     parameters: async () => ({ ok: true, result: [] }),
     write: async () => ({ ok: true }),
   };
   const m = mountHmi({ vsdPanel });
+  t.after(() => m.hmi.destroy()); // stops the 2 s diagnostics poll, even on a failure
   m.hmi.setVsdPanel({ enabled: true, canWrite: true, writeBlockedReason: "" });
   m.render(live());
   m.click("vsd-gear");
@@ -331,5 +404,4 @@ test("VSD Reset keeps an empty title attribute in Touch mode", async () => {
   m.render(live({ touch: undefined, hmi_mode: "read_only", calibration: undefined }));
   assert.equal(b.getAttribute("title"), "Reset is available in HMI Control Mode Touch");
   assert.equal(b.disabled, true);
-  m.hmi.destroy(); // stops the 2 s diagnostics poll
 });
