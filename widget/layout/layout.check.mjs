@@ -504,8 +504,18 @@ for (const [w, h] of SIZES) {
       await shot("p7");
 
       await page.click('.sia-hmi [data-id="calwiz-next"]'); // Set calibration factor
-      await page.waitForSelector('.sia-hmi [data-id="calwiz-saved"]');
-      assertWizardFits(await page.evaluate(measureWizard), w, h, "page 7 saved");
+      await page.waitForSelector('.sia-hmi [data-id="calwiz"].hidden', { state: "attached" }); // set: it closes
+      // The "updated" toast is at the bottom of the screen, just above the touch bar.
+      const toast = await page.evaluate(() => {
+        const el = document.querySelector('.sia-hmi [data-id="command-toast"]');
+        const t = el.getBoundingClientRect();
+        const b = document.querySelector('.sia-hmi [data-id="touch-bar"]').getBoundingClientRect();
+        return { shown: !el.classList.contains("hidden"), text: el.textContent, top: t.top, bottom: t.bottom, bar: b.top };
+      });
+      assert.ok(toast.shown, "updated toast shown");
+      assert.equal(toast.text, "Calibration factor updated");
+      assert.ok(toast.bottom <= toast.bar && toast.bar - toast.bottom <= 24, `toast not just above the touch bar: ${JSON.stringify(toast)}`);
+      await shot("set");
       const set = await page.evaluate(() => window.__rpcLog.at(-1));
       assert.equal(set.method, "last_calibration_factor");
     } finally {
@@ -758,10 +768,8 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "7");
       await fits("page 7");
       await page.click('.sia-hmi [data-id="calwiz-next"]');
-      await page.waitForSelector('.sia-hmi [data-id="calwiz-saved"]');
-      await fits("page 7 saved");
+      await page.waitForSelector('.sia-hmi [data-id="calwiz"].hidden', { state: "attached" }); // set: it closes
       // The confirmation (manual factor) sits inside the inset too.
-      await page.click('.sia-hmi [data-id="calwiz-next"]'); // Close
       await page.click('.sia-hmi [data-id="touch-cal"]');
       await wizardPage(page, "1");
       await page.click('.sia-hmi [data-id="calwiz-manual"]');

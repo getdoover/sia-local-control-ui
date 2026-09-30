@@ -148,10 +148,28 @@ test("every page carries the title; page 1 asks about the valve and site glass",
   m.click("touch-cal");
   assert.equal(m.root.querySelector(".calwiz-title").textContent, CAL_TITLE);
   assert.equal(CAL_TITLE, "1min Calibration Sequence");
-  assert.match(text(m, "calwiz-body"), /Please confirm the tank valve is shut off and the site glass is open/);
+  assert.match(text(m, "calwiz-body"), /Please confirm the tank valve is shut off and the site glass has fluid in it\./);
   assert.equal(text(m, "calwiz-next"), "Confirm");
-  assert.ok(!isHidden(m.byId("calwiz-back")));
   assert.ok(!isHidden(m.byId("calwiz-close")));
+});
+
+test("page 1 has no Back, and the manual entry sits below Confirm on page 1 only", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  m.click("touch-cal");
+  assert.ok(isHidden(m.byId("calwiz-back")));
+  const manual = m.byId("calwiz-manual");
+  assert.ok(!isHidden(manual));
+  // After the prompt + Confirm box, not inside the body above Confirm.
+  assert.ok(!m.byId("calwiz-body").contains(manual));
+  assert.ok(m.byId("calwiz-next").compareDocumentPosition(manual) & 4);
+  assert.equal(m.byId("calwiz-box").getAttribute("data-page"), "1");
+  next(m);
+  assert.ok(!isHidden(m.byId("calwiz-back")));
+  assert.ok(isHidden(manual));
+  back(m);
+  assert.ok(isHidden(m.byId("calwiz-back")));
+  assert.ok(!isHidden(manual));
 });
 
 test("forward through pages 1 to 4, and Back from each", () => {
@@ -365,8 +383,13 @@ test("results: worked numbers (200 mL in 60 s at 12.50 L/Hr, 1.00 -> 1.04)", asy
   assert.equal(m.byId("calwiz-clamped"), null);
   assert.equal(text(m, "calwiz-next"), "Set calibration factor");
   assert.ok(!isHidden(m.byId("calwiz-discard")));
+  // Only Set calibration factor or Discard from here: no Back, no X.
+  assert.ok(isHidden(m.byId("calwiz-back")));
+  assert.ok(isHidden(m.byId("calwiz-close")));
   back(m);
-  assert.equal(page(m), "6");
+  assert.equal(page(m), "7");
+  m.click("calwiz-discard");
+  assert.ok(!wizardOpen(m));
 });
 
 test("results: uses the controller's actual run time", async () => {
@@ -385,19 +408,15 @@ test("results: a clamped factor says so", async () => {
   assert.match(text(m, "calwiz-clamped"), /outside 0\.3 to 1\.7, so it is limited to 1\.70/);
 });
 
-test("Set calibration factor sends last_calibration_factor and shows success", async () => {
+test("Set calibration factor sends last_calibration_factor and closes the wizard", async () => {
   const m = mountHmi();
   m.render(calPayload());
   await toResults(m);
   next(m);
   await flush();
   assert.deepEqual(m.state.sent.at(-1), { cmd: "last_calibration_factor", value: 1.04 });
-  assert.equal(text(m, "calwiz-saved"), "Calibration factor set to 1.04.");
-  assert.equal(text(m, "calwiz-next"), "Close");
-  assert.ok(isHidden(m.byId("calwiz-discard")));
-  assert.equal(text(m, "command-toast"), "Calibration factor updated");
-  next(m);
   assert.ok(!wizardOpen(m));
+  assert.equal(text(m, "command-toast"), "Calibration factor updated");
 });
 
 test("a refused factor keeps the results with the reason", async () => {

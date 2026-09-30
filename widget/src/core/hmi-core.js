@@ -477,13 +477,16 @@ function template(opts) {
       <span class="calwiz-step" data-id="calwiz-step"></span>
       <button type="button" class="icon-btn calwiz-close" data-id="calwiz-close" aria-label="Close">${CLOSE_ICON}</button>
     </div>
-    <div class="calwiz-body" data-id="calwiz-body"></div>
-    <div class="calwiz-error" data-id="calwiz-error" role="alert"></div>
-    <div class="calwiz-actions">
-      <button type="button" class="key key-cancel calwiz-back" data-id="calwiz-back">Back</button>
-      <button type="button" class="key calwiz-discard hidden" data-id="calwiz-discard">Discard</button>
-      <button type="button" class="key key-ok calwiz-next" data-id="calwiz-next"><span class="btn-label" data-id="calwiz-next-label">Confirm</span></button>
+    <div class="calwiz-main">
+      <div class="calwiz-body" data-id="calwiz-body"></div>
+      <div class="calwiz-error" data-id="calwiz-error" role="alert"></div>
+      <div class="calwiz-actions">
+        <button type="button" class="key key-cancel calwiz-back" data-id="calwiz-back">Back</button>
+        <button type="button" class="key calwiz-discard hidden" data-id="calwiz-discard">Discard</button>
+        <button type="button" class="key key-ok calwiz-next" data-id="calwiz-next"><span class="btn-label" data-id="calwiz-next-label">Confirm</span></button>
+      </div>
     </div>
+    <button type="button" class="key calwiz-manual hidden" data-id="calwiz-manual">Enter calibration factor manually</button>
   </div>
 </div>
 
@@ -705,6 +708,7 @@ class Hmi {
     on("calwiz-back", () => this.calwizBack());
     on("calwiz-next", (b) => this.calwizNext(b));
     on("calwiz-discard", () => this.calwizClose());
+    on("calwiz-manual", (b) => this.calwizAction("manual", b));
     const calBody = this.$("calwiz-body");
     if (calBody) {
       calBody.addEventListener("click", (e) => {
@@ -1327,7 +1331,7 @@ class Hmi {
   // Pages: 1 valve shut / site glass open, 2 start mL, 3 test rate, 4 summary
   // + Start Test (start_test_run), 5 running (countdown from the controller's
   // TestRunRemaining_s, Cancel = cancel_test_run), "ended" (cancelled or
-  // faulted), 6 final mL, 7 results + Set calibration factor / Discard.
+  // faulted), 6 final mL, 7 results + Set calibration factor (closes) / Discard.
   // The controller times the run and stops the pump itself; the wizard only
   // follows its TestRun* tags, so a reload reattaches from TestRunActive.
 
@@ -1467,8 +1471,8 @@ class Hmi {
 
   calwizBack() {
     if (!this.cal) return;
-    const back = { 1: null, 2: 1, 3: 2, 4: 3, 6: 2, 7: 6, ended: 2 }[this.cal.page];
-    if (back === undefined) return; // running: no back
+    const back = { 1: null, 2: 1, 3: 2, 4: 3, 6: 2, ended: 2 }[this.cal.page];
+    if (back === undefined) return; // running, results: no back
     if (back === null) {
       this.calwizClose();
       return;
@@ -1477,7 +1481,6 @@ class Hmi {
       // A new test needs a new starting reading.
       this.cal.finalMl = null;
       this.cal.result = null;
-      this.cal.saved = null;
     }
     this.calwizGo(back);
   }
@@ -1536,7 +1539,6 @@ class Hmi {
         return this.calwizGo(7);
       }
       case 7:
-        if (c.saved != null) return this.calwizClose();
         return this.calwizSetFactor(btn);
       case "ended":
         return this.calwizClose();
@@ -1585,9 +1587,13 @@ class Hmi {
     sent.then((ack) => {
       if (this.cal !== c) return;
       if (ack && ack.ok) {
-        c.saved = value;
+        // Set: the wizard is done (the toast says the factor was updated).
         this.calStore(null);
-        this.renderCalwiz();
+        this.calwizClose();
+        // The "updated" toast was placed around the open wizard: with it
+        // gone, back to the bottom of the screen (above the touch bar).
+        const toast = this.$("command-toast");
+        if (toast && !toast.classList.contains("hidden")) this.placeToast(toast);
       } else {
         c.error = (ack && ack.message) || "The calibration factor was not set";
         this.setText("calwiz-error", c.error);
@@ -1775,8 +1781,7 @@ class Hmi {
     switch (c.page) {
       case 1:
         html =
-          `<p class="calwiz-text calwiz-lead">Please confirm the tank valve is shut off and the site glass is open</p>` +
-          `<button type="button" class="key calwiz-manual" data-act="manual" data-id="calwiz-manual">Enter calibration factor manually</button>`;
+          `<p class="calwiz-text calwiz-lead">Please confirm the tank valve is shut off and the site glass has fluid in it.</p>`;
         break;
       case 2:
         html =
@@ -1837,16 +1842,13 @@ class Hmi {
         const clampNote = r.clamped
           ? `<p class="calwiz-note calwiz-warn" data-id="calwiz-clamped">Calculated ${this.fmt(r.rawFactor, 2)} is outside 0.3 to 1.7, so it is limited to ${this.fmt(r.newFactor, 2)}. Check the readings and the pump.</p>`
           : "";
-        const saved = c.saved != null
-          ? `<p class="calwiz-note calwiz-ok" data-id="calwiz-saved">Calibration factor set to ${this.fmt(c.saved, 2)}.</p>`
-          : "";
         html =
           `<div class="calwiz-rows calwiz-results">` +
           row("Delivered volume", formatMl(r.deliveredMl), "mL", "calwiz-delivered") +
           row("Measured flow rate", this.fmt(r.measuredRate, 2), u, "calwiz-measured") +
           row("Target flow rate", this.fmt(r.targetRate, 2), u, "calwiz-target") +
           row("Calibration factor", `${this.fmt(r.oldFactor, 2)} \u2192 <strong data-id="calwiz-new-factor">${this.fmt(r.newFactor, 2)}</strong>`, "", "calwiz-factor") +
-          `</div>` + clampNote + saved;
+          `</div>` + clampNote;
         break;
       }
       default:
@@ -1854,6 +1856,7 @@ class Hmi {
     }
     body.innerHTML = html;
     body.setAttribute("data-page", String(c.page));
+    setAttr(this.$("calwiz-box"), "data-page", String(c.page));
     this.setText("calwiz-error", c.error || "");
     this.renderCalwizActions();
     if (c.page === 5) this.renderCalwizRunning();
@@ -1867,14 +1870,18 @@ class Hmi {
     const discard = this.$("calwiz-discard");
     const close = this.$("calwiz-close");
     const running = c.page === 5;
-    this.toggle(back, !running);
-    this.toggle(close, !running);
+    // Page 1 has no Back (the X closes): its Confirm stands alone under the
+    // prompt, with the manual entry below it. The results page has none
+    // either: Set calibration factor or Discard only.
+    this.toggle(back, !running && c.page !== 1 && c.page !== 7);
+    this.toggle(this.$("calwiz-manual"), c.page === 1);
+    this.toggle(close, !running && c.page !== 7);
     this.toggle(next, !running);
-    this.toggle(discard, c.page === 7 && c.saved == null);
+    this.toggle(discard, c.page === 7);
     if (!next) return;
     const labels = { 1: "Confirm", 2: "Confirm", 3: "Confirm", 4: "Start Test", 6: "Confirm", 7: "Set calibration factor", ended: "Close" };
-    this.setText("calwiz-next-label", c.page === 7 && c.saved != null ? "Close" : labels[c.page] || "Confirm");
-    next.classList.toggle("calwiz-go", c.page === 4 || (c.page === 7 && c.saved == null));
+    this.setText("calwiz-next-label", labels[c.page] || "Confirm");
+    next.classList.toggle("calwiz-go", c.page === 4 || c.page === 7);
     const pump = this.calPump() || {};
     let disabled = false;
     if (c.page === 2) disabled = !!validateStartMl(c.startMl);
