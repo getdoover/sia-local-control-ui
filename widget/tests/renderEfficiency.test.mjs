@@ -299,6 +299,19 @@ test("rebuilt wizard nodes are found again (countdown after the page is redrawn)
   assert.equal(second.textContent, "42");
 });
 
+// --- first keypad open -------------------------------------------------------------------
+
+test("the backspace glyph is warmed at load, hidden from assistive tech", () => {
+  // Its font (layout/layout.check.mjs) must be the key's, so the kiosk's
+  // font fallback for U+232B happens at load instead of in the first tap.
+  const m = mountHmi();
+  const warm = m.root.querySelectorAll(".glyph-warm");
+  assert.equal(warm.length, 1);
+  assert.equal(warm[0].getAttribute("aria-hidden"), "true");
+  assert.equal(warm[0].textContent, m.root.querySelector('.keypad-keys [data-key="back"]').textContent);
+  assert.equal(warm[0].textContent, "⌫");
+});
+
 // --- attribute semantics kept ----------------------------------------------------------------
 
 test("VSD Reset keeps an empty title attribute in Touch mode", async () => {

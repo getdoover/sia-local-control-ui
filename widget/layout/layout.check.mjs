@@ -922,3 +922,54 @@ for (const [w, h] of SIZES) {
     });
   }
 }
+
+// The keypad's backspace glyph (U+232B) is missing from the kiosk's bold
+// sans, and its font fallback is warmed at load by .glyph-warm. The warm-up
+// only helps if it resolves the same font as the key: same computed font,
+// same platform font for the glyph, and no box of its own.
+for (const host of ["local", "cloud"]) {
+  test(`${host}: the glyph warm-up uses the backspace key's font and takes no room`, async () => {
+    const page = await browser.newPage({ viewport: { width: 1024, height: 600 } });
+    try {
+      await page.goto(`${base}?host=${host}&mode=Touch&scenario=running`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await page.click('.sia-hmi [data-id="touch-rate"]');
+      await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
+      const css = await page.evaluate(() => {
+        const font = (el) => {
+          const s = getComputedStyle(el);
+          return [s.fontFamily, s.fontSize, s.fontWeight, s.fontStyle, s.fontStretch, s.fontVariant].join(" | ");
+        };
+        const warm = document.querySelector(".sia-hmi .glyph-warm");
+        const key = document.querySelector('.sia-hmi [data-key="back"]');
+        const r = warm.getBoundingClientRect();
+        return {
+          warm: font(warm),
+          key: font(key),
+          text: [warm.textContent, key.textContent],
+          box: [r.width, r.height],
+          visibility: getComputedStyle(warm).visibility,
+        };
+      });
+      assert.equal(css.warm, css.key);
+      assert.equal(css.text[0], css.text[1]);
+      assert.deepEqual(css.box, [0, 0]);
+      assert.equal(css.visibility, "hidden");
+
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("DOM.enable");
+      await cdp.send("CSS.enable");
+      const { root } = await cdp.send("DOM.getDocument", { depth: -1 });
+      const fonts = async (sel) => {
+        const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: sel });
+        const res = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+        return res.fonts.map((f) => f.postScriptName || f.familyName).sort();
+      };
+      const warmFonts = await fonts(".sia-hmi .glyph-warm");
+      assert.ok(warmFonts.length > 0, "the warm-up glyph is laid out");
+      assert.deepEqual(warmFonts, await fonts('.sia-hmi [data-key="back"]'));
+    } finally {
+      await page.close();
+    }
+  });
+}

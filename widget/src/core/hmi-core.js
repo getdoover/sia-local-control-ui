@@ -530,7 +530,10 @@ function template(opts) {
   </div>
 </div>
 
-<div data-id="command-toast" class="command-toast hidden" role="status"></div>`;
+<div data-id="command-toast" class="command-toast hidden" role="status"></div>
+
+<!-- Warms the font fallback for the keypad's backspace glyph (hmi-core.css). -->
+<span class="glyph-warm" aria-hidden="true">&#9003;</span>`;
 }
 
 // The open VSD panel re-reads diagnostics this long after each answer.

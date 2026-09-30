@@ -696,6 +696,29 @@
 
 .sia-hmi .key-ok { background: #245b77; border-color: var(--hmi-blue); color: white; }
 
+/* The kiosk's bold sans-serif (Noto Sans Bold) has no U+232B, the keypad's
+   backspace key, so WebKit falls back to DejaVu Sans, and the first keypad
+   open after a load paid for that font lookup in the tap (137-159 ms cold vs 10-12 ms warm,
+   Chromium at 6x). This laid-out but invisible copy of the glyph does the
+   lookup at load. Same font as the key: the .sia-hmi family (buttons
+   inherit it), .key's size and weight, and the normal style and stretch a
+   button's UA font resets to. Not the key class: its minimum size would
+   give the span a box. */
+.sia-hmi .glyph-warm {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-style: normal;
+    font-stretch: normal;
+}
+
 .sia-hmi .confirm-box { width: min(460px, 96vw); }
 .sia-hmi .confirm-message { font-size: 1.15rem; font-weight: 600; color: var(--hmi-text); margin-bottom: 14px; }
 
