@@ -153,6 +153,15 @@ export function resolveActor(
   };
 }
 
+/**
+ * Whether the header shows the Refresh button (a full page reload, the
+ * recovery for a wedged kiosk browser). The local kiosk only: in the cloud it
+ * would reload the whole customer site. Fails safe like detectHost.
+ */
+export function showsReloadButton(host: HostKind): boolean {
+  return host === "local";
+}
+
 /** Short label for the header badge. */
 export function hostLabel(host: HostKind): string {
   return host === "local" ? "Local panel" : "Cloud";

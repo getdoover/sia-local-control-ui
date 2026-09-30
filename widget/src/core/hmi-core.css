@@ -163,6 +163,14 @@
     display: none;
 }
 
+/* Refresh (local kiosk only): the header's top-right corner, just right of
+   the connection status. The status block keeps to the right beside it. */
+.sia-hmi .dashboard-header.has-reload .header-info { margin-left: auto; }
+.sia-hmi .header-reload {
+    align-self: flex-start;
+    color: var(--hmi-muted);
+}
+
 .sia-hmi .status-connected { color: var(--hmi-green); }
 .sia-hmi .status-disconnected { color: var(--hmi-red); }
 .sia-hmi .status-warning { color: var(--hmi-amber) !important; }

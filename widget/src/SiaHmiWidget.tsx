@@ -22,7 +22,7 @@ import {
 } from "./lib/assembleDashboardData.ts";
 import { checkTouchCommand, explainRpcError, sendCommand, type Ack } from "./lib/commands.ts";
 import { resolveAppKey, type UiRemoteComponent } from "./lib/appKey.ts";
-import { detectHost, hostLabel, resolveActor, type CloudUser } from "./lib/host.ts";
+import { detectHost, hostLabel, resolveActor, showsReloadButton, type CloudUser } from "./lib/host.ts";
 import { overlayLiveValues } from "./lib/liveTags.ts";
 import { useLiveTags } from "./lib/useLiveTags.ts";
 import { createRenderScheduler, type RenderScheduler } from "./lib/renderCadence.ts";
@@ -47,7 +47,8 @@ import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
  *     signed-in user (or none) in the cloud, so control authority holds;
  *   - the layout: full-screen kiosk vs natural height in the cloud column
  *     (the cover-plate insets, kiosk_inset_mm / popover_inset_mm, apply to
- *     the kiosk only);
+ *     the kiosk only), and the header's Refresh button (a full page reload,
+ *     the recovery for a wedged kiosk browser) on the kiosk only;
  *   - the VSD commissioning panel: `vsd_commissioning` "Local only" allows
  *     drive parameter writes from the local host only (lib/vsdPanel.ts);
  *   - the alarm settings gears: `alarm_settings_access` "Local only" allows
@@ -249,6 +250,9 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
       // the empty placeholder rather than an SVG image it would never show.
       logos: { remoteCommand: remoteCommandLogo, doover: host.kind === "local" ? undefined : dooverLogo },
       vsdPanel,
+      // Refresh (full page reload) on the kiosk only: in the cloud it would
+      // reload the whole customer site.
+      reloadButton: showsReloadButton(host.kind),
     });
     hmiRef.current.setVsdPanel(latest.current.vsdAccess);
     hmiRef.current.setDisplay(latest.current.display);

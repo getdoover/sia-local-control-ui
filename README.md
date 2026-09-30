@@ -242,6 +242,13 @@ Checked for the widget by `npm --prefix widget run test:layout` (headless Chromi
 the mock host) and for the legacy dashboard by `tests/test_layout_fit.py` (headless
 Chrome; the no-VSD geometry must match `main`).
 
+**Refresh button (kiosk only).** The header's top-right corner carries a Refresh button
+(circular arrows). After an in-page confirmation it does a full page reload, the sure
+recovery when the kiosk's WebKit wedges a long-lived page. It works in every HMI Control
+Mode (it is not a controller command) and is never shown in the cloud card, where it would
+reload the whole customer site. `HEADER_SHOTS=dir npm --prefix widget run test:layout`
+saves `header-refresh-1024x600*.png`.
+
 ## Development
 
 ```bash

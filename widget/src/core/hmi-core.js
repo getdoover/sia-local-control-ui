@@ -116,6 +116,11 @@ const UP_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" f
 const DOWN_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg>`;
 
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+// Two circular arrows: reload the screen.
+const REFRESH_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v5h-5"/><path d="M3 20v-5h5"/><path d="M20.1 9A8.5 8.5 0 0 0 5.6 6.3L3 9"/><path d="M3.9 15a8.5 8.5 0 0 0 14.5 2.7L21 15"/></svg>`;
+
+// The kiosk's Refresh button asks this first (in-page, like every confirm).
+export const RELOAD_CONFIRM_TEXT = "Reload the screen? Live data returns in a few seconds.";
 
 // VSD panel diagnostics, in display order: [field, label, unit, decimals].
 // Decimals null = text. Every value may be null and then shows EMPTY_VALUE.
@@ -270,10 +275,16 @@ function template(opts) {
   const footer = opts.logos && opts.logos.doover
     ? `<div class="footer-logo" data-id="footer-logo"><img src="${escapeAttr(opts.logos.doover)}" alt="Doover"></div>`
     : `<div class="footer-logo hidden" data-id="footer-logo"></div>`;
+  // Refresh (local kiosk only): a full page reload, the one sure recovery for
+  // a wedged kiosk browser. Never in the cloud, where it would reload the
+  // whole customer site.
+  const reload = opts.reloadButton
+    ? `<button type="button" class="icon-btn header-reload" data-id="reload-btn" aria-label="Refresh" title="Refresh">${REFRESH_ICON}</button>`
+    : "";
   return `
 <div class="dashboard-container" data-id="container">
   <div class="hmi-body">
-    <header class="dashboard-header">
+    <header class="dashboard-header${reload ? " has-reload" : ""}">
       <h1>${logo}<span class="header-title">${escapeAttr(opts.title || "SIA Remote Command")}</span></h1>
       <div class="header-info">
         <div class="connection-status">
@@ -282,6 +293,7 @@ function template(opts) {
         <div class="timestamp">Last Update: <span data-id="last-update">--</span></div>
         <div class="host-badge" data-id="host-badge"></div>
       </div>
+      ${reload}
     </header>
 
     <div data-id="fault-banner" class="fault-banner hidden" role="alert">
@@ -764,6 +776,8 @@ class Hmi {
       if (fn) fn();
     });
     on("confirm-cancel", () => this.confirmClose());
+    // Not a control command: works in every HMI Control Mode.
+    on("reload-btn", () => this.confirmAsk(RELOAD_CONFIRM_TEXT, () => this.reloadPage(), "reload"));
 
     on("vsd-gear", () => this.vsdPanelOpen());
     on("vsd-panel-close", () => this.vsdPanelClose());
@@ -937,6 +951,14 @@ class Hmi {
     this.confirmOk = null;
     this.confirmOwner = null;
     this.hide(this.$("confirm"));
+  }
+
+  // Full page reload (the Refresh button). Injectable so tests need not
+  // reload jsdom.
+  reloadPage() {
+    if (typeof this.opts.reloadPage === "function") return this.opts.reloadPage();
+    const win = this.root.ownerDocument.defaultView;
+    if (win) win.location.reload();
   }
 
   openRateKeypad(btn) {
@@ -2553,6 +2575,10 @@ class Hmi {
  *   vsdPanel?: {diagnostics(), parameters(), write(param, value)}
  *                                // VSD commissioning RPCs (lib/vsdPanel.ts);
  *                                // the gear also needs setVsdPanel(access)
+ *   reloadButton?: boolean,      // Refresh button in the header (local
+ *                                // kiosk only; default off)
+ *   reloadPage?: () => void      // what Refresh does after its confirmation
+ *                                // (default window.location.reload())
  * }
  *
  * setDisplay({kioskInsetMm, popoverInsetMm, pxPerMm}): the cover-plate
