@@ -227,6 +227,26 @@ export function setNodeText(el, text) {
   if (el.textContent !== t) el.textContent = t;
 }
 
+// Guarded writes, for the same reason as setNodeText: each update rewrites
+// every class, attribute and disabled flag it owns, and on the kiosk
+// (software-composited WebKit) every write that lands runs the attribute
+// change path and can cost a painted frame. These leave the DOM untouched
+// when the value is already there.
+function setClass(el, cls, on) {
+  // A forced toggle is a no-op when the state already matches (DOM spec);
+  // classList.add / remove rewrite the class attribute every time.
+  if (el) el.classList.toggle(cls, !!on);
+}
+function setClassName(el, v) {
+  if (el && el.className !== v) el.className = v;
+}
+function setAttr(el, name, v) {
+  if (el && el.getAttribute(name) !== v) el.setAttribute(name, v);
+}
+function setProp(el, name, v) {
+  if (el && el[name] !== v) el[name] = v;
+}
+
 /** A range limit as the controller holds it (e.g. 758.4 kPa, 100 %). */
 function rangeNum(v) {
   const n = Number(v);
@@ -695,8 +715,8 @@ class Hmi {
     this.toggle(this.$(`${id}-rail`), st.overflow);
     const up = this.$(`${id}-up`);
     const down = this.$(`${id}-down`);
-    if (up) up.disabled = !st.overflow || st.atTop;
-    if (down) down.disabled = !st.overflow || st.atBottom;
+    setProp(up, "disabled", !st.overflow || st.atTop);
+    setProp(down, "disabled", !st.overflow || st.atBottom);
   }
 
   // -- cover-plate insets (kiosk only) ------------------------------------------
@@ -975,7 +995,7 @@ class Hmi {
     const st = this.root.querySelector('[data-id="pump-state"] .state-value');
     if (st) {
       setNodeText(st, state);
-      st.className = "state-value " + stateClass + (pump.fault ? " error" : "");
+      setClassName(st, "state-value " + stateClass + (pump.fault ? " error" : ""));
     }
   }
 
@@ -1014,18 +1034,26 @@ class Hmi {
     const banner = this.$(bannerId);
     const list = this.$(listId);
     if (!list) return;
-    list.textContent = "";
-    if (!items.length) {
-      this.hide(banner);
-      return;
+    // Rebuilt only when what is on screen differs, item by item: a banner
+    // that stays up would otherwise repaint on every update. (Not a joined
+    // signature: ["a\nb", "c"] and ["a", "b\nc"] join to the same text.)
+    const texts = items.map((item) => (item.pump ? `${item.pump}: ` : "") + (item.reason || fallback));
+    const shown = list.childNodes;
+    let same = shown.length === texts.length;
+    for (let i = 0; same && i < texts.length; i++) {
+      const li = shown[i];
+      same = li.nodeName === "LI" && li.textContent === texts[i];
     }
-    const doc = this.root.ownerDocument;
-    for (const item of items) {
-      const li = doc.createElement("li");
-      li.textContent = (item.pump ? `${item.pump}: ` : "") + (item.reason || fallback);
-      list.appendChild(li);
+    if (!same) {
+      list.textContent = "";
+      const doc = this.root.ownerDocument;
+      for (const t of texts) {
+        const li = doc.createElement("li");
+        li.textContent = t;
+        list.appendChild(li);
+      }
     }
-    this.show(banner);
+    this.toggle(banner, texts.length > 0);
   }
 
   renderFaults(faults) {
@@ -1041,11 +1069,11 @@ class Hmi {
     const row = this.$("pump-skid-row");
     if (!s) {
       this.hide(section);
-      if (row) row.classList.add("no-skid");
+      setClass(row, "no-skid", true);
       return;
     }
     this.show(section);
-    if (row) row.classList.remove("no-skid");
+    setClass(row, "no-skid", false);
     // Only the readings whose app is configured (and publishing) are shown.
     this.toggle(this.$("skid-flow-card"), s.skid_flow != null);
     this.toggle(this.$("skid-pressure-card"), s.skid_pressure != null);
@@ -1118,7 +1146,7 @@ class Hmi {
     if (container) container.classList.toggle("readonly", !this.touch);
     if (!touch) {
       this.hide(bar);
-      if (container) container.classList.remove("touch-mode");
+      setClass(container, "touch-mode", false);
       if (footer && footer.classList.contains("touch-hidden")) {
         footer.classList.remove("touch-hidden");
         this.show(footer);
@@ -1130,7 +1158,7 @@ class Hmi {
       return;
     }
     this.show(bar);
-    if (container) container.classList.add("touch-mode");
+    setClass(container, "touch-mode", true);
     if (footer && !footer.classList.contains("hidden")) {
       footer.classList.add("touch-hidden");
       this.hide(footer);
@@ -1138,7 +1166,7 @@ class Hmi {
 
     const faulted = !!(pump && pump.fault);
     const start = this.$("touch-start");
-    if (start) start.disabled = faulted || !pump;
+    setProp(start, "disabled", faulted || !pump);
     this.setText("touch-start-hint", faulted ? "Reset fault first" : "");
     const reset = this.$("touch-reset");
     if (reset) reset.classList.toggle("attention", faulted);
@@ -1147,11 +1175,9 @@ class Hmi {
     this.setText("touch-rate-value", pump && pump.target_rate != null ? this.fmt(pump.target_rate, 2) : "--");
     this.setText("touch-rate-unit", this.units.rate);
     const rateBtn = this.$("touch-rate");
-    if (rateBtn) rateBtn.disabled = !rateKnown;
-    ["touch-rate-up", "touch-rate-down"].forEach((id) => {
-      const b = this.$(id);
-      if (b) b.disabled = !pump;
-    });
+    setProp(rateBtn, "disabled", !rateKnown);
+    setProp(this.$("touch-rate-up"), "disabled", !pump);
+    setProp(this.$("touch-rate-down"), "disabled", !pump);
     this.renderCalTile(touch, pump);
   }
 
@@ -1164,7 +1190,7 @@ class Hmi {
     if (!tile) return;
     tile.classList.toggle("calibrate", !!cal);
     if (!cal) {
-      tile.setAttribute("aria-label", "Enter calibration factor");
+      setAttr(tile, "aria-label", "Enter calibration factor");
       this.setText("touch-cal-caption", "Cal factor");
       this.setText("touch-cal-value", factor);
       this.setText("touch-cal-hint", "");
@@ -1174,7 +1200,7 @@ class Hmi {
     const active = !!cal.test_run.active;
     const faulted = !!(pump && pump.fault);
     const running = !!(pump && (pump.running || pump.state === "pumping"));
-    tile.setAttribute("aria-label", "Calibrate (1min Calibration Sequence)");
+    setAttr(tile, "aria-label", "Calibrate (1min Calibration Sequence)");
     this.setText("touch-cal-value", active ? "Testing" : "Calibrate");
     this.setText("touch-cal-caption", `Factor ${factor}`);
     const blocked = active ? "" : this.calwizBlocked();
@@ -1183,7 +1209,7 @@ class Hmi {
     // Looks disabled but still takes the tap, so the operator is told why
     // (a disabled button would swallow it silently).
     tile.disabled = false;
-    tile.setAttribute("aria-disabled", blocked ? "true" : "false");
+    setAttr(tile, "aria-disabled", blocked ? "true" : "false");
     tile.classList.toggle("blocked", !!blocked);
   }
 
@@ -1748,7 +1774,7 @@ class Hmi {
     // Looks disabled but takes the tap: calwizNext then says why (the
     // validation message, or the pump state on Start Test).
     next.disabled = false;
-    next.setAttribute("aria-disabled", disabled ? "true" : "false");
+    setAttr(next, "aria-disabled", disabled ? "true" : "false");
     next.classList.toggle("blocked", disabled);
     if (c.page === 4) {
       const note = this.$("calwiz-start-note");
@@ -1780,7 +1806,7 @@ class Hmi {
     const st = this.root.querySelector('[data-id="vsd-status"] .state-value');
     if (st) {
       setNodeText(st, vsd.tripped ? "Tripped" : "OK");
-      st.className = "state-value " + (vsd.tripped ? "vsd-tripped" : "vsd-ok");
+      setClassName(st, "state-value " + (vsd.tripped ? "vsd-tripped" : "vsd-ok"));
     }
     let trip = "";
     if (vsd.tripped) {
@@ -2081,8 +2107,10 @@ class Hmi {
   renderVsdReset() {
     const b = this.$("vsd-panel-reset");
     if (!b) return;
-    b.disabled = !this.touch;
-    b.title = this.touch ? "" : "Reset is available in HMI Control Mode Touch";
+    setProp(b, "disabled", !this.touch);
+    // An attribute write, as the title property was: Touch mode keeps an
+    // empty title="" rather than none.
+    setAttr(b, "title", this.touch ? "" : "Reset is available in HMI Control Mode Touch");
   }
 
   renderParameters(message, isError = false) {
@@ -2226,13 +2254,13 @@ class Hmi {
     const e = this.$("connection-status");
     if (!e) return;
     if (!connected) {
-      e.className = "status-disconnected";
+      setClassName(e, "status-disconnected");
       setNodeText(e, "● Disconnected");
     } else if (linkOk === false) {
-      e.className = "status-disconnected status-warning";
+      setClassName(e, "status-disconnected status-warning");
       setNodeText(e, "● No controller");
     } else {
-      e.className = "status-connected";
+      setClassName(e, "status-connected");
       setNodeText(e, "● Connected");
     }
   }
@@ -2255,11 +2283,11 @@ class Hmi {
     const e = this.$(id);
     if (!e) return;
     e.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-    e.className = "progress-fill" + (pct < 5 ? " low" : pct < 25 ? " medium" : "");
+    setClassName(e, "progress-fill" + (pct < 5 ? " low" : pct < 25 ? " medium" : ""));
   }
 
   show(e) {
-    if (e) e.classList.remove("hidden");
+    setClass(e, "hidden", false);
   }
 
   toggle(e, visible) {
@@ -2268,7 +2296,7 @@ class Hmi {
   }
 
   hide(e) {
-    if (e) e.classList.add("hidden");
+    setClass(e, "hidden", true);
   }
 
   destroy() {
