@@ -224,7 +224,9 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
       sendCommand: run,
       // Backstop only: `run` itself answers by the RPC timeout + 2 s.
       commandTimeoutMs: () => latest.current.cfg.rpcTimeoutMs + 5_000,
-      logos: { remoteCommand: remoteCommandLogo, doover: dooverLogo },
+      // The kiosk hides the footer in every mode (hmi-core.css), so it gets
+      // the empty placeholder rather than an SVG image it would never show.
+      logos: { remoteCommand: remoteCommandLogo, doover: host.kind === "local" ? undefined : dooverLogo },
       vsdPanel,
     });
     hmiRef.current.setVsdPanel(latest.current.vsdAccess);

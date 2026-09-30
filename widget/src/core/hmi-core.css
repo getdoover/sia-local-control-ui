@@ -126,9 +126,13 @@
     min-width: 0;
 }
 
+/* The logo is pre-scaled (346x146, >= 3x the tallest it is drawn, 42 px)
+   so WebKit does not hold the 2057x868 master decoded (~7 MB). The master's
+   ratio keeps the header laid out exactly as it was. */
 .sia-hmi .header-logo {
     height: 1.2em;
     width: auto;
+    aspect-ratio: 2057 / 868;
     margin-right: 15px;
     flex-shrink: 0;
 }
