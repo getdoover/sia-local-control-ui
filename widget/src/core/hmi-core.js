@@ -49,6 +49,23 @@ import {
   isDelayField,
   validateAlarmValue,
 } from "./alarms.js";
+import {
+  SENSOR_FIELDS,
+  SENSOR_GROUPS,
+  SENSOR_LOCKED_TEXT,
+  SENSOR_RESET_COMMAND,
+  formatSensorInput,
+  formatSensorReading,
+  formatSensorValue,
+  sensorDecimals,
+  sensorHint,
+  sensorInputCaption,
+  sensorLabel,
+  sensorRange,
+  sensorRangeText,
+  sensorValue,
+  validateSensorValue,
+} from "./sensors.js";
 
 // Success toasts for the on-screen commands.
 export const COMMAND_DONE = {
@@ -67,24 +84,31 @@ const FEEDBACK_MS = 2500;
 export const COMMAND_TIMEOUT_MS = 30_000;
 export const NO_REPLY_TEXT = "No reply from the pump controller";
 
+// A settings cell whose write is still out (alarm and sensor cells).
+const WRITING_STATE = Object.freeze({ state: "pending", note: "Writing…" });
+
 // Pure keypad helpers (unit-tested): next entry text after a key press, and
 // validation of an entry against an inclusive range.
+// "neg" (the \u00b1 key, shown only on a signed keypad) flips a leading minus.
 export function keypadInput(text, key) {
   text = text || "";
   if (key === "clear") return "";
   if (key === "back") return text.slice(0, -1);
+  if (key === "neg") return text.startsWith("-") ? text.slice(1) : "-" + text;
+  const sign = text.startsWith("-") ? "-" : "";
+  const body = text.slice(sign.length);
   if (key === ".") {
-    if (text.includes(".")) return text;
-    return (text || "0") + ".";
+    if (body.includes(".")) return text;
+    return sign + (body || "0") + ".";
   }
   if (!/^[0-9]$/.test(key)) return text;
-  if (text.length >= KEYPAD_MAX_CHARS) return text;
-  if (text === "0") return key;
+  if (body.length >= KEYPAD_MAX_CHARS) return text;
+  if (body === "0") return sign + key;
   return text + key;
 }
 
 export function validateKeypadEntry(text, min, max) {
-  if (!text || text === "." || !/^[0-9]*\.?[0-9]*$/.test(text)) {
+  if (!text || /^-?\.?$/.test(text) || !/^-?[0-9]*\.?[0-9]*$/.test(text)) {
     return { ok: false, error: "Enter a number" };
   }
   const value = Number(text);
@@ -471,7 +495,20 @@ function template(opts) {
       <span class="vsd-panel-status alarm-panel-note" data-id="alarm-panel-note"></span>
       <button type="button" class="icon-btn vsd-panel-close" data-id="alarm-panel-close" aria-label="Close">${CLOSE_ICON}</button>
     </div>
+    <div class="alarm-tabs hidden" data-id="alarm-tabs" role="tablist">
+      <button type="button" class="alarm-tab" data-id="alarm-tab-alarms" role="tab" aria-selected="true">Alarms</button>
+      <button type="button" class="alarm-tab" data-id="alarm-tab-sensor" role="tab" aria-selected="false">Sensor</button>
+    </div>
     <div class="alarm-rows" data-id="alarm-rows" role="list"></div>
+    <div class="sensor-pane hidden" data-id="sensor-pane">
+      <div class="sensor-live">
+        <div class="sensor-reading"><span class="alarm-caption" data-id="sensor-ma-caption">Loop current</span><span class="sensor-live-value" data-id="sensor-ma">${EMPTY_VALUE}</span></div>
+        <div class="sensor-reading"><span class="alarm-caption" data-id="sensor-reading-caption">Reading</span><span class="sensor-live-value" data-id="sensor-reading">${EMPTY_VALUE}</span></div>
+        <button type="button" class="action-btn sensor-reset" data-id="sensor-reset">Reset to configured values</button>
+      </div>
+      <div class="sensor-note hidden" data-id="sensor-note" role="note"></div>
+      <div class="sensor-cells" data-id="sensor-cells" role="list"></div>
+    </div>
   </div>
 </div>
 
@@ -514,7 +551,7 @@ function template(opts) {
         <button type="button" class="key key-ok" data-id="keypad-ok">OK</button>
       </div>
     </div>
-    <div class="keypad-keys">
+    <div class="keypad-keys" data-id="keypad-keys">
       <button type="button" class="key" data-key="7">7</button>
       <button type="button" class="key" data-key="8">8</button>
       <button type="button" class="key" data-key="9">9</button>
@@ -527,6 +564,7 @@ function template(opts) {
       <button type="button" class="key" data-key="2">2</button>
       <button type="button" class="key" data-key="3">3</button>
       <button type="button" class="key" data-key=".">.</button>
+      <button type="button" class="key key-fn hidden" data-key="neg" data-id="keypad-neg" aria-label="Plus or minus">&plusmn;</button>
       <button type="button" class="key key-zero" data-key="0">0</button>
     </div>
   </div>
@@ -659,6 +697,17 @@ class Hmi {
     this.alarmAccess = { enabled: false, canWrite: false, writeBlockedReason: "" };
     this.alarmOpen = null; // "tank" | "pressure" | "flow" while shown
     this.alarmState = {};
+    // Writes still waiting for an answer (alarm field / sensor field or
+    // "<group>:reset"). The double-tap guard and the cells' pending look
+    // come from these, not from a cell's class: a tab switch or a reopen
+    // rebuilds the cells while a write is still out.
+    this.alarmInFlight = new Set();
+    this.sensorInFlight = new Set();
+    // Its Sensor tab (Tank / Skid pressure only), under sensor_settings_access.
+    this.sensorAccess = { enabled: false, canWrite: false, writeBlockedReason: "" };
+    this.alarmTab = "alarms"; // "alarms" | "sensor": the tab shown while open
+    this.alarmTabsKey = ""; // the tabs on offer, as last drawn
+    this.sensorState = {};
     // 1min Calibration Sequence wizard state while open (null when closed).
     // Invariant: set only while the calwiz popover is on screen; a session
     // without it is stale and is dropped (calwizDropStale).
@@ -800,6 +849,16 @@ class Hmi {
         if (row) this.alarmEdit(row.getAttribute("data-alarm"), row);
       });
     }
+    on("alarm-tab-alarms", () => this.alarmTabSelect("alarms"));
+    on("alarm-tab-sensor", () => this.alarmTabSelect("sensor"));
+    on("sensor-reset", () => this.sensorReset());
+    const sensorCells = this.$("sensor-cells");
+    if (sensorCells) {
+      sensorCells.addEventListener("click", (e) => {
+        const c = e.target && e.target.closest ? e.target.closest("[data-sensor]") : null;
+        if (c) this.sensorEdit(c.getAttribute("data-sensor"), c);
+      });
+    }
     this.bindScroller("vsd-params");
     this.onKey = (e) => {
       if (e.key !== "Escape") return;
@@ -871,6 +930,9 @@ class Hmi {
     this.keypadText = "";
     this.setText("keypad-title", opts.title || "");
     this.toggle(this.$("keypad-help"), !!opts.calHelp);
+    // The \u00b1 key only where a value may be negative (sensor ranges).
+    this.toggle(this.$("keypad-neg"), !!opts.signed);
+    setClass(this.$("keypad-keys"), "signed", !!opts.signed);
     this.setText("keypad-unit", opts.unit || "");
     const dp = opts.decimals != null ? opts.decimals : 2;
     const unit = opts.unit ? " " + opts.unit : "";
@@ -989,7 +1051,10 @@ class Hmi {
   // Always answers (a promise of an ack) and never fails silently: a refused
   // or doubled press says why, and a command with no answer is reported and
   // its button freed after commandTimeoutMs().
-  sendCommand(cmd, value, btn, { requireTouch = true } = {}) {
+  // `target` routes a Sensor tab write to that sensor app (the shell's
+  // meta.target); `who` names the app that answers, for the still-waiting
+  // and no-reply messages.
+  sendCommand(cmd, value, btn, { requireTouch = true, target = null, who = "pump controller" } = {}) {
     const refuse = (message, level = "error") => {
       this.showToast(message, level);
       return Promise.resolve({ ok: false, code: "REFUSED", message });
@@ -999,7 +1064,7 @@ class Hmi {
     if (btn && btn.classList.contains("pending")) {
       const since = this.pendingSince.get(btn) || 0;
       if (Date.now() - since < this.commandTimeoutMs()) {
-        return refuse("Still waiting for the pump controller to answer", "");
+        return refuse(`Still waiting for the ${who} to answer`, "");
       }
       // A press whose answer never came: free the button and send again.
     }
@@ -1007,14 +1072,16 @@ class Hmi {
     if (btn) this.pendingSince.set(btn, Date.now());
     let result;
     try {
-      result = Promise.resolve(this.opts.sendCommand(cmd, value));
+      result = Promise.resolve(
+        target ? this.opts.sendCommand(cmd, value, { target }) : this.opts.sendCommand(cmd, value),
+      );
     } catch (e) {
       result = Promise.resolve({ ok: false, message: String((e && e.message) || e) });
     }
     let watchdog = null;
     const noReply = new Promise((resolve) => {
       watchdog = this.later(
-        () => resolve({ ok: false, code: "TIMEOUT", message: NO_REPLY_TEXT }),
+        () => resolve({ ok: false, code: "TIMEOUT", message: `No reply from the ${who}` }),
         this.commandTimeoutMs(),
       );
     });
@@ -1125,7 +1192,7 @@ class Hmi {
       // alarmState (its writes are guarded, so an idle one writes nothing).
       this.data = data;
       if (data.units) this.units = data.units;
-      if (this.alarmOpen) this.renderAlarmValues();
+      if (this.alarmOpen) this.renderAlarmPanelValues();
       this.renderCalwizLive();
       this.setLastUpdate(data.timestamp);
       return;
@@ -1146,7 +1213,7 @@ class Hmi {
     this.renderSolar(data.solar);
     this.renderTank(data.tank);
     this.renderAlarmGears();
-    if (this.alarmOpen) this.renderAlarmValues();
+    if (this.alarmOpen) this.renderAlarmPanelValues();
     this.renderTouch(data.touch, (data.pumps || [])[0]);
     this.renderCalwizLive();
     this.renderVsd(data.vsd);
@@ -1330,7 +1397,7 @@ class Hmi {
       }
       // Only the touch controls' own keypad / confirmation: a VSD panel edit
       // is governed by VSD Commissioning, not HMI Control Mode.
-      if (this.keypadIsOpen() && !["vsd", "alarm"].includes(this.keypadOpts.owner)) this.keypadClose();
+      if (this.keypadIsOpen() && !["vsd", "alarm", "sensor"].includes(this.keypadOpts.owner)) this.keypadClose();
       if (this.confirmOwner === "touch") this.confirmClose();
       return;
     }
@@ -2005,6 +2072,12 @@ class Hmi {
   // (range-limited), a confirmation (old -> new), then the ui_cmds RPC named
   // after the element, with that cell's pending / saved / error state. Rows
   // are built once per open and updated in place.
+  //
+  // The Tank and Skid pressure popovers also have a Sensor tab (the sensor
+  // app's operator calibration, core/sensors.js) under its own gate,
+  // sensor_settings_access (setSensorAccess). With both on, two tabs,
+  // Alarms | Sensor; with one, that one alone and no tab bar, so with the
+  // Sensor gate Hidden (the default) the popover is exactly as before.
 
   setAlarmAccess(access) {
     const was = this.alarmAccess;
@@ -2017,35 +2090,71 @@ class Hmi {
     if (this.alarmOpen && was.canWrite !== this.alarmAccess.canWrite) this.buildAlarmRows();
   }
 
+  setSensorAccess(access) {
+    const was = this.sensorAccess;
+    this.sensorAccess = {
+      enabled: !!(access && access.enabled),
+      canWrite: !!(access && access.canWrite),
+      writeBlockedReason: (access && access.writeBlockedReason) || "",
+    };
+    this.renderAlarmGears();
+    if (this.alarmOpen && was.canWrite !== this.sensorAccess.canWrite) this.buildSensorPane();
+  }
+
   alarmAvailable(group) {
     const a = this.data.alarm_settings;
     if (!this.alarmAccess.enabled || !a || !a[group]) return false;
+    return this.alarmTileShown(group);
+  }
+
+  // The gear's tile is on screen (the gear lives on it).
+  alarmTileShown(group) {
     if (group === "tank") return !!this.data.tank;
     // Flow: the payload has the group only with a controller flow meter.
     if (group === "flow") return !!(this.data.pumps && this.data.pumps.length);
     return !!(this.data.skid && this.data.skid.skid_pressure != null);
   }
 
+  sensorAvailable(group) {
+    const s = this.data.sensor_settings;
+    if (!this.sensorAccess.enabled || !SENSOR_GROUPS[group] || !s || !s[group]) return false;
+    return this.alarmTileShown(group);
+  }
+
+  // The popover's tabs for a gear, in order ("alarms", then "sensor").
+  alarmTabs(group) {
+    const tabs = [];
+    if (this.alarmAvailable(group)) tabs.push("alarms");
+    if (this.sensorAvailable(group)) tabs.push("sensor");
+    return tabs;
+  }
+
   renderAlarmGears() {
     for (const [group, id, section] of ALARM_GEAR_SPECS) {
-      const on = this.alarmAvailable(group);
+      const on = this.alarmTabs(group).length > 0;
       this.toggle(this.$(id), on);
       const sec = this.$(section);
       if (sec) sec.classList.toggle("has-gear", on);
-      if (!on && this.alarmOpen === group) this.alarmPanelClose();
+      if (this.alarmOpen === group) {
+        if (!on) this.alarmPanelClose();
+        else this.syncAlarmTabs();
+      }
     }
   }
 
   alarmPanelOpen(group) {
-    if (!this.alarmAvailable(group)) {
+    const tabs = this.alarmTabs(group);
+    if (!tabs.length) {
       this.showToast("Alarm settings are not available here", "error");
       return;
     }
     if (this.alarmOpen) this.alarmPanelClose();
     this.alarmOpen = group;
+    this.alarmTab = tabs[0];
+    this.alarmTabsKey = "";
     this.alarmState = {};
-    this.setText("alarm-panel-title", ALARM_GROUPS[group].title);
-    this.buildAlarmRows();
+    this.sensorState = {};
+    this.syncAlarmTabs();
     this.show(this.$("alarm-panel"));
     const close = this.$("alarm-panel-close");
     if (close && close.focus) close.focus();
@@ -2054,20 +2163,88 @@ class Hmi {
   alarmPanelClose() {
     if (!this.alarmOpen) return;
     this.alarmOpen = null;
-    if (this.keypadIsOpen() && this.keypadOpts.owner === "alarm") this.keypadClose();
-    if (this.confirmOwner === "alarm") this.confirmClose();
+    this.alarmTabsKey = "";
+    if (this.keypadIsOpen() && ["alarm", "sensor"].includes(this.keypadOpts.owner)) this.keypadClose();
+    if (["alarm", "sensor"].includes(this.confirmOwner)) this.confirmClose();
     this.hide(this.$("alarm-panel"));
+  }
+
+  // The tab bar and the pane shown, for the tabs now on offer: redrawn only
+  // when they change (access or the payload), keeping the tab shown where it
+  // is still offered. A pane is built when it is shown.
+  syncAlarmTabs() {
+    const group = this.alarmOpen;
+    if (!group) return;
+    const tabs = this.alarmTabs(group);
+    if (!tabs.length) return;
+    const tab = tabs.includes(this.alarmTab) ? this.alarmTab : tabs[0];
+    const key = `${tabs.join(",")}:${tab}`;
+    if (key === this.alarmTabsKey) return;
+    const paneChanged = !this.alarmTabsKey.endsWith(`:${tab}`);
+    this.alarmTabsKey = key;
+    this.alarmTab = tab;
+    this.toggle(this.$("alarm-tabs"), tabs.length > 1);
+    for (const t of ["alarms", "sensor"]) {
+      const b = this.$(`alarm-tab-${t}`);
+      setClass(b, "active", t === tab);
+      setAttr(b, "aria-selected", t === tab ? "true" : "false");
+    }
+    this.toggle(this.$("alarm-rows"), tab === "alarms");
+    this.toggle(this.$("sensor-pane"), tab === "sensor");
+    if (paneChanged) {
+      // A pane taken away under an open keypad / confirmation (its access
+      // went) takes them with it.
+      const gone = tab === "alarms" ? "sensor" : "alarm";
+      if (this.keypadIsOpen() && this.keypadOpts.owner === gone) this.keypadClose();
+      if (this.confirmOwner === gone) this.confirmClose();
+      if (tab === "alarms") this.buildAlarmRows();
+      else this.buildSensorPane();
+    }
+  }
+
+  alarmTabSelect(tab) {
+    if (!this.alarmOpen || tab === this.alarmTab) return;
+    if (!this.alarmTabs(this.alarmOpen).includes(tab)) return;
+    this.alarmTab = tab;
+    this.syncAlarmTabs();
+  }
+
+  // The head for the tab shown: its title and what a tap does (or why not).
+  renderAlarmHead() {
+    const group = this.alarmOpen;
+    if (!group) return;
+    let editable;
+    let reason;
+    if (this.alarmTab === "sensor") {
+      // Also locked while the sensor app has the feature off (the pane's
+      // lock line says how to turn it on).
+      const g = this.sensorGroupData();
+      this.setText("alarm-panel-title", SENSOR_GROUPS[group].title);
+      editable = this.sensorAccess.canWrite && !!(g && g.enabled);
+      reason = this.sensorAccess.writeBlockedReason || (this.sensorAccess.canWrite ? "Locked" : "");
+    } else {
+      this.setText("alarm-panel-title", ALARM_GROUPS[group].title);
+      editable = this.alarmAccess.canWrite;
+      reason = this.alarmAccess.writeBlockedReason;
+    }
+    this.setText("alarm-panel-note", editable ? "Tap a value to change it" : reason || "View only");
+    setClass(this.$("alarm-panel-note"), "error", !editable);
+  }
+
+  // Per payload while open: the pane shown, in place.
+  renderAlarmPanelValues() {
+    if (!this.alarmOpen) return;
+    if (this.alarmTab === "sensor") this.renderSensorValues();
+    else this.renderAlarmValues();
   }
 
   buildAlarmRows() {
     const list = this.$("alarm-rows");
-    if (!list || !this.alarmOpen) return;
+    if (!list || !this.alarmOpen || this.alarmTab !== "alarms") return;
     const doc = this.root.ownerDocument;
     const editable = this.alarmAccess.canWrite;
     const group = ALARM_GROUPS[this.alarmOpen];
-    this.setText("alarm-panel-note", editable ? "Tap a value to change it" : this.alarmAccess.writeBlockedReason || "View only");
-    const note = this.$("alarm-panel-note");
-    if (note) note.classList.toggle("error", !editable);
+    this.renderAlarmHead();
     list.textContent = "";
     // A cell: caption (what the value is), the value, then its range or,
     // after a write, the write's note.
@@ -2103,7 +2280,7 @@ class Hmi {
   // Per payload while open: text in place (no cell is replaced under a tap).
   renderAlarmValues() {
     const list = this.$("alarm-rows");
-    if (!list || !this.alarmOpen) return;
+    if (!list || !this.alarmOpen || this.alarmTab !== "alarms") return;
     const settings = this.data.alarm_settings;
     for (const cell of list.querySelectorAll("[data-alarm]")) {
       const field = cell.getAttribute("data-alarm");
@@ -2111,11 +2288,12 @@ class Hmi {
       const value = alarmValue(field, settings);
       setNodeText(cell.querySelector("[data-alarm-value]"), formatAlarmValue(field, value, settings, EMPTY_VALUE));
       const lo = r.offAllowed && r.min === 0 ? r.step : r.min;
-      const zero = r.offAllowed ? " \u00b7 0 = off" : isDelayField(field) && r.min === 0 ? " \u00b7 0 = none" : "";
+      const zero = r.offAllowed ? " · 0 = off" : isDelayField(field) && r.min === 0 ? " · 0 = none" : "";
       setNodeText(cell.querySelector("[data-alarm-range]"), `${rangeNum(lo)} to ${rangeNum(r.max)} ${r.unit}${zero}`);
-      const st = this.alarmState[field] || {};
+      const st = this.alarmInFlight.has(field) ? WRITING_STATE : this.alarmState[field] || {};
       setNodeText(cell.querySelector("[data-alarm-note]"), st.note || "");
       cell.classList.toggle("has-note", !!st.note);
+      cell.classList.toggle("pending", st.state === "pending");
       cell.classList.toggle("ok", st.state === "ok");
       cell.classList.toggle("error", st.state === "error");
       cell.classList.toggle("off", value === 0 && !isDelayField(field));
@@ -2137,7 +2315,7 @@ class Hmi {
       this.showToast(this.alarmAccess.writeBlockedReason || "Alarm settings are view only here", "error");
       return;
     }
-    if (cell && cell.classList.contains("pending")) {
+    if (this.alarmInFlight.has(field)) {
       this.showToast("Still waiting for the pump controller to answer");
       return;
     }
@@ -2173,7 +2351,7 @@ class Hmi {
       validate: (v) => validateAlarmValue(field, v, settings()) || null,
       onSubmit: (value) => {
         this.confirmAsk(
-          `Change ${f.label} from ${fmt(current)} \u2192 ${fmt(value)}?`,
+          `Change ${f.label} from ${fmt(current)} → ${fmt(value)}?`,
           () => this.alarmWrite(field, value),
           "alarm",
         );
@@ -2183,14 +2361,17 @@ class Hmi {
 
   alarmWrite(field, value) {
     const f = ALARM_FIELDS[field];
-    const cell = this.$(`alarm-cell-${field}`);
     const fmt = (v) => formatAlarmValue(field, v, this.data.alarm_settings, EMPTY_VALUE);
-    this.alarmState[field] = { state: "pending", note: "Writing\u2026" };
+    // The cell's pending / ok / error look is drawn from the state (it may
+    // be rebuilt while the write is out), so no button is handed over.
+    this.alarmState[field] = WRITING_STATE;
+    this.alarmInFlight.add(field);
     this.renderAlarmValues();
-    return this.sendCommand(field, value, cell && cell.tagName === "BUTTON" ? cell : null, { requireTouch: false }).then((ack) => {
+    return this.sendCommand(field, value, null, { requireTouch: false }).then((ack) => {
+      this.alarmInFlight.delete(field);
       if (this.destroyed) return ack;
       if (ack && ack.ok) {
-        this.alarmState[field] = { state: "ok", note: `Saved \u00b7 ${fmt(value)}` };
+        this.alarmState[field] = { state: "ok", note: `Saved · ${fmt(value)}` };
         this.showToast(`${f.label} set to ${fmt(value)}`, "ok");
       } else {
         this.alarmState[field] = { state: "error", note: (ack && ack.message) || "Not saved" };
@@ -2198,6 +2379,207 @@ class Hmi {
       this.renderAlarmValues();
       return ack;
     });
+  }
+
+  // -- Sensor tab (Tank / Skid pressure popovers) ------------------------------
+  // The sensor app's live loop current and corrected reading, one cell per
+  // operator value (data-sensor = the sensor app's element) and "Reset to
+  // configured values". Values come from the sensor app's own tags (payload
+  // sensor_settings); a change is a keypad, a confirmation (old -> new), then
+  // the ui_cmds RPC to the SENSOR app's key (sendCommand target), with the
+  // same pending / saved / error cell states as the alarm cells. With the
+  // app's Operator Sensor Calibration off (operator_calibration not true, or
+  // an older app) the reading still shows but the cells are locked.
+
+  sensorGroupData() {
+    const s = this.data.sensor_settings;
+    return (s && this.alarmOpen && s[this.alarmOpen]) || null;
+  }
+
+  // Changes allowed right now: access from this host, and the app has
+  // Operator Sensor Calibration on. "" when allowed, else why not.
+  sensorBlockedReason() {
+    if (!this.sensorAccess.canWrite) {
+      return this.sensorAccess.writeBlockedReason || "Sensor settings are view only here";
+    }
+    const g = this.sensorGroupData();
+    return g && g.enabled ? "" : SENSOR_LOCKED_TEXT;
+  }
+
+  buildSensorPane() {
+    const list = this.$("sensor-cells");
+    const group = this.alarmOpen;
+    if (!list || !group || this.alarmTab !== "sensor" || !SENSOR_GROUPS[group]) return;
+    const doc = this.root.ownerDocument;
+    const editable = this.sensorAccess.canWrite;
+    this.renderAlarmHead();
+    this.setText("sensor-reading-caption", SENSOR_GROUPS[group].reading);
+    this.setText("sensor-ma-caption", sensorInputCaption(group, this.data.sensor_settings));
+    list.textContent = "";
+    for (const field of SENSOR_GROUPS[group].fields) {
+      const c = doc.createElement(editable ? "button" : "div");
+      if (editable) c.type = "button";
+      c.className = `alarm-cell sensor-cell ${editable ? "editable" : "locked"}`;
+      c.setAttribute("role", "listitem");
+      c.setAttribute("data-sensor", field);
+      c.setAttribute("data-id", `sensor-cell-${field}`);
+      c.innerHTML =
+        `<span class="alarm-caption">${escapeHtml(SENSOR_FIELDS[field].name)}</span>` +
+        `<span class="alarm-value" data-sensor-value></span>` +
+        `<span class="alarm-range" data-sensor-hint></span>` +
+        `<span class="alarm-note" data-sensor-note></span>`;
+      list.appendChild(c);
+    }
+    this.renderSensorValues();
+  }
+
+  // Per payload while open: text and lock state in place.
+  renderSensorValues() {
+    const list = this.$("sensor-cells");
+    const group = this.alarmOpen;
+    if (!list || !group || this.alarmTab !== "sensor") return;
+    const settings = this.data.sensor_settings;
+    const g = this.sensorGroupData();
+    this.setText("sensor-ma-caption", sensorInputCaption(group, settings));
+    this.setText("sensor-ma", formatSensorInput(group, settings, EMPTY_VALUE));
+    this.setText("sensor-reading", formatSensorReading(group, settings, EMPTY_VALUE));
+    const locked = !(g && g.enabled);
+    this.renderAlarmHead();
+    const note = this.$("sensor-note");
+    this.setText("sensor-note", locked ? SENSOR_LOCKED_TEXT : "");
+    this.toggle(note, locked);
+    const reset = this.$("sensor-reset");
+    const resetOff = !!this.sensorBlockedReason();
+    setClass(reset, "locked", resetOff);
+    setClass(reset, "pending", this.sensorInFlight.has(`${group}:reset`));
+    setAttr(reset, "aria-disabled", resetOff ? "true" : "false");
+    for (const cell of list.querySelectorAll("[data-sensor]")) {
+      const field = cell.getAttribute("data-sensor");
+      setNodeText(
+        cell.querySelector("[data-sensor-value]"),
+        formatSensorValue(field, sensorValue(field, settings), settings, EMPTY_VALUE),
+      );
+      setNodeText(cell.querySelector("[data-sensor-hint]"), sensorHint(field, settings));
+      const st = this.sensorInFlight.has(field) ? WRITING_STATE : this.sensorState[field] || {};
+      setNodeText(cell.querySelector("[data-sensor-note]"), st.note || "");
+      cell.classList.toggle("has-note", !!st.note);
+      cell.classList.toggle("pending", st.state === "pending");
+      cell.classList.toggle("ok", st.state === "ok");
+      cell.classList.toggle("error", st.state === "error");
+      if (cell.tagName === "BUTTON") {
+        cell.classList.toggle("editable", !locked);
+        cell.classList.toggle("locked", locked);
+        setAttr(cell, "aria-disabled", locked ? "true" : "false");
+      }
+    }
+  }
+
+  sensorEdit(field, cell) {
+    const f = SENSOR_FIELDS[field];
+    const group = this.alarmOpen;
+    if (!f || !group || f.group !== group || this.alarmTab !== "sensor") return;
+    const blocked = this.sensorBlockedReason();
+    if (blocked) {
+      this.showToast(blocked, "error");
+      return;
+    }
+    if (this.sensorInFlight.has(field)) {
+      this.showToast(`Still waiting for the ${SENSOR_GROUPS[group].who} to answer`);
+      return;
+    }
+    const settings = () => this.data.sensor_settings;
+    const r = sensorRange(field, settings());
+    const current = sensorValue(field, settings());
+    const fmt = (v) => formatSensorValue(field, v, settings(), EMPTY_VALUE);
+    const label = sensorLabel(field, settings());
+    this.keypadOpen({
+      owner: "sensor",
+      title: label,
+      value: current,
+      min: r.min,
+      max: r.max,
+      rangeText: sensorRangeText(field, settings()),
+      decimals: sensorDecimals(field, current, settings()),
+      unit: r.unit,
+      signed: r.signed,
+      validate: (v) => validateSensorValue(field, v, settings()) || null,
+      onSubmit: (value) => {
+        this.confirmAsk(
+          `Change ${label} from ${fmt(current)} → ${fmt(value)}?`,
+          () => this.sensorWrite(group, field, value),
+          "sensor",
+        );
+      },
+    });
+  }
+
+  sensorWrite(group, field, value) {
+    const label = sensorLabel(field, this.data.sensor_settings);
+    const fmt = (v) => formatSensorValue(field, v, this.data.sensor_settings, EMPTY_VALUE);
+    // As the alarm cells: the look is drawn from the state, no button handed over.
+    this.sensorState[field] = WRITING_STATE;
+    this.sensorInFlight.add(field);
+    this.renderSensorValues();
+    return this.sendCommand(field, value, null, {
+      requireTouch: false,
+      target: group,
+      who: SENSOR_GROUPS[group].who,
+    }).then((ack) => {
+      this.sensorInFlight.delete(field);
+      if (this.destroyed) return ack;
+      if (ack && ack.ok) {
+        this.sensorState[field] = { state: "ok", note: `Saved · ${fmt(value)}` };
+        this.showToast(`${label} set to ${fmt(value)}`, "ok");
+      } else {
+        this.sensorState[field] = { state: "error", note: (ack && ack.message) || "Not saved" };
+      }
+      this.renderSensorValues();
+      return ack;
+    });
+  }
+
+  // "Reset to configured values": the sensor app's reset_calibration clears
+  // every operator value (back to its config), after a confirmation.
+  sensorReset() {
+    const group = this.alarmOpen;
+    if (!group || this.alarmTab !== "sensor" || !SENSOR_GROUPS[group]) return;
+    const blocked = this.sensorBlockedReason();
+    if (blocked) {
+      this.showToast(blocked, "error");
+      return;
+    }
+    const g = SENSOR_GROUPS[group];
+    const key = `${group}:reset`;
+    if (this.sensorInFlight.has(key)) {
+      this.showToast(`Still waiting for the ${g.who} to answer`);
+      return;
+    }
+    const names = g.fields.map((f) => SENSOR_FIELDS[f].name.toLowerCase());
+    const list = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    this.confirmAsk(
+      `Reset the ${g.title.toLowerCase()} to its configured values? The ${list} go back to the sensor app's config.`,
+      () => {
+        // The button is shared by both groups' panes: its pending look is
+        // this group's reset (renderSensorValues), not handed to sendCommand.
+        this.sensorInFlight.add(key);
+        this.renderSensorValues();
+        return this.sendCommand(SENSOR_RESET_COMMAND, null, null, {
+          requireTouch: false,
+          target: group,
+          who: g.who,
+        }).then((ack) => {
+          this.sensorInFlight.delete(key);
+          if (this.destroyed) return ack;
+          if (ack && ack.ok) {
+            this.sensorState = {};
+            this.showToast(`${g.title} reset to its configured values`, "ok");
+          }
+          this.renderSensorValues();
+          return ack;
+        });
+      },
+      "sensor",
+    );
   }
 
   // -- VSD commissioning panel ------------------------------------------------
@@ -2544,7 +2926,9 @@ class Hmi {
  *
  * opts: {
  *   layout: "kiosk" | "embedded",
- *   sendCommand(cmd, value): Promise<{ok, code?, message?}>,
+ *   sendCommand(cmd, value, meta?): Promise<{ok, code?, message?}>,
+ *                                // meta {target: "pressure" | "tank"}: a
+ *                                // Sensor tab write for that sensor app
  *   hostLabel?: string,          // header badge, e.g. "Local panel"
  *   title?: string,              // header title (default "SIA Remote Command")
  *   logos?: {remoteCommand?, doover?}  // data URIs
@@ -2566,6 +2950,7 @@ export function createHmi(root, opts) {
     setVsdPanel: (access) => hmi.setVsdPanel(access),
     setDisplay: (display) => hmi.setDisplay(display),
     setAlarmAccess: (access) => hmi.setAlarmAccess(access),
+    setSensorAccess: (access) => hmi.setSensorAccess(access),
     destroy: () => hmi.destroy(),
     /** For tests: the underlying instance. */
     _hmi: hmi,

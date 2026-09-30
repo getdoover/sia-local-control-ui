@@ -51,6 +51,15 @@ export interface MockOptions {
   tankLlRequired?: boolean;
   /** Controller has a dedicated flow meter (flow L / LL alarms). */
   flowMeter?: boolean;
+  /** sensor_settings_access ("Hidden" / "Local only" / "Local and cloud"). */
+  sensorAccess?: string;
+  /**
+   * The sensor apps' Operator Sensor Calibration: "on" (default; the
+   * readback tags and RPCs work), "off" (operator_calibration false, no
+   * values, RPCs refused UNAVAILABLE) or "old" (an app from before the
+   * feature: no such tags, no handlers, so an RPC never answers).
+   */
+  sensorCal?: "on" | "off" | "old";
 }
 
 export const TECHTOP = "techtop_motor_controller_1";
@@ -76,6 +85,35 @@ function techtopParameters() {
 }
 
 const CTRL = "sia_injection_controller_1";
+export const PRESSURE_APP = "4_20ma_sensor_2";
+export const TANK_APP = "analog_level_sensor_1";
+
+// The sensor apps' config defaults (what "Reset to configured values" goes
+// back to) and their fixed loop currents: 9.6032 mA = 350.2 psi on 0-1000,
+// 10.8 mA = 0.85 m on 0-2 m.
+const PRESSURE_DEFAULTS = { range_low: 0, range_high: 1000, offset: 0 };
+const TANK_DEFAULTS = { zero_m: 0, span_m: 2, fluid_density: 1000 };
+const PRESSURE_MA = 9.6032;
+const TANK_MA = 10.8;
+
+const round4 = (v: number) => Math.round(v * 1e4) / 1e4;
+
+/** The pressure app's corrected reading from its loop current and values. */
+function pressureReading(v: { range_low: number; range_high: number; offset: number }): number {
+  return round4(((PRESSURE_MA - 4) / 16) * (v.range_high - v.range_low) + v.range_low + v.offset);
+}
+
+/** The level app's level (m) from its loop current, zero / span and density. */
+function tankReading(v: { zero_m: number; span_m: number; fluid_density: number }): number {
+  return round4((v.zero_m + ((TANK_MA - 4) / 16) * (v.span_m - v.zero_m)) * (1000 / v.fluid_density));
+}
+
+/** One sensor app's tags for the Operator Sensor Calibration state. */
+function sensorTags(cal: MockOptions["sensorCal"], defaults: Json, loopTag: string, loopMa: number): Json {
+  if (cal === "old") return { [loopTag]: loopMa };
+  if (cal === "off") return { [loopTag]: loopMa, operator_calibration: false };
+  return { [loopTag]: loopMa, operator_calibration: true, ...defaults };
+}
 
 export function scenarioTags(opts: MockOptions): Json {
   const faulted = opts.scenario === "faulted";
@@ -135,8 +173,16 @@ export function scenarioTags(opts: MockOptions): Json {
           }
         : {}),
     },
-    analog_level_sensor_1: { level_reading: 0.85, level_filled_percentage: 64, level_volume: 1284.6 },
-    "4_20ma_sensor_2": { value: 350.2 },
+    [TANK_APP]: {
+      level_reading: 0.85,
+      level_filled_percentage: 64,
+      level_volume: 1284.6,
+      ...sensorTags(opts.sensorCal, TANK_DEFAULTS, "raw_level_reading", TANK_MA),
+    },
+    [PRESSURE_APP]: {
+      value: 350.2,
+      ...sensorTags(opts.sensorCal, PRESSURE_DEFAULTS, "raw_value", PRESSURE_MA),
+    },
     morningstar_prostar_app_1: { b_voltage: 25.4, b_percent: 81, panel_power: 120.5, remaining_ah: 200 },
   };
 }
@@ -162,6 +208,24 @@ export function createMockClient(opts: MockOptions) {
             ...(opts.popoverInsetMm != null ? { popover_inset_mm: opts.popoverInsetMm } : {}),
             ...(opts.kioskPxPerMm != null ? { kiosk_px_per_mm: opts.kioskPxPerMm } : {}),
             ...(opts.alarmAccess ? { alarm_settings_access: opts.alarmAccess } : {}),
+            ...(opts.sensorAccess ? { sensor_settings_access: opts.sensorAccess } : {}),
+          },
+          [PRESSURE_APP]: {
+            min_range: PRESSURE_DEFAULTS.range_low,
+            max_range: PRESSURE_DEFAULTS.range_high,
+            measurement_units: opts.pressureUnits ?? "psi",
+            operator_calibration_enabled: (opts.sensorCal ?? "on") === "on",
+          },
+          [TANK_APP]: {
+            sensor_minimum_metres: TANK_DEFAULTS.zero_m,
+            sensor_maximum_metres: TANK_DEFAULTS.span_m,
+            fluid_density: TANK_DEFAULTS.fluid_density,
+            // The Sensor tab's labels follow these (a Radar swaps zero / span).
+            type: "Submersible",
+            input_units: "mA",
+            sensor_minimum_ma: 4,
+            sensor_maximum_ma: 20,
+            operator_calibration_enabled: (opts.sensorCal ?? "on") === "on",
           },
           [CTRL]: {
             pressure_units: opts.pressureUnits ?? "psi",
@@ -179,14 +243,15 @@ export function createMockClient(opts: MockOptions) {
   const push = (name: string) => {
     for (const h of subs.get(name) ?? []) h.onAggregate?.(aggregates[name]);
   };
-  const patchTags = (patch: Json) => {
-    const tags = aggregates.tag_values.data[CTRL] as Json;
+  const patchApp = (key: string, patch: Json) => {
+    const tags = aggregates.tag_values.data[key] as Json;
     aggregates.tag_values = {
-      data: { ...aggregates.tag_values.data, [CTRL]: { ...tags, ...patch } },
+      data: { ...aggregates.tag_values.data, [key]: { ...tags, ...patch } },
       last_updated: Date.now(),
     };
     push("tag_values");
   };
+  const patchTags = (patch: Json) => patchApp(CTRL, patch);
 
   // The controller's timed test run, on a (possibly sped-up) mock clock.
   let testTimer: ReturnType<typeof setInterval> | undefined;
@@ -334,6 +399,49 @@ export function createMockClient(opts: MockOptions) {
     }
   };
 
+  // The sensor apps' "Sensor Calibration" handlers on ui_cmds (their own
+  // app keys), with the apps' validation (RPCError INVALID, value unchanged).
+  const sensor = async (key: string, req: { method: string; request: unknown }) => {
+    const cal = opts.sensorCal ?? "on";
+    // An older app has no such handler: pydoover never answers.
+    if (cal === "old") return new Promise(() => {});
+    if (cal === "off") throw rpcError("UNAVAILABLE", "Operator Sensor Calibration is off on this sensor app");
+    await new Promise((r) => setTimeout(r, 300));
+    const tags = aggregates.tag_values.data[key] as Json;
+    const pressure = key === PRESSURE_APP;
+    const current: Record<string, number> = pressure
+      ? { range_low: Number(tags.range_low), range_high: Number(tags.range_high), offset: Number(tags.offset) }
+      : { zero_m: Number(tags.zero_m), span_m: Number(tags.span_m), fluid_density: Number(tags.fluid_density) };
+    let next: Record<string, number>;
+    if (req.method === "reset_calibration") {
+      next = pressure ? { ...PRESSURE_DEFAULTS } : { ...TANK_DEFAULTS };
+    } else {
+      if (!(req.method in current)) throw rpcError("METHOD_NOT_FOUND", `unknown method ${req.method}`);
+      const v = Number(req.request);
+      if (typeof req.request !== "number" || !Number.isFinite(v)) throw rpcError("INVALID", "expected a number");
+      next = { ...current, [req.method]: round4(v) };
+      if (pressure) {
+        const p = next as typeof PRESSURE_DEFAULTS;
+        if (Math.abs(v) > 1e6) throw rpcError("INVALID", "value out of range (|value| <= 1e6)");
+        if (!(p.range_high > p.range_low)) throw rpcError("INVALID", "range_high must be above range_low");
+        if (Math.abs(p.offset) > p.range_high - p.range_low) throw rpcError("INVALID", "offset larger than the range");
+      } else {
+        const t = next as typeof TANK_DEFAULTS;
+        if (!(t.zero_m >= 0 && t.zero_m < t.span_m && t.span_m <= 100)) {
+          throw rpcError("INVALID", "need 0 <= zero_m < span_m <= 100");
+        }
+        if (!(t.fluid_density >= 500 && t.fluid_density <= 2500)) throw rpcError("INVALID", "fluid_density must be 500 to 2500");
+      }
+    }
+    patchApp(
+      key,
+      pressure
+        ? { ...next, value: pressureReading(next as typeof PRESSURE_DEFAULTS) }
+        : { ...next, level_reading: tankReading(next as typeof TANK_DEFAULTS) },
+    );
+    return next;
+  };
+
   // The Techtop motor controller app on dv-rpc (VSD commissioning panel).
   const params = techtopParameters();
   const techtop = async (req: { method: string; request: unknown }) => {
@@ -430,6 +538,7 @@ export function createMockClient(opts: MockOptions) {
         }
         (client.posted as unknown[]).push(req);
         (window as unknown as { __rpcLog: unknown[] }).__rpcLog = client.posted as unknown[];
+        if (req.app_key === PRESSURE_APP || req.app_key === TANK_APP) return sensor(req.app_key, req);
         return controller(req);
       },
     },

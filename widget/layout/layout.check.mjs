@@ -32,6 +32,10 @@
 // without the insets. Screenshots: ALARM_SHOTS=<dir> (alarm-tank-<w>x<h>.png,
 // alarm-pressure-<w>x<h>.png, alarm-flow-<w>x<h>.png at 800x480 and 1024x600
 // inset)
+// Sensor tab (sensor_settings_access): the Skid pressure and Tank popovers'
+// Alarms | Sensor tabs, each Sensor tab and its keypad fit at every size,
+// with and without the insets, locked or not. Screenshots:
+// SENSOR_SHOTS=<dir> (sensor-*.png)
 // Cover-plate insets (kiosk_inset_mm 2 + popover_inset_mm 10) at every size:
 // the whole HMI inside the inset, the VSD popover (with its up / down scroll
 // buttons, no scrollbar), the wizard, keypad and confirmation inside the
@@ -162,6 +166,7 @@ test.before(async () => {
   if (CAL_SHOTS) fs.mkdirSync(CAL_SHOTS, { recursive: true });
   if (process.env.INSET_SHOTS) fs.mkdirSync(process.env.INSET_SHOTS, { recursive: true });
   if (process.env.ALARM_SHOTS) fs.mkdirSync(process.env.ALARM_SHOTS, { recursive: true });
+  if (process.env.SENSOR_SHOTS) fs.mkdirSync(process.env.SENSOR_SHOTS, { recursive: true });
 });
 
 test.after(async () => {
@@ -1231,3 +1236,256 @@ for (const host of ["local", "cloud"]) {
     }
   });
 }
+
+// --- Sensor tab (sensor_settings_access) ---------------------------------------------
+// The Skid pressure and Tank gears' popovers with both gates on: the Alarms |
+// Sensor tabs, and each Sensor tab (the sensor app's loop current, reading,
+// Reset to configured values and one cell per operator value) fits at every
+// size with and without the insets, with the alarm rows still fitting under
+// the tab bar. Screenshots: SENSOR_SHOTS=<dir> (sensor-pressure-<w>x<h>.png,
+// sensor-tank-<w>x<h>.png at every size with the insets, sensor-locked-*.png
+// with the sensor app's Operator Sensor Calibration off).
+
+const SENSOR_SHOTS = process.env.SENSOR_SHOTS;
+const SENSOR_Q = `alarms=${encodeURIComponent("Local only")}&sensors=${encodeURIComponent("Local only")}&scenario=running`;
+
+function measureSensorPane() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const panel = q("alarm-panel-box");
+  const cut = (el) => el.scrollWidth - el.clientWidth;
+  return {
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    panel: { ...box(panel), sh: panel.scrollHeight, ch: panel.clientHeight, sw: panel.scrollWidth, cw: panel.clientWidth },
+    title: q("alarm-panel-title").textContent,
+    tabs: vis(q("alarm-tabs")) ? ["alarms", "sensor"].map((t) => ({ t, ...box(q(`alarm-tab-${t}`)) })) : null,
+    rowsShown: vis(q("alarm-rows")),
+    paneShown: vis(q("sensor-pane")),
+    live: ["sensor-ma", "sensor-reading"].map((id) => ({ id, text: q(id).textContent, cut: cut(q(id)), ...box(q(id)) })),
+    reset: { ...box(q("sensor-reset")), text: q("sensor-reset").textContent, cut: cut(q("sensor-reset")) },
+    note: vis(q("sensor-note")) ? { ...box(q("sensor-note")), text: q("sensor-note").textContent } : null,
+    cells: [...panel.querySelectorAll("[data-sensor]")].filter(vis).map((c) => {
+      const v = c.querySelector("[data-sensor-value]");
+      return {
+        id: c.dataset.sensor,
+        ...box(c),
+        value: v.textContent,
+        valueCut: cut(v),
+        overflowX: cut(c),
+        locked: c.classList.contains("locked"),
+      };
+    }),
+  };
+}
+
+function assertSensorPane(s, w, h, gap, title, cells) {
+  const ctx = `${title}: ${JSON.stringify(s)}`;
+  assert.equal(s.title, title, ctx);
+  assert.ok(s.paneShown && !s.rowsShown, `sensor pane not shown alone: ${ctx}`);
+  assert.ok(s.doc[0] <= w && s.doc[1] <= h, `page scrolls with the popover: ${ctx}`);
+  assertInside(s.panel, w, h, gap, title);
+  assert.ok(s.panel.sh <= s.panel.ch + 1 && s.panel.sw <= s.panel.cw + 1, `popover overflows: ${ctx}`);
+  assert.ok(s.tabs, `no tab bar: ${ctx}`);
+  for (const t of s.tabs) assert.ok(t.h >= 44 && t.w >= 88, `tab ${t.t} ${t.w}x${t.h} too small: ${ctx}`);
+  assert.deepEqual(s.cells.map((c) => c.id), cells, ctx);
+  for (const c of s.cells) {
+    assert.ok(c.h >= 56 && c.w >= 120, `${c.id} ${c.w}x${c.h} too small to tap: ${ctx}`);
+    assert.ok(c.overflowX <= 1 && c.valueCut <= 1, `${c.id} value cut off: ${ctx}`);
+    assert.ok(c.bottom <= s.panel.bottom + 0.5, `${c.id} outside the popover: ${ctx}`);
+  }
+  for (const l of s.live) {
+    assert.notEqual(l.text, "—", `${l.id} missing: ${ctx}`);
+    assert.ok(l.cut <= 1, `${l.id} cut off: ${ctx}`);
+  }
+  assert.ok(s.reset.h >= 44 && s.reset.w >= 120, `reset ${s.reset.w}x${s.reset.h} too small: ${ctx}`);
+  assert.ok(s.reset.cut <= 1, `reset label cut off: ${ctx}`);
+  assert.ok(s.reset.bottom <= s.panel.bottom + 0.5 && s.reset.right <= s.panel.right + 0.5, `reset outside: ${ctx}`);
+}
+
+async function openSensorTab(page, gear) {
+  await page.click(`.sia-hmi [data-id="${gear}"]`);
+  await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
+  await page.click('.sia-hmi [data-id="alarm-tab-sensor"]');
+  await page.waitForSelector('.sia-hmi [data-id="sensor-pane"]', { state: "visible" });
+}
+
+for (const [w, h] of SIZES) {
+  for (const [insetName, insetQ, gap] of [["no inset", "", 8], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, POP_PX]]) {
+    test(`${w}x${h} Touch, ${insetName}: Alarms | Sensor tabs, both Sensor tabs fit`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      const shoot = SENSOR_SHOTS && insetQ;
+      try {
+        await page.goto(`${base}?host=local&mode=Touch&${SENSOR_Q}${insetQ}&punits=kPa&commission=${encodeURIComponent("Local only")}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.waitForTimeout(150);
+
+        for (const [gear, alarmTitle, title, cells, file, alarmRows, caption] of [
+          ["pressure-gear", "Discharge Pressure Alarms", "Pressure Sensor", ["range_low", "range_high", "offset"], "sensor-pressure",
+            [["high_pressure", "pressure_h_delay"], ["high_high_pressure", "pressure_hh_delay"]], "Pressure"],
+          ["tank-gear", "Tank Level Alarms", "Tank Level Sensor", ["zero_m", "span_m", "fluid_density"], "sensor-tank",
+            [["low_tank_level", "tank_l_delay"], ["low_low_tank_level", "tank_ll_delay"]], "Level"],
+        ]) {
+          // The Alarms tab (first) still fits with the tab bar above it.
+          await page.click(`.sia-hmi [data-id="${gear}"]`);
+          await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
+          const a = await page.evaluate(measureAlarmPanel);
+          assertAlarmPanel(a, w, h, gap, alarmTitle, alarmRows, caption);
+          if (shoot && w === 800) await page.screenshot({ path: path.join(SENSOR_SHOTS, `${file.replace("sensor", "alarms-tab")}-${w}x${h}.png`) });
+
+          await page.click('.sia-hmi [data-id="alarm-tab-sensor"]');
+          await page.waitForSelector('.sia-hmi [data-id="sensor-pane"]', { state: "visible" });
+          const s = await page.evaluate(measureSensorPane);
+          assertSensorPane(s, w, h, gap, title, cells);
+          assert.equal(s.note, null, "no lock line with Operator Sensor Calibration on");
+          if (shoot) await page.screenshot({ path: path.join(SENSOR_SHOTS, `${file}-${w}x${h}.png`) });
+
+          // Each cell's keypad sits above the popover, inside the gap; the
+          // pressure keypad has the ± key and still fits.
+          for (const id of cells) {
+            await page.click(`.sia-hmi [data-sensor="${id}"]`);
+            await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
+            const k = await page.evaluate(() => {
+              const r = document.querySelector(".sia-hmi .keypad").getBoundingClientRect();
+              const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 10);
+              const neg = document.querySelector('.sia-hmi [data-id="keypad-neg"]');
+              const nb = neg.getBoundingClientRect();
+              return {
+                left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+                onTop: !!hit?.closest(".keypad"),
+                neg: nb.width > 0 ? { w: nb.width, h: nb.height } : null,
+              };
+            });
+            assert.ok(k.onTop, `keypad above the popover (${id})`);
+            assertInside(k, w, h, gap, `keypad (${id})`);
+            if (gear === "pressure-gear") {
+              assert.ok(k.neg && k.neg.w >= 44 && k.neg.h >= 44, `± key missing or small (${id}): ${JSON.stringify(k)}`);
+            } else {
+              assert.equal(k.neg, null, `± key on an unsigned value (${id})`);
+            }
+            await page.click('.sia-hmi [data-id="keypad-cancel"]');
+          }
+          await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+        }
+
+        // One real edit end to end: the pressure offset 0 -> -2.5 kPa, sent
+        // to the SENSOR app's key, read back from its tag.
+        await openSensorTab(page, "pressure-gear");
+        await page.click('.sia-hmi [data-sensor="offset"]');
+        await page.click('.sia-hmi [data-key="clear"]');
+        for (const key of ["neg", "2", ".", "5"]) await page.click(`.sia-hmi [data-key="${key}"]`);
+        await page.click('.sia-hmi [data-id="keypad-ok"]');
+        const cb = await page.evaluate(() => {
+          const r = document.querySelector(".sia-hmi .confirm-box").getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, text: document.querySelector('.sia-hmi [data-id="confirm-message"]').textContent };
+        });
+        assertInside(cb, w, h, gap, "confirmation");
+        assert.equal(cb.text, "Change Offset from 0.0 kPa → -2.5 kPa?");
+        await page.click('.sia-hmi [data-id="confirm-ok"]');
+        await page.waitForFunction(
+          () => document.querySelector('.sia-hmi [data-sensor="offset"] [data-sensor-value]')?.textContent === "-2.5 kPa",
+        );
+        const sent = await page.evaluate(() => window.__rpcLog.at(-1));
+        assert.equal(sent.method, "offset");
+        assert.equal(sent.request, -2.5);
+        assert.equal(sent.app_key, "4_20ma_sensor_2");
+        // The corrected reading follows (the mock applies the offset).
+        assert.equal(await page.textContent('.sia-hmi [data-id="sensor-reading"]'), "347.7 kPa");
+        const after = await page.evaluate(measureSensorPane);
+        assertSensorPane(after, w, h, gap, "Pressure Sensor", ["range_low", "range_high", "offset"]);
+
+        // Reset to configured values: confirm, reset_calibration to the sensor.
+        await page.click('.sia-hmi [data-id="sensor-reset"]');
+        await page.click('.sia-hmi [data-id="confirm-ok"]');
+        await page.waitForFunction(
+          () => document.querySelector('.sia-hmi [data-sensor="offset"] [data-sensor-value]')?.textContent === "0.0 kPa",
+        );
+        const reset = await page.evaluate(() => window.__rpcLog.at(-1));
+        assert.equal(reset.method, "reset_calibration");
+        assert.equal(reset.app_key, "4_20ma_sensor_2");
+      } finally {
+        await page.close();
+      }
+    });
+  }
+
+  test(`${w}x${h} Touch, inset 2 mm + popover 10 mm: Sensor tab locked when the app has the feature off`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    try {
+      await page.goto(`${base}?host=local&mode=Touch&${SENSOR_Q}&${INSET_Q}&sensorcal=off`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await page.waitForTimeout(150);
+      for (const [gear, title, cells, file] of [
+        ["pressure-gear", "Pressure Sensor", ["range_low", "range_high", "offset"], "sensor-locked-pressure"],
+        ["tank-gear", "Tank Level Sensor", ["zero_m", "span_m", "fluid_density"], "sensor-locked-tank"],
+      ]) {
+        await openSensorTab(page, gear);
+        const s = await page.evaluate(measureSensorPane);
+        const ctx = JSON.stringify(s);
+        // Values unknown ("—"), the lock line shown and whole; the rest fits.
+        assertInside(s.panel, w, h, POP_PX, title);
+        assert.ok(s.panel.sh <= s.panel.ch + 1, `popover overflows: ${ctx}`);
+        assert.equal(s.note?.text, "Enable Operator Sensor Calibration on the sensor app", ctx);
+        assert.ok(s.note.bottom <= s.panel.bottom + 0.5, ctx);
+        assert.deepEqual(s.cells.map((c) => c.id), cells);
+        for (const c of s.cells) {
+          assert.ok(c.locked, `${c.id} not locked: ${ctx}`);
+          assert.ok(c.bottom <= s.panel.bottom + 0.5, `${c.id} outside: ${ctx}`);
+        }
+        assert.ok(!s.live.some((l) => l.text === "—"), `live reading missing: ${ctx}`);
+        if (SENSOR_SHOTS) await page.screenshot({ path: path.join(SENSOR_SHOTS, `${file}-${w}x${h}.png`) });
+        // A tap says why and sends nothing.
+        const before = await page.evaluate(() => (window.__rpcLog ?? []).length);
+        await page.click(`.sia-hmi [data-sensor="${cells[0]}"]`);
+        assert.equal(await page.isVisible('.sia-hmi [data-id="keypad"]'), false);
+        assert.equal(await page.evaluate(() => (window.__rpcLog ?? []).length), before);
+        await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+      }
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+test("Sensor Settings Access Hidden (default): the popovers have no tabs", async () => {
+  const page = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await page.goto(`${base}?host=local&mode=Touch&${ALARM_Q}`);
+    await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+    for (const gear of ["pressure-gear", "tank-gear"]) {
+      await page.click(`.sia-hmi [data-id="${gear}"]`);
+      await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
+      assert.equal(await page.isVisible('.sia-hmi [data-id="alarm-tabs"]'), false);
+      assert.equal(await page.isVisible('.sia-hmi [data-id="sensor-pane"]'), false);
+      await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+    }
+  } finally {
+    await page.close();
+  }
+});
+
+test("cloud at phone width: the Sensor tabs fit, nothing cut off", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await page.goto(`${base}?host=cloud&width=358&mode=Touch&alarms=${encodeURIComponent("Local and cloud")}&sensors=${encodeURIComponent("Local and cloud")}`);
+    await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+    await page.waitForTimeout(150);
+    for (const [gear, cells] of [["pressure-gear", ["range_low", "range_high", "offset"]], ["tank-gear", ["zero_m", "span_m", "fluid_density"]]]) {
+      await openSensorTab(page, gear);
+      const s = await page.evaluate(measureSensorPane);
+      const ctx = JSON.stringify(s);
+      assert.ok(s.doc[0] <= 390, `page scrolls sideways: ${ctx}`);
+      assert.deepEqual(s.cells.map((c) => c.id), cells);
+      for (const c of s.cells) assert.ok(c.overflowX <= 1 && c.valueCut <= 1, `${c.id} cut: ${ctx}`);
+      for (const l of s.live) assert.ok(l.cut <= 1, `${l.id} cut: ${ctx}`);
+      assert.ok(s.reset.cut <= 1, `reset cut: ${ctx}`);
+      if (SENSOR_SHOTS) await page.screenshot({ path: path.join(SENSOR_SHOTS, `sensor-cloud-phone-${gear.split("-")[0]}.png`) });
+      await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+    }
+  } finally {
+    await page.close();
+  }
+});

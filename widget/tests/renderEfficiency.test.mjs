@@ -263,9 +263,10 @@ test("after a render that throws part-way, the last good payload renders in full
   assert.equal(pressure(), "350.2");
 });
 
-test("an alarm cell's Saved ring comes back after the feedback timer on an unchanged feed", async () => {
-  // sendCommand's feedback timer takes the ring off after 2.5 s; every
-  // update while the popover is open puts it back from the write's state.
+test("an alarm cell's Saved ring stays past the feedback timer on an unchanged feed", async () => {
+  // The cell's pending / ok / error look is drawn only from the write's
+  // state (no button is handed to sendCommand, whose feedback timer would
+  // take the ring off after 2.5 s until the next update put it back).
   const { mock } = test;
   mock.timers.enable({ apis: ["setTimeout"] });
   try {
@@ -286,7 +287,7 @@ test("an alarm cell's Saved ring comes back after the feedback timer on an uncha
     const readback = { alarm_settings: { ...SETTINGS, tank: { ...SETTINGS.tank, low: 25 } } };
     m.render(at(1, readback));
     mock.timers.tick(2600);
-    assert.ok(!row.classList.contains("ok"), "the feedback timer took the ring off");
+    assert.ok(row.classList.contains("ok"), "no feedback timer takes the ring off");
     m.render(at(2, readback)); // identical but for the timestamp
     assert.ok(row.classList.contains("ok"));
     assert.match(row.textContent, /Saved/);

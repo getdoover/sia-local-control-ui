@@ -29,6 +29,11 @@
  *   &llreq=1                 controller tank_ll_validation_enabled (LL never off)
  *   &flowmeter=1             controller with a dedicated flow meter (flow
  *                            alarms: a gear on Pump Control)
+ *   &sensors=Local only      sensor_settings_access (the Sensor tab on the
+ *                            Tank / Skid pressure gears' popovers)
+ *   &sensorcal=on|off|old    the sensor apps' Operator Sensor Calibration:
+ *                            on (default), off (cells locked, RPCs refused),
+ *                            old (an app without the feature: no tags)
  */
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -64,6 +69,8 @@ const opts: MockOptions = {
   pressureUnits: q.get("punits") ?? undefined,
   tankLlRequired: q.get("llreq") === "1",
   flowMeter: q.get("flowmeter") === "1",
+  sensorAccess: q.get("sensors") ?? undefined,
+  sensorCal: (q.get("sensorcal") as MockOptions["sensorCal"]) ?? undefined,
 };
 const client = createMockClient(opts);
 const queryClient = new QueryClient();

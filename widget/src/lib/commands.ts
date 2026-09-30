@@ -21,6 +21,10 @@
  * lands in ui_cmds exactly as a cloud edit would, and the range is enforced
  * here.
  *
+ * The Sensor tab's writes (SENSOR_SETTING_COMMANDS) are the same RPC with
+ * `app_key` = the sensor app's key: pydoover routes a ui_cmds RPC to the app
+ * it names, and that app patches the status, so the reply path is the same.
+ *
  * Pure except `sendCommand`, which only touches the injected client.
  * Unit-tested in tests/commands.test.mjs.
  */
@@ -86,6 +90,65 @@ export const ALARM_SETTING_COMMANDS: readonly string[] = [
 ];
 
 export const ALARM_WRITE_BLOCKED_TEXT = "Alarm settings can't be changed from this screen.";
+
+/**
+ * Sensor calibration writes (the Sensor tab): each sensor app's "Sensor
+ * Calibration" elements, sent on `ui_cmds` to THAT app's key, not the pump
+ * controller's (core/sensors.js). The numeric values, then the reset
+ * (no value). Governed by sensor_settings_access, not HMI Control Mode.
+ */
+export const SENSOR_SETTING_COMMANDS: Readonly<Record<"pressure" | "tank", readonly string[]>> = {
+  pressure: ["range_low", "range_high", "offset", "reset_calibration"],
+  tank: ["zero_m", "span_m", "fluid_density", "reset_calibration"],
+};
+
+/** The numeric sensor writes (sent as floats, like the alarm settings). */
+export const SENSOR_VALUE_COMMANDS: readonly string[] = [
+  "range_low",
+  "range_high",
+  "offset",
+  "zero_m",
+  "span_m",
+  "fluid_density",
+];
+
+/** The ranges each sensor app enforces on a lone value (core/sensors.js). */
+const SENSOR_VALUE_RANGES: Readonly<Record<string, readonly [number, number]>> = {
+  range_low: [-1e6, 1e6],
+  range_high: [-1e6, 1e6],
+  offset: [-1e6, 1e6],
+  zero_m: [0, 100],
+  span_m: [0, 100],
+  fluid_density: [500, 2500],
+};
+
+export const SENSOR_WRITE_BLOCKED_TEXT = "Sensor settings can't be changed from this screen.";
+
+/**
+ * Refuse a sensor write unless sensor settings access allows it from this
+ * host (`canWrite`); the command must be one of that sensor's, and a value a
+ * finite number within the app's range. Returns an error ack, or null.
+ */
+export function checkSensorCommand(
+  canWrite: boolean,
+  target: string,
+  cmd: string,
+  value: unknown,
+): Ack | null {
+  if (!canWrite) return { ok: false, code: "READ_ONLY", message: SENSOR_WRITE_BLOCKED_TEXT };
+  const allowed = (SENSOR_SETTING_COMMANDS as Record<string, readonly string[]>)[target];
+  if (!allowed || !allowed.includes(cmd)) {
+    return { ok: false, code: "INVALID", message: `unknown sensor command ${cmd}` };
+  }
+  const range = SENSOR_VALUE_RANGES[cmd];
+  if (!range) return null;
+  const n = optNum(value);
+  if (n === null) return { ok: false, code: "INVALID", message: "enter a number" };
+  if (n < range[0] || n > range[1]) {
+    return { ok: false, code: "INVALID", message: `Out of range (${range[0]} to ${range[1]}).` };
+  }
+  return null;
+}
 
 export interface Ack {
   ok: boolean;
@@ -170,7 +233,12 @@ export function buildRpcRequest(
   actor: RpcActor | undefined,
 ): RpcRequestBody {
   let request: unknown = value;
-  if (cmd === "set_target_rate" || cmd === "last_calibration_factor" || ALARM_SETTING_COMMANDS.includes(cmd)) {
+  if (
+    cmd === "set_target_rate" ||
+    cmd === "last_calibration_factor" ||
+    ALARM_SETTING_COMMANDS.includes(cmd) ||
+    SENSOR_VALUE_COMMANDS.includes(cmd)
+  ) {
     request = optNum(value);
   }
   if (cmd === "start_test_run") {
@@ -220,10 +288,11 @@ export function rpcErrorOf(error: unknown): { code: string; message: string } {
  * own reason text is shown as given (it already says why, e.g. the control
  * priority it enforces), prefixed with the refusal code's plain meaning only
  * where the controller sent no text. Transport failures get a fixed message.
+ * `who` names the app that answers (a sensor app for the Sensor tab).
  */
-export function explainRpcError(code: string, message: string): Ack {
+export function explainRpcError(code: string, message: string, who = "pump controller"): Ack {
   if (code === "TIMEOUT") {
-    return { ok: false, code, message: "No reply from the pump controller (it did not answer in time)." };
+    return { ok: false, code, message: `No reply from the ${who} (it did not answer in time).` };
   }
   if (code === "UNSUPPORTED") {
     return { ok: false, code, message: "Commands are not available from this screen." };
@@ -232,7 +301,7 @@ export function explainRpcError(code: string, message: string): Ack {
   return {
     ok: false,
     code,
-    message: reason ? `Refused: ${reason}` : `Refused by the pump controller (${code}).`,
+    message: reason ? `Refused: ${reason}` : `Refused by the ${who} (${code}).`,
   };
 }
 

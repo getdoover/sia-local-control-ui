@@ -4,7 +4,8 @@ import type { VsdPanelAccess, VsdPanelApi } from "../lib/vsdPanel.ts";
 
 export interface HmiOptions {
   layout: "kiosk" | "embedded";
-  sendCommand: (cmd: string, value: unknown) => Promise<Ack>;
+  /** `meta.target` ("pressure" / "tank"): a Sensor tab write for that sensor app. */
+  sendCommand: (cmd: string, value: unknown, meta?: { target?: string }) => Promise<Ack>;
   hostLabel?: string;
   title?: string;
   logos?: { remoteCommand?: string; doover?: string };
@@ -30,6 +31,8 @@ export interface HmiHandle {
   setDisplay(display: HmiDisplay): void;
   /** Alarm settings gears / writes (lib/alarmSettings.ts alarmSettingsAccess). */
   setAlarmAccess(access: { enabled: boolean; canWrite: boolean; writeBlockedReason: string }): void;
+  /** Sensor tab on the Tank / Skid pressure popovers (lib/sensorSettings.ts sensorSettingsAccess). */
+  setSensorAccess(access: { enabled: boolean; canWrite: boolean; writeBlockedReason: string }): void;
   destroy(): void;
 }
 

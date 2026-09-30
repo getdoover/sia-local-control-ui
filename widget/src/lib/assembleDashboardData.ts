@@ -174,6 +174,8 @@ export interface HmiConfig {
   vsdCommissioning: VsdCommissioning;
   /** Alarm settings gears on the Tank / Skid / Pump Control tiles (same options as VSD). */
   alarmSettingsAccess: VsdCommissioning;
+  /** Sensor tab on the Tank / Skid pressure gears' popovers (same options, own gate). */
+  sensorSettingsAccess: VsdCommissioning;
   /** Local panel only: gap on every side of the whole HMI (cover plate). */
   kioskInsetMm: number;
   /** Local panel only: popover gap from the screen edge, on top of the inset. */
@@ -285,6 +287,7 @@ export function resolveConfig(
     vsdMotorApp: asString(c.vsd_motor_app),
     vsdCommissioning: normaliseCommissioning(c.vsd_commissioning),
     alarmSettingsAccess: normaliseCommissioning(c.alarm_settings_access),
+    sensorSettingsAccess: normaliseCommissioning(c.sensor_settings_access),
     kioskInsetMm: clampNum(c.kiosk_inset_mm, 0, 0, 30),
     popoverInsetMm: clampNum(c.popover_inset_mm, 0, 0, 40),
     kioskPxPerMm: positiveNum(c.kiosk_px_per_mm, DEFAULT_KIOSK_PX_PER_MM),
@@ -456,6 +459,101 @@ export function collectAlarmSettings(
   return out.tank || out.pressure || out.flow ? out : undefined;
 }
 
+/**
+ * The sensor apps' operator calibration (the Sensor tab, core/sensors.js),
+ * read back from their own tags: whether the app has Operator Sensor
+ * Calibration on (`operator_calibration`, true only then; absent on an older
+ * app), the live loop current in mA, the corrected reading, and each value in
+ * effect (the operator's, else the app's config default). A tag the app does
+ * not publish reads null.
+ */
+export interface SensorSettingsData {
+  pressure?: {
+    enabled: boolean;
+    loop_ma: number | null;
+    reading: number | null;
+    range_low: number | null;
+    range_high: number | null;
+    offset: number | null;
+    units: string;
+  };
+  tank?: {
+    enabled: boolean;
+    /** The live input, in `input_units` (mA unless the app is set otherwise). */
+    loop_ma: number | null;
+    /** level_reading, metres. */
+    reading: number | null;
+    zero_m: number | null;
+    span_m: number | null;
+    fluid_density: number | null;
+    /**
+     * The level app's input range and units (its config sensor_minimum_ma /
+     * sensor_maximum_ma / input_units; 4 / 20 / "mA" when unset), and whether
+     * it reads inverted (type "Radar": zero at the maximum input, span at the
+     * minimum, common_app._map_value). The Sensor tab's labels follow these.
+     */
+    input_low: number;
+    input_high: number;
+    input_units: string;
+    inverted: boolean;
+  };
+}
+
+/**
+ * Sensor calibration tags each sensor app publishes (live), keyed by the
+ * group. `loop` is its loop current in mA: the pressure app's `raw_value`
+ * (the analog input, mA) and the level app's `raw_level_reading`.
+ */
+export const SENSOR_TAGS = {
+  pressure: { loop: "raw_value", values: ["range_low", "range_high", "offset"] },
+  tank: { loop: "raw_level_reading", values: ["zero_m", "span_m", "fluid_density"] },
+} as const;
+export const SENSOR_ENABLED_TAG = "operator_calibration";
+
+/**
+ * The Sensor tab payload: only with sensor_settings_access on (Hidden adds
+ * nothing, so the payload and its render cadence are as before) and only
+ * for the sensor apps this HMI has configured.
+ */
+export function collectSensorSettings(
+  get: TagReader,
+  cfg: Pick<HmiConfig, "sensorSettingsAccess" | "pressureSensorApp" | "tankLevelApp">,
+  pressureUnits: string,
+  applications: JsonRecord = {},
+): SensorSettingsData | undefined {
+  if (cfg.sensorSettingsAccess === "hidden") return undefined;
+  const out: SensorSettingsData = {};
+  const p = cfg.pressureSensorApp;
+  if (p) {
+    out.pressure = {
+      enabled: get(SENSOR_ENABLED_TAG, p) === true,
+      loop_ma: optNum(get(SENSOR_TAGS.pressure.loop, p)),
+      reading: optNum(get("value", p)),
+      range_low: optNum(get("range_low", p)),
+      range_high: optNum(get("range_high", p)),
+      offset: optNum(get("offset", p)),
+      units: pressureUnits,
+    };
+  }
+  const t = cfg.tankLevelApp;
+  if (t) {
+    const tc = asRecord(applications[t]);
+    out.tank = {
+      enabled: get(SENSOR_ENABLED_TAG, t) === true,
+      loop_ma: optNum(get(SENSOR_TAGS.tank.loop, t)),
+      reading: optNum(get("level_reading", t)),
+      zero_m: optNum(get("zero_m", t)),
+      span_m: optNum(get("span_m", t)),
+      fluid_density: optNum(get("fluid_density", t)),
+      input_low: optNum(tc.sensor_minimum_ma) ?? 4,
+      input_high: optNum(tc.sensor_maximum_ma) ?? 20,
+      input_units: asString(tc.input_units) ?? "mA",
+      inverted: tc.type === "Radar",
+    };
+  }
+  return out.pressure || out.tank ? out : undefined;
+}
+
 export interface DashboardData {
   pumps: PumpData[];
   faults: BannerItem[];
@@ -469,6 +567,8 @@ export interface DashboardData {
   calibration?: CalibrationData;
   /** Alarm thresholds and delays read back from the controller (Setpoint* / Delay* tags). */
   alarm_settings?: AlarmSettingsData;
+  /** Sensor apps' operator calibration (Sensor tab), with sensor_settings_access on. */
+  sensor_settings?: SensorSettingsData;
   solar?: {
     battery_voltage?: number;
     battery_percentage?: number;
@@ -795,6 +895,14 @@ export function assembleDashboardData(inputs: AssembleInputs): DashboardData {
     if (alarms) data.alarm_settings = alarms;
   }
 
+  const sensors = collectSensorSettings(
+    get,
+    cfg,
+    data.units.pressure,
+    asRecord(asRecord(inputs.deploymentConfig).applications),
+  );
+  if (sensors) data.sensor_settings = sensors;
+
   return data;
 }
 
@@ -856,5 +964,17 @@ export function liveTagIds(cfg: HmiConfig): string[] {
   }
   if (cfg.flowSensorApp) ids.push(`${cfg.flowSensorApp}.value`);
   if (cfg.pressureSensorApp) ids.push(`${cfg.pressureSensorApp}.value`);
+  // Sensor tab readback (only with sensor_settings_access on): the apps'
+  // operator values and the flag are live; the loop current streams only if
+  // its app declares it live, else it arrives with the aggregate.
+  if (cfg.sensorSettingsAccess !== "hidden") {
+    for (const [app, tags] of [
+      [cfg.pressureSensorApp, SENSOR_TAGS.pressure],
+      [cfg.tankLevelApp, SENSOR_TAGS.tank],
+    ] as const) {
+      if (!app) continue;
+      for (const tag of [SENSOR_ENABLED_TAG, ...tags.values, tags.loop]) ids.push(`${app}.${tag}`);
+    }
+  }
   return ids;
 }

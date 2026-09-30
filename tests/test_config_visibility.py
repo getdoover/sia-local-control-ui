@@ -103,7 +103,7 @@ def test_config_keys_unchanged_from_the_deployed_schema():
     """Same keys as before: the deployed schema plus the new settings, all
     defaulting to the old behaviour (Read Only, dashboard on, tank mm only,
     no VSD commissioning gear, no cover-plate insets, no alarm settings
-    gears)."""
+    gears, no Sensor tab)."""
     schema = _schema()
     keys = set(schema["properties"]) | set(schema["allOf"][0]["then"]["properties"])
     deployed = set(_kuwait())
@@ -118,6 +118,7 @@ def test_config_keys_unchanged_from_the_deployed_schema():
         "popover_inset_mm",
         "kiosk_px_per_mm",
         "alarm_settings_access",
+        "sensor_settings_access",
     }
     assert deployed - keys == set()
 
@@ -145,6 +146,12 @@ def test_kuwait_config_loads_with_no_vsd_commissioning():
     cfg = _load(_kuwait())
     assert cfg.vsd_motor_app.value is None
     assert cfg.vsd_commissioning.value == "Hidden"
+
+
+def test_kuwait_config_loads_with_no_sensor_tab():
+    """An existing config has no sensor_settings_access: Sensor tab Hidden."""
+    cfg = _load(_kuwait())
+    assert cfg.sensor_settings_access.value == "Hidden"
 
 
 def _jsonschema_valid(instance) -> bool:

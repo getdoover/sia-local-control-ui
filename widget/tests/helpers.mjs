@@ -114,8 +114,9 @@ export function mountHmi({ url, dom: existing, ...opts } = {}) {
   const root = document.createElement("div");
   document.body.appendChild(root);
   const state = { sent: [], pending: [], ackReply: { ok: true }, deferAcks: false };
-  const sendCommand = (cmd, value) => {
-    state.sent.push({ cmd, value });
+  // A Sensor tab write carries its sensor (meta.target), recorded with it.
+  const sendCommand = (cmd, value, meta) => {
+    state.sent.push(meta ? { cmd, value, ...meta } : { cmd, value });
     if (!state.deferAcks) return Promise.resolve(state.ackReply);
     return new Promise((resolve) => state.pending.push(resolve));
   };

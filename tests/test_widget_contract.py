@@ -280,6 +280,49 @@ def test_alarm_settings_access_options_match_the_widget():
     assert "alarm delay" in props["alarm_settings_access"]["description"]
 
 
+def test_sensor_settings_access_options_match_the_widget():
+    """Its own gate, with the same three options as alarm settings, Hidden
+    (no Sensor tab) by default, and the widget reads the key."""
+    from sia_local_control_ui.app_config import (
+        ALARM_SETTINGS_ACCESS,
+        SENSOR_SETTINGS_ACCESS,
+    )
+
+    props = SiaLocalControlUiConfig.to_schema()["properties"]
+    assert props["sensor_settings_access"]["enum"] == [
+        "Hidden",
+        "Local only",
+        "Local and cloud",
+    ]
+    assert SENSOR_SETTINGS_ACCESS == ALARM_SETTINGS_ACCESS
+    assert (
+        props["sensor_settings_access"]["default"]
+        == SENSOR_SETTINGS_ACCESS[0]
+        == "Hidden"
+    )
+    assert "sensor_settings_access" in _widget_config_keys()
+    # The writes are the sensor apps' "Sensor Calibration" element names,
+    # sent to the sensor app's key; each reads back from its own tag.
+    commands = (WIDGET / "src" / "lib" / "commands.ts").read_text()
+    for name in (
+        "range_low",
+        "range_high",
+        "offset",
+        "zero_m",
+        "span_m",
+        "fluid_density",
+        "reset_calibration",
+    ):
+        assert f'"{name}"' in commands
+    assembled = (WIDGET / "src" / "lib" / "assembleDashboardData.ts").read_text()
+    for tag in ("operator_calibration", "raw_value", "raw_level_reading"):
+        assert f'"{tag}"' in assembled
+    # The config editor says the sensor app must have the feature on.
+    assert (
+        "Operator Sensor Calibration" in props["sensor_settings_access"]["description"]
+    )
+
+
 def test_vsd_panel_calls_the_techtop_rpc_channel():
     """The panel talks to the Techtop app on pydoover's default RPC channel
     (the Techtop app's RPC_CHANNEL), not on this app's ui_cmds."""

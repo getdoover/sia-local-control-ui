@@ -20,7 +20,13 @@ import {
   liveTagIds,
   resolveConfig,
 } from "./lib/assembleDashboardData.ts";
-import { checkTouchCommand, explainRpcError, sendCommand, type Ack } from "./lib/commands.ts";
+import {
+  checkSensorCommand,
+  checkTouchCommand,
+  explainRpcError,
+  sendCommand,
+  type Ack,
+} from "./lib/commands.ts";
 import { resolveAppKey, type UiRemoteComponent } from "./lib/appKey.ts";
 import { detectHost, hostLabel, resolveActor, type CloudUser } from "./lib/host.ts";
 import { overlayLiveValues } from "./lib/liveTags.ts";
@@ -29,6 +35,12 @@ import { createRenderScheduler, type RenderScheduler } from "./lib/renderCadence
 import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
 import { pollLocalDashboard, type LocalReader, type LocalSnapshot } from "./lib/localDashboard.ts";
 import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
+import {
+  isSensorGroup,
+  SENSOR_APP_NAMES,
+  sensorAppKey,
+  sensorSettingsAccess,
+} from "./lib/sensorSettings.ts";
 
 /**
  * SIA HMI widget: one bundle for the Doovit's local widget host and the
@@ -52,6 +64,10 @@ import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
  *     drive parameter writes from the local host only (lib/vsdPanel.ts);
  *   - the alarm settings gears: `alarm_settings_access` "Local only" allows
  *     threshold changes from the local host only (lib/alarmSettings.ts);
+ *   - the Sensor tab on the Tank / Skid pressure gears:
+ *     `sensor_settings_access` "Local only" allows sensor calibration changes
+ *     from the local host only (lib/sensorSettings.ts); those RPCs go to the
+ *     sensor app's key, not the pump controller's;
  *   - live tags: the cloud claims the tags it renders so they stream in
  *     seconds rather than every 15 minutes; the local host already reads the
  *     device's own state and skips it.
@@ -172,6 +188,11 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.alarmSettingsAccess, host.kind],
   );
 
+  const sensorAccess = useMemo(
+    () => sensorSettingsAccess(cfg.sensorSettingsAccess, host.kind),
+    [cfg.sensorSettingsAccess, host.kind],
+  );
+
   const data = useMemo(() => {
     if (tagValues === undefined) return null;
     const live = overlayLiveValues(
@@ -201,15 +222,38 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.kioskInsetMm, cfg.popoverInsetMm, cfg.kioskPxPerMm],
   );
 
-  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display, alarmAccess });
-  latest.current = { cfg, actor, agentId, client, vsdAccess, display, alarmAccess };
+  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess });
+  latest.current = { cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hmiRef = useRef<HmiHandle | null>(null);
 
   useEffect(() => {
     if (!rootRef.current) return;
-    const run = async (cmd: string, value: unknown): Promise<Ack> => {
+    // Sensor tab: straight to the sensor app (pressure_sensor_app /
+    // tank_level_app) on ui_cmds, under sensor_settings_access.
+    const runSensor = async (target: string, cmd: string, value: unknown): Promise<Ack> => {
+      const now = latest.current;
+      if (!isSensorGroup(target)) return { ok: false, code: "INVALID", message: `unknown sensor ${target}` };
+      const refused = checkSensorCommand(now.sensorAccess.canWrite, target, cmd, value);
+      if (refused) return refused;
+      const who = SENSOR_APP_NAMES[target];
+      const key = sensorAppKey(now.cfg, target);
+      if (!key) return { ok: false, code: "NO_SENSOR", message: `No ${who} is configured.` };
+      const ack = await sendCommand({
+        client: now.client,
+        agentId: now.agentId,
+        appKey: key,
+        cmd,
+        value,
+        actor: now.actor,
+        timeoutMs: now.cfg.rpcTimeoutMs,
+      });
+      if (ack.ok) return ack;
+      return explainRpcError(ack.code ?? "ERROR", ack.message ?? "", who);
+    };
+    const run = async (cmd: string, value: unknown, meta?: { target?: string }): Promise<Ack> => {
+      if (meta?.target) return runSensor(meta.target, cmd, value);
       const now = latest.current;
       const refused = checkTouchCommand(now.cfg.touchEnabled, cmd, value, now.alarmAccess.canWrite);
       if (refused) return refused;
@@ -253,6 +297,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     hmiRef.current.setVsdPanel(latest.current.vsdAccess);
     hmiRef.current.setDisplay(latest.current.display);
     hmiRef.current.setAlarmAccess(latest.current.alarmAccess);
+    hmiRef.current.setSensorAccess(latest.current.sensorAccess);
     return () => {
       hmiRef.current?.destroy();
       hmiRef.current = null;
@@ -289,6 +334,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.setAlarmAccess(alarmAccess);
   }, [alarmAccess]);
+
+  useEffect(() => {
+    hmiRef.current?.setSensorAccess(sensorAccess);
+  }, [sensorAccess]);
 
   return <div ref={rootRef} />;
 }

@@ -42,6 +42,11 @@ VSD_COMMISSIONING = ("Hidden", "Local only", "Local and cloud")
 # no gears.
 ALARM_SETTINGS_ACCESS = VSD_COMMISSIONING
 
+# The Sensor tab on the Tank / Skid pressure gears' popovers: a gate of its
+# own with the same options (widget/src/lib/sensorSettings.ts). Hidden first
+# = the default: no Sensor tab.
+SENSOR_SETTINGS_ACCESS = VSD_COMMISSIONING
+
 
 class ButtonConfig(config.Object):
     """Nested config describing where one operator pushbutton is wired.
@@ -475,6 +480,30 @@ class SiaLocalControlUiConfig(config.Schema):
             "Hidden: no gears. Local only: values shown everywhere, changes "
             "only from the local panel. Local and cloud: changes from the "
             "local panel and the cloud UI."
+        ),
+    )
+
+    # --- Sensor settings (widget only) ----------------------------------------
+    # A Sensor tab beside Alarms in the Tank and Skid pressure gears' popovers:
+    # the sensor apps' live loop current and reading, and their operator
+    # calibration (pressure range low / high and offset; tank zero / span and
+    # fluid density), written to the SENSOR app over ui_cmds and read back
+    # from its tags. The sensor app must have its own "Operator Sensor
+    # Calibration" on, or the values are locked. Hidden by default, so
+    # existing configs are unchanged. Governed by this setting, not HMI
+    # Control Mode or Alarm Settings Access.
+    sensor_settings_access = config.Enum(
+        "Sensor Settings Access",
+        choices=list(SENSOR_SETTINGS_ACCESS),
+        default=SENSOR_SETTINGS_ACCESS[0],
+        description=(
+            "Sensor tab in the HMI widget's Tank and Skid pressure settings: "
+            "the sensor's live mA and reading, and its operator calibration "
+            "(pressure range and offset; tank zero, span and fluid density), "
+            "sent to the sensor app, which needs Operator Sensor Calibration "
+            "on. Hidden: no Sensor tab. Local only: values shown everywhere, "
+            "changes only from the local panel. Local and cloud: changes from "
+            "the local panel and the cloud UI."
         ),
     )
 
