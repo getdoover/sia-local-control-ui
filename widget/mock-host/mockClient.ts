@@ -47,6 +47,8 @@ export interface MockOptions {
   pressureUnits?: string;
   /** Controller tank_ll_validation_enabled with a tank_app. */
   tankLlRequired?: boolean;
+  /** Controller has a dedicated flow meter (flow L / LL alarms). */
+  flowMeter?: boolean;
 }
 
 export const TECHTOP = "techtop_motor_controller_1";
@@ -100,9 +102,18 @@ export function scenarioTags(opts: MockOptions): Json {
       PressureUnits: opts.pressureUnits ?? "psi",
       SetpointTankL: 20,
       SetpointTankLL: 10,
-      SetpointTankLevelTimeout: 600,
       SetpointPressureH: 0,
       SetpointPressureHH: opts.pressureUnits === "kPa" ? 6894.8 : opts.pressureUnits === "bar" ? 68.9 : 1000,
+      // The controller publishes 0 for the flow thresholds without a meter.
+      SetpointFlowL: opts.flowMeter ? 50 : 0,
+      SetpointFlowLL: opts.flowMeter ? 20 : 0,
+      // Each alarm's delay in effect (the controller's config defaults).
+      DelayTankL: 600,
+      DelayTankLL: 600,
+      DelayPressureH: 0,
+      DelayPressureHH: 0,
+      DelayFlowL: 120,
+      DelayFlowLL: 120,
       ...(opts.calibrationMethod ? { CalibrationMethod: opts.calibrationMethod } : {}),
       ...(opts.testRunRemaining != null
         ? {
@@ -149,6 +160,7 @@ export function createMockClient(opts: MockOptions) {
           [CTRL]: {
             pressure_units: opts.pressureUnits ?? "psi",
             ...(opts.tankLlRequired ? { tank_ll_validation_enabled: true, tank_app: "analog_level_sensor_1" } : {}),
+            ...(opts.flowMeter ? { flow_meter_source: "DI", flow_meter_pin: 2, flow_meter_k_factor: 450 } : {}),
           },
         },
       },
@@ -267,24 +279,41 @@ export function createMockClient(opts: MockOptions) {
         return { active: false, result: "cancelled" };
       case "low_tank_level":
       case "low_low_tank_level":
-      case "tank_level_timeout":
       case "high_pressure":
-      case "high_high_pressure": {
+      case "high_high_pressure":
+      case "low_flow_percent":
+      case "low_low_flow_percent":
+      case "tank_l_delay":
+      case "tank_ll_delay":
+      case "pressure_h_delay":
+      case "pressure_hh_delay":
+      case "flow_l_delay":
+      case "flow_ll_delay": {
         const v = Number(req.request);
         if (req.method === "low_low_tank_level" && opts.tankLlRequired && !(v > 0)) {
           throw rpcError("INVALID", "the low-low tank level must be above 0 while a tank sensor is configured");
         }
-        if (req.method === "tank_level_timeout" && !(v >= 1 && v <= 600)) {
-          throw rpcError("INVALID", "the tank level alarm delay must be 1 to 600 seconds");
+        // Delays: whole seconds (rounded), tank 1 to 600, the rest 0 to 600.
+        const delay = req.method.endsWith("_delay");
+        const min = req.method.startsWith("tank_") ? 1 : 0;
+        if (delay && !(v >= min && v <= 600)) {
+          throw rpcError("INVALID", `the alarm delay must be ${min} to 600 seconds`);
         }
         const tag = {
           low_tank_level: "SetpointTankL",
           low_low_tank_level: "SetpointTankLL",
-          tank_level_timeout: "SetpointTankLevelTimeout",
           high_pressure: "SetpointPressureH",
           high_high_pressure: "SetpointPressureHH",
+          low_flow_percent: "SetpointFlowL",
+          low_low_flow_percent: "SetpointFlowLL",
+          tank_l_delay: "DelayTankL",
+          tank_ll_delay: "DelayTankLL",
+          pressure_h_delay: "DelayPressureH",
+          pressure_hh_delay: "DelayPressureHH",
+          flow_l_delay: "DelayFlowL",
+          flow_ll_delay: "DelayFlowLL",
         }[req.method] as string;
-        patchTags({ [tag]: req.method === "tank_level_timeout" ? Math.round(v) : v });
+        patchTags({ [tag]: delay ? Math.round(v) : v });
         return { [req.method]: v };
       }
       case "last_calibration_factor":

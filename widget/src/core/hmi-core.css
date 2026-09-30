@@ -1536,9 +1536,10 @@
 }
 
 /* ------------------------------------------------------------------
-   Alarm settings: the gears on the Tank / Skid tiles and their popover
-   (same overlay, head and insets as the VSD panel; two or three large
-   rows, no scrolling).
+   Alarm settings: the gears on the Tank / Skid / Pump Control tiles and
+   their popover (same overlay, head and insets as the VSD panel; two large
+   rows, no scrolling). Each row is one alarm: its name and kind, then two
+   tap targets side by side, the threshold and its delay, each captioned.
    ------------------------------------------------------------------ */
 .sia-hmi .alarm-panel {
     display: flex;
@@ -1566,43 +1567,28 @@
 
 .sia-hmi .alarm-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 4px 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 13rem) minmax(0, 10rem);
+    align-items: stretch;
+    gap: 8px;
     width: 100%;
-    min-height: 72px;
-    padding: 8px 14px;
+    padding: 6px;
+    padding-left: 12px;
     border: 2px solid #39464f;
     border-radius: 3px;
-    background: var(--hmi-instrument);
+    background: var(--hmi-panel);
     color: var(--hmi-text);
     font-size: 1rem;
     text-align: left;
 }
 
-.sia-hmi .alarm-row.editable {
-    border-color: var(--hmi-edge);
-    box-shadow: inset 3px 0 0 var(--hmi-blue), inset 0 1px 0 #ffffff26, 0 3px 0 #090e11;
-    cursor: pointer;
+.sia-hmi .alarm-head {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
 }
-
-/* The generic pending ellipsis would become an extra grid cell. */
-.sia-hmi .alarm-row.pending::after { content: none; }
-.sia-hmi .alarm-row.ok { box-shadow: 0 0 0 3px #27ae60; }
-.sia-hmi .alarm-row.error { box-shadow: 0 0 0 3px #e74c3c; }
-
 .sia-hmi .alarm-label { font-size: 1.1rem; font-weight: 700; min-width: 0; }
-.sia-hmi .alarm-value {
-    grid-row: span 2;
-    font-family: Consolas, 'Liberation Mono', monospace;
-    font-variant-numeric: tabular-nums;
-    font-size: 1.6rem;
-    font-weight: 700;
-    white-space: nowrap;
-    text-align: right;
-}
-.sia-hmi .alarm-row.off .alarm-value { color: var(--hmi-muted); }
-.sia-hmi .alarm-meta { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .sia-hmi .alarm-kind {
     font-size: 0.7rem;
     font-weight: 700;
@@ -1611,14 +1597,70 @@
     color: var(--hmi-amber);
 }
 .sia-hmi .alarm-trip .alarm-kind { color: var(--hmi-red); }
-.sia-hmi .alarm-delay .alarm-kind { color: var(--hmi-blue); }
-.sia-hmi .alarm-range { font-size: 0.8rem; font-weight: 600; color: var(--hmi-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sia-hmi .alarm-note {
-    grid-column: 1 / -1;
-    font-size: 0.8rem;
-    font-weight: 600;
+
+/* One value: caption, value, then its range (or the write's note). */
+.sia-hmi .alarm-cell {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    min-height: 64px;
+    padding: 6px 10px;
+    border: 2px solid #39464f;
+    border-radius: 3px;
+    background: var(--hmi-instrument);
+    color: var(--hmi-text);
+    font-size: 1rem;
+    text-align: left;
+}
+
+.sia-hmi .alarm-cell.editable {
+    border-color: var(--hmi-edge);
+    box-shadow: inset 3px 0 0 var(--hmi-blue), inset 0 1px 0 #ffffff26, 0 3px 0 #090e11;
+    cursor: pointer;
+}
+
+/* The generic pending ellipsis would become an extra line. */
+.sia-hmi .alarm-cell.pending::after { content: none; }
+.sia-hmi .alarm-cell.ok { box-shadow: 0 0 0 3px #27ae60; }
+.sia-hmi .alarm-cell.error { box-shadow: 0 0 0 3px #e74c3c; }
+
+.sia-hmi .alarm-caption {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--hmi-muted);
 }
+.sia-hmi .alarm-cell-delay .alarm-caption { color: var(--hmi-blue); }
+.sia-hmi .alarm-value {
+    font-family: Consolas, 'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sia-hmi .alarm-cell.off .alarm-value { color: var(--hmi-muted); }
+.sia-hmi .alarm-range { font-size: 0.75rem; font-weight: 600; color: var(--hmi-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sia-hmi .alarm-cell.has-note .alarm-range { display: none; }
+.sia-hmi .alarm-note {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--hmi-muted);
+    overflow-wrap: anywhere;
+}
 .sia-hmi .alarm-note:empty { display: none; }
-.sia-hmi .alarm-row.ok .alarm-note { color: var(--hmi-green); }
-.sia-hmi .alarm-row.error .alarm-note { color: var(--hmi-red); }
+.sia-hmi .alarm-cell.ok .alarm-note { color: var(--hmi-green); }
+.sia-hmi .alarm-cell.error .alarm-note { color: var(--hmi-red); }
+
+/* Narrow (a phone in the cloud): the name above, the two values below; a
+   range hint wraps rather than losing its "0 = off". */
+@container hmi-pop (max-width: 520px) {
+    .sia-hmi .alarm-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .sia-hmi .alarm-head { grid-column: 1 / -1; flex-direction: row; justify-content: flex-start; align-items: baseline; gap: 10px; }
+    .sia-hmi .alarm-range { white-space: normal; }
+}

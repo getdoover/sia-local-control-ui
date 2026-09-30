@@ -65,18 +65,25 @@ test("touch rejects bad values and unknown commands", () => {
 test("the touch command list is exactly the controller contract", () => {
   assert.deepEqual([...TOUCH_COMMANDS].sort(), [
     "cancel_test_run",
+    "flow_l_delay",
+    "flow_ll_delay",
     "high_high_pressure",
     "high_pressure",
     "last_calibration_factor",
+    "low_flow_percent",
+    "low_low_flow_percent",
     "low_low_tank_level",
     "low_tank_level",
     "nudge_rate",
+    "pressure_h_delay",
+    "pressure_hh_delay",
     "reset_fault",
     "reset_vsd_fault",
     "set_pump_state",
     "set_target_rate",
     "start_test_run",
-    "tank_level_timeout",
+    "tank_l_delay",
+    "tank_ll_delay",
   ]);
 });
 

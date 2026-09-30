@@ -44,26 +44,46 @@ export const TOUCH_COMMANDS: readonly string[] = [
   // by alarm_settings_access, not HMI Control Mode: see checkTouchCommand.
   "low_tank_level",
   "low_low_tank_level",
-  "tank_level_timeout",
   "high_pressure",
   "high_high_pressure",
+  "low_flow_percent",
+  "low_low_flow_percent",
+  "tank_l_delay",
+  "tank_ll_delay",
+  "pressure_h_delay",
+  "pressure_hh_delay",
+  "flow_l_delay",
+  "flow_ll_delay",
 ];
 
 /**
- * Threshold (and tank alarm delay) writes: numbers, allowed by
+ * Alarm delays (one per threshold alarm): whole seconds within the alarm's
+ * range, as the controller enforces them (core/alarms.js
+ * ALARM_DELAY_RANGES). Tank 1 to 600; pressure and flow 0 to 600, 0 = no
+ * delay.
+ */
+export const ALARM_DELAY_RANGES_S: Readonly<Record<string, readonly [number, number]>> = {
+  tank_l_delay: [1, 600],
+  tank_ll_delay: [1, 600],
+  pressure_h_delay: [0, 600],
+  pressure_hh_delay: [0, 600],
+  flow_l_delay: [0, 600],
+  flow_ll_delay: [0, 600],
+};
+
+/**
+ * Threshold and alarm delay writes: numbers, allowed by
  * alarm_settings_access on this host.
  */
 export const ALARM_SETTING_COMMANDS: readonly string[] = [
   "low_tank_level",
   "low_low_tank_level",
-  "tank_level_timeout",
   "high_pressure",
   "high_high_pressure",
+  "low_flow_percent",
+  "low_low_flow_percent",
+  ...Object.keys(ALARM_DELAY_RANGES_S),
 ];
-
-/** The tank alarm delay (tank_level_timeout): whole seconds, 1 to 600. */
-export const TANK_LEVEL_TIMEOUT_MIN_S = 1;
-export const TANK_LEVEL_TIMEOUT_MAX_S = 600;
 
 export const ALARM_WRITE_BLOCKED_TEXT = "Alarm settings can't be changed from this screen.";
 
@@ -91,14 +111,12 @@ export function checkTouchCommand(
     if (!alarmWrite) return { ok: false, code: "READ_ONLY", message: ALARM_WRITE_BLOCKED_TEXT };
     const n = optNum(value);
     if (n === null || n < 0) return { ok: false, code: "INVALID", message: "enter a number" };
-    if (
-      cmd === "tank_level_timeout" &&
-      (!Number.isInteger(n) || n < TANK_LEVEL_TIMEOUT_MIN_S || n > TANK_LEVEL_TIMEOUT_MAX_S)
-    ) {
+    const delay = ALARM_DELAY_RANGES_S[cmd];
+    if (delay && (!Number.isInteger(n) || n < delay[0] || n > delay[1])) {
       return {
         ok: false,
         code: "INVALID",
-        message: `The alarm delay must be whole seconds, ${TANK_LEVEL_TIMEOUT_MIN_S} to ${TANK_LEVEL_TIMEOUT_MAX_S}.`,
+        message: `The delay must be whole seconds, ${delay[0]} to ${delay[1]}.`,
       };
     }
     return null;

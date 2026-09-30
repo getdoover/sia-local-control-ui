@@ -172,7 +172,7 @@ export interface HmiConfig {
   /** Techtop motor controller app the VSD panel calls; null hides the gear. */
   vsdMotorApp: string | null;
   vsdCommissioning: VsdCommissioning;
-  /** Alarm settings gears on the Tank / Skid tiles (same options as VSD). */
+  /** Alarm settings gears on the Tank / Skid / Pump Control tiles (same options as VSD). */
   alarmSettingsAccess: VsdCommissioning;
   /** Local panel only: gap on every side of the whole HMI (cover plate). */
   kioskInsetMm: number;
@@ -371,23 +371,52 @@ export interface CalibrationData {
 }
 
 /**
- * The controller's tank / discharge pressure alarm thresholds (0 = off) and
- * the tank alarm delay (seconds), for the alarm settings popovers
- * (core/alarms.js). A group is present only when its sensor app is
- * configured on the HMI.
+ * The controller's tank / discharge pressure / flow alarm thresholds (0 =
+ * off) and each alarm's delay (whole seconds, the delay in effect), for the
+ * alarm settings popovers (core/alarms.js). The tank and pressure groups are
+ * present only when their sensor app is configured on the HMI; the flow
+ * group only when the primary controller has a dedicated flow meter.
  */
 export interface AlarmSettingsData {
-  tank?: { low: number | null; low_low: number | null; delay: number | null; ll_required: boolean };
-  pressure?: { high: number | null; high_high: number | null; units: string };
+  tank?: {
+    low: number | null;
+    low_low: number | null;
+    low_delay: number | null;
+    low_low_delay: number | null;
+    ll_required: boolean;
+  };
+  pressure?: {
+    high: number | null;
+    high_high: number | null;
+    high_delay: number | null;
+    high_high_delay: number | null;
+    units: string;
+  };
+  flow?: { low: number | null; low_low: number | null; low_delay: number | null; low_low_delay: number | null };
 }
 
 /**
- * Alarm thresholds from the primary controller's Setpoint* tags, with the
- * two controller config facts the editor needs: its pressure unit (the
- * PressureUnits tag, else its pressure_units config) and whether tank LL
- * may be off (tank_ll_validation_enabled with a tank_app: it may not). The
- * tank alarm delay is SetpointTankLevelTimeout (null on an older controller
- * that does not publish it, as for the thresholds).
+ * Whether the controller has a dedicated flow meter, so flow L / LL alarms
+ * (app_config.py has_flow_meter): a Flow Meter Source other than Disabled
+ * (DI / AI, or a legacy AI0 / AI1), a pin (AI0 / AI1 carry theirs) and a
+ * K-factor above 0. Without one the controller runs no flow alarms.
+ */
+export function controllerHasFlowMeter(controllerConfig: unknown): boolean {
+  const cc = asRecord(controllerConfig);
+  const source = (asString(cc.flow_meter_source) ?? "").trim().toLowerCase();
+  const legacyAi = source === "ai0" || source === "ai1";
+  if (!legacyAi && source !== "di" && source !== "ai") return false;
+  const k = optNum(cc.flow_meter_k_factor);
+  return (legacyAi || optNum(cc.flow_meter_pin) !== null) && k !== null && k > 0;
+}
+
+/**
+ * Alarm thresholds and delays from the primary controller's Setpoint* and
+ * Delay* tags, with the controller config facts the editor needs: its
+ * pressure unit (the PressureUnits tag, else its pressure_units config),
+ * whether tank LL may be off (tank_ll_validation_enabled with a tank_app: it
+ * may not) and whether it has a flow meter (the flow group). A tag an older
+ * controller does not publish reads null ("—"), not zero.
  */
 export function collectAlarmSettings(
   get: TagReader,
@@ -397,22 +426,34 @@ export function collectAlarmSettings(
 ): AlarmSettingsData | undefined {
   const cc = asRecord(controllerConfig);
   const out: AlarmSettingsData = {};
+  const tag = (name: string) => optNum(get(name, key));
   if (cfg.tankLevelApp) {
     out.tank = {
-      low: optNum(get("SetpointTankL", key)),
-      low_low: optNum(get("SetpointTankLL", key)),
-      delay: optNum(get("SetpointTankLevelTimeout", key)),
+      low: tag("SetpointTankL"),
+      low_low: tag("SetpointTankLL"),
+      low_delay: tag("DelayTankL"),
+      low_low_delay: tag("DelayTankLL"),
       ll_required: cc.tank_ll_validation_enabled === true && asString(cc.tank_app) !== null,
     };
   }
   if (cfg.pressureSensorApp) {
     out.pressure = {
-      high: optNum(get("SetpointPressureH", key)),
-      high_high: optNum(get("SetpointPressureHH", key)),
+      high: tag("SetpointPressureH"),
+      high_high: tag("SetpointPressureHH"),
+      high_delay: tag("DelayPressureH"),
+      high_high_delay: tag("DelayPressureHH"),
       units: asString(get("PressureUnits", key)) ?? asString(cc.pressure_units) ?? DEFAULT_PRESSURE_UNITS,
     };
   }
-  return out.tank || out.pressure ? out : undefined;
+  if (controllerHasFlowMeter(cc)) {
+    out.flow = {
+      low: tag("SetpointFlowL"),
+      low_low: tag("SetpointFlowLL"),
+      low_delay: tag("DelayFlowL"),
+      low_low_delay: tag("DelayFlowLL"),
+    };
+  }
+  return out.tank || out.pressure || out.flow ? out : undefined;
 }
 
 export interface DashboardData {
@@ -426,7 +467,7 @@ export interface DashboardData {
   vsd?: VsdData;
   touch?: TouchData;
   calibration?: CalibrationData;
-  /** Alarm thresholds read back from the controller (Setpoint* tags). */
+  /** Alarm thresholds and delays read back from the controller (Setpoint* / Delay* tags). */
   alarm_settings?: AlarmSettingsData;
   solar?: {
     battery_voltage?: number;
@@ -785,12 +826,19 @@ export function liveTagIds(cfg: HmiConfig): string[] {
     "TestRunDuration_s",
     "TestRunElapsed_s",
     "TestRunResult",
-    // Alarm settings readback.
+    // Alarm settings readback: thresholds, then each alarm's delay.
     "SetpointTankL",
     "SetpointTankLL",
-    "SetpointTankLevelTimeout",
     "SetpointPressureH",
     "SetpointPressureHH",
+    "SetpointFlowL",
+    "SetpointFlowLL",
+    "DelayTankL",
+    "DelayTankLL",
+    "DelayPressureH",
+    "DelayPressureHH",
+    "DelayFlowL",
+    "DelayFlowLL",
   ];
   for (const key of cfg.controllers) {
     for (const tag of controllerTags) ids.push(`${key}.${tag}`);

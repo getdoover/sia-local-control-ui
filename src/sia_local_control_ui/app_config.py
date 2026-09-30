@@ -37,8 +37,9 @@ TANK_NONE = "None"
 # first is the default: no gear.
 VSD_COMMISSIONING = ("Hidden", "Local only", "Local and cloud")
 
-# Alarm settings gears on the widget's Tank / Skid tiles: the same options
-# (widget/src/lib/alarmSettings.ts). Hidden first = the default: no gears.
+# Alarm settings gears on the widget's Tank / Skid / Pump Control tiles: the
+# same options (widget/src/lib/alarmSettings.ts). Hidden first = the default:
+# no gears.
 ALARM_SETTINGS_ACCESS = VSD_COMMISSIONING
 
 
@@ -456,9 +457,10 @@ class SiaLocalControlUiConfig(config.Schema):
     )
 
     # --- Alarm settings (widget only) -----------------------------------------
-    # Gears on the Tank and Skid (discharge pressure) tiles open the pump
-    # controller's alarm settings: tank L / LL and the tank alarm delay, and
-    # pressure H / HH, read back from its Setpoint* tags and written to its
+    # Gears on the Tank, Skid (discharge pressure) and, with a controller flow
+    # meter, Pump Control tiles open the pump controller's alarm settings:
+    # tank L / LL, pressure H / HH and flow L / LL, each with its own alarm
+    # delay, read back from its Setpoint* / Delay* tags and written to its
     # "Alarm Settings" elements over ui_cmds. Hidden by default, so existing
     # configs show no gears. Governed by this setting, not HMI Control Mode.
     alarm_settings_access = config.Enum(
@@ -466,8 +468,10 @@ class SiaLocalControlUiConfig(config.Schema):
         choices=list(ALARM_SETTINGS_ACCESS),
         default=ALARM_SETTINGS_ACCESS[0],
         description=(
-            "Alarm settings gears on the HMI widget's Tank and Skid pressure "
-            "tiles (tank L / LL and alarm delay, discharge pressure H / HH). "
+            "Alarm settings gears on the HMI widget's Tank, Skid pressure and "
+            "(with a controller flow meter) Pump Control tiles: tank L / LL, "
+            "discharge pressure H / HH and flow L / LL, each with its alarm "
+            "delay. "
             "Hidden: no gears. Local only: values shown everywhere, changes "
             "only from the local panel. Local and cloud: changes from the "
             "local panel and the cloud UI."

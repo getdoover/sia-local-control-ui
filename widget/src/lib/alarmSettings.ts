@@ -1,6 +1,7 @@
 /**
- * Alarm settings access: who sees the Tank / Skid tiles' gears and who may
- * change the thresholds. Config `alarm_settings_access`, the same three
+ * Alarm settings access: who sees the Tank / Skid (and, with a controller
+ * flow meter, Pump Control) tiles' gears and who may change the thresholds
+ * and their delays. Config `alarm_settings_access`, the same three
  * options as `vsd_commissioning`:
  *
  *   Hidden (default): no gears, so existing installs are unchanged.

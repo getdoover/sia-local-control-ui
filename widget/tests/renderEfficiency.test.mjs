@@ -263,7 +263,7 @@ test("after a render that throws part-way, the last good payload renders in full
   assert.equal(pressure(), "350.2");
 });
 
-test("an alarm row's Saved ring comes back after the feedback timer on an unchanged feed", async () => {
+test("an alarm cell's Saved ring comes back after the feedback timer on an unchanged feed", async () => {
   // sendCommand's feedback timer takes the ring off after 2.5 s; every
   // update while the popover is open puts it back from the write's state.
   const { mock } = test;
@@ -276,12 +276,12 @@ test("an alarm row's Saved ring comes back after the feedback timer on an unchan
     const at = (s, over) => live({ timestamp: `2026-09-28T01:00:${String(s).padStart(2, "0")}.000Z`, ...over });
     m.render(at(0));
     m.click("tank-gear");
-    m.click("alarm-row-low_tank_level");
+    m.click("alarm-cell-low_tank_level");
     for (const k of ["clear", "2", "5"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
     m.click("keypad-ok");
     m.click("confirm-ok");
     await settle();
-    const row = m.byId("alarm-row-low_tank_level");
+    const row = m.byId("alarm-cell-low_tank_level");
     assert.ok(row.classList.contains("ok"));
     const readback = { alarm_settings: { ...SETTINGS, tank: { ...SETTINGS.tank, low: 25 } } };
     m.render(at(1, readback));

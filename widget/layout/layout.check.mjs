@@ -25,10 +25,13 @@
 // Screenshots: SHOTS=<dir> npm run test:layout
 // Popover screenshots: VSD_SHOTS=<dir> npm run test:layout  (vsd-panel-<w>x<h>.png)
 // Wizard screenshots (1024x600): CAL_SHOTS=<dir> npm run test:layout  (calwiz-<page>.png)
-// Alarm settings (alarm_settings_access): the Tank / Skid gears fit their
-// tiles, and each popover (tank L / LL / alarm delay, pressure H / HH) and
-// its keypad fit at every size, with and without the insets. Screenshots:
-// ALARM_SHOTS=<dir> (alarm-tank.png, alarm-pressure.png at 1024x600 inset)
+// Alarm settings (alarm_settings_access): the Tank / Skid (and, with a
+// controller flow meter, Pump Control) gears fit their tiles, and each
+// popover (tank L / LL, pressure H / HH, flow L / LL, each row the threshold
+// and its delay side by side) and its keypad fit at every size, with and
+// without the insets. Screenshots: ALARM_SHOTS=<dir> (alarm-tank-<w>x<h>.png,
+// alarm-pressure-<w>x<h>.png, alarm-flow-<w>x<h>.png at 800x480 and 1024x600
+// inset)
 // Cover-plate insets (kiosk_inset_mm 2 + popover_inset_mm 10) at every size:
 // the whole HMI inside the inset, the VSD popover (with its up / down scroll
 // buttons, no scrollbar), the wizard, keypad and confirmation inside the
@@ -799,13 +802,14 @@ function measureAlarmGears() {
     return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
   };
   const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
-  const gears = ["tank-gear", "pressure-gear", "vsd-gear"].filter((id) => vis(q(id)));
+  const gears = ["tank-gear", "pressure-gear", "flow-gear", "vsd-gear"].filter((id) => vis(q(id)));
   return {
     gears: Object.fromEntries(
-      ["tank-gear", "pressure-gear"].map((id) => [id, vis(q(id)) ? box(q(id)) : null]),
+      ["tank-gear", "pressure-gear", "flow-gear"].map((id) => [id, vis(q(id)) ? box(q(id)) : null]),
     ),
     tank: box(q("tank-section")),
     skid: box(q("skid-section")),
+    pump: box(q("pump-section")),
     others: [...document.querySelectorAll(".sia-hmi .dashboard-container button")]
       .filter((b) => vis(b) && !gears.includes(b.dataset.id))
       .map((b) => ({ id: b.dataset.id, ...box(b) })),
@@ -825,13 +829,49 @@ function measureAlarmPanel() {
     panel: { ...box(panel), sh: panel.scrollHeight, ch: panel.clientHeight, sw: panel.scrollWidth, cw: panel.clientWidth },
     title: document.querySelector('.sia-hmi [data-id="alarm-panel-title"]').textContent,
     close: box(document.querySelector('.sia-hmi [data-id="alarm-panel-close"]')),
+    // Each row: the alarm's threshold and delay cells, side by side.
     rows: [...panel.querySelectorAll(".alarm-row")].filter(vis).map((r) => ({
-      id: r.dataset.alarm,
       ...box(r),
       overflowX: r.scrollWidth - r.clientWidth,
-      value: r.querySelector("[data-alarm-value]").textContent,
+      cells: [...r.querySelectorAll("[data-alarm]")].map((c) => {
+        const v = c.querySelector("[data-alarm-value]");
+        return {
+          id: c.dataset.alarm,
+          ...box(c),
+          caption: c.querySelector(".alarm-caption").textContent,
+          value: v.textContent,
+          valueCut: v.scrollWidth - v.clientWidth,
+          overflowX: c.scrollWidth - c.clientWidth,
+        };
+      }),
     })),
   };
+}
+
+/** One popover's fit: inside the gap, no overflow, the rows' cells in order,
+ * side by side, captioned, comfortably tappable, values whole. */
+function assertAlarmPanel(p, w, h, gap, title, rows, caption) {
+  const ctx = `${title}: ${JSON.stringify(p)}`;
+  assert.equal(p.title, title);
+  assert.ok(p.doc[0] <= w && p.doc[1] <= h, `page scrolls with the popover: ${ctx}`);
+  assertInside(p.panel, w, h, gap, title);
+  assert.ok(p.panel.sh <= p.panel.ch + 1 && p.panel.sw <= p.panel.cw + 1, `popover overflows: ${ctx}`);
+  assert.deepEqual(p.rows.map((r) => r.cells.map((c) => c.id)), rows, ctx);
+  for (const r of p.rows) {
+    assert.ok(r.overflowX <= 1, `row overflows: ${ctx}`);
+    assert.ok(r.bottom <= p.panel.bottom + 0.5, `row outside the popover: ${ctx}`);
+    const [value, delay] = r.cells;
+    assert.equal(value.caption, caption, ctx);
+    assert.equal(delay.caption, "Delay", ctx);
+    // Same row: side by side, the delay to the right of the value.
+    assert.ok(Math.abs(value.top - delay.top) <= 1 && delay.left >= value.right, `${delay.id} not beside ${value.id}: ${ctx}`);
+    for (const c of r.cells) {
+      assert.ok(c.h >= 56 && c.w >= 120, `${c.id} ${c.w}x${c.h} too small to tap: ${ctx}`);
+      assert.ok(c.overflowX <= 1 && c.valueCut <= 1, `${c.id} value cut off: ${ctx}`);
+      assert.notEqual(c.value, "\u2014", `${c.id} readback missing: ${ctx}`);
+    }
+  }
+  assert.ok(p.close.w >= 44 && p.close.h >= 44, "close < 44px");
 }
 
 const ALARM_Q = `alarms=${encodeURIComponent("Local only")}&punits=kPa&scenario=running`;
@@ -840,7 +880,7 @@ for (const [w, h] of SIZES) {
   for (const [insetName, insetQ, gap] of [["no inset", "", 8], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, POP_PX]]) {
     test(`${w}x${h} Touch, ${insetName}: alarm settings gears and popovers fit`, async () => {
       const page = await browser.newPage({ viewport: { width: w, height: h } });
-      const shoot = ALARM_SHOTS && w === 1024 && h === 600 && insetQ;
+      const shoot = ALARM_SHOTS && w <= 1024 && h <= 600 && insetQ;
       try {
         await page.goto(`${base}?host=local&mode=Touch&${ALARM_Q}${insetQ}&commission=${encodeURIComponent("Local only")}`);
         await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
@@ -857,6 +897,8 @@ for (const [w, h] of SIZES) {
         // Gears: >= 44 px, top-right of their tiles, clear of other controls.
         const g = await page.evaluate(measureAlarmGears);
         const gctx = JSON.stringify(g);
+        // No controller flow meter (this project): no flow gear.
+        assert.equal(g.gears["flow-gear"], null, `flow gear without a flow meter: ${gctx}`);
         for (const [id, tile] of [["tank-gear", g.tank], ["pressure-gear", g.skid]]) {
           const b = g.gears[id];
           assert.ok(b, `${id} not shown: ${gctx}`);
@@ -869,39 +911,34 @@ for (const [w, h] of SIZES) {
           }
         }
 
-        for (const [gear, title, file, rows] of [
-          ["tank-gear", "Tank Level Alarms", "alarm-tank.png", ["low_tank_level", "low_low_tank_level", "tank_level_timeout"]],
-          ["pressure-gear", "Discharge Pressure Alarms", "alarm-pressure.png", ["high_pressure", "high_high_pressure"]],
+        for (const [gear, title, file, rows, caption] of [
+          ["tank-gear", "Tank Level Alarms", "alarm-tank", [["low_tank_level", "tank_l_delay"], ["low_low_tank_level", "tank_ll_delay"]], "Level"],
+          ["pressure-gear", "Discharge Pressure Alarms", "alarm-pressure", [["high_pressure", "pressure_h_delay"], ["high_high_pressure", "pressure_hh_delay"]], "Pressure"],
         ]) {
           await page.click(`.sia-hmi [data-id="${gear}"]`);
           await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
           const p = await page.evaluate(measureAlarmPanel);
-          const ctx = `${title}: ${JSON.stringify(p)}`;
-          assert.equal(p.title, title);
-          assert.ok(p.doc[0] <= w && p.doc[1] <= h, `page scrolls with the popover: ${ctx}`);
-          assertInside(p.panel, w, h, gap, title);
-          assert.ok(p.panel.sh <= p.panel.ch + 1 && p.panel.sw <= p.panel.cw + 1, `popover overflows: ${ctx}`);
-          assert.deepEqual(p.rows.map((r) => r.id), rows, ctx);
-          for (const r of p.rows) {
-            assert.ok(r.h >= 56, `${r.id} row ${r.h}px < 56`);
-            assert.ok(r.overflowX <= 1, `${r.id} row overflows: ${ctx}`);
-            assert.ok(r.bottom <= p.panel.bottom + 0.5, `${r.id} outside the popover: ${ctx}`);
-            assert.notEqual(r.value, "\u2014", `${r.id} readback missing: ${ctx}`);
-          }
-          assert.ok(p.close.w >= 44 && p.close.h >= 44, "close < 44px");
-          if (shoot) await page.screenshot({ path: path.join(ALARM_SHOTS, file) });
+          assertAlarmPanel(p, w, h, gap, title, rows, caption);
+          if (shoot) await page.screenshot({ path: path.join(ALARM_SHOTS, `${file}-${w}x${h}.png`) });
 
-          // The keypad from a row sits above the popover and inside the gap.
-          await page.click(`.sia-hmi [data-alarm="${p.rows[0].id}"]`);
-          await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
-          const k = await page.evaluate(() => {
-            const r = document.querySelector(".sia-hmi .keypad").getBoundingClientRect();
-            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 10);
-            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, onTop: !!hit?.closest(".keypad") };
-          });
-          assert.ok(k.onTop, "keypad above the alarm popover");
-          assertInside(k, w, h, gap, "keypad");
-          await page.click('.sia-hmi [data-id="keypad-cancel"]');
+          // The keypad from a threshold and from a delay sits above the
+          // popover and inside the gap.
+          for (const id of p.rows[0].cells.map((c) => c.id)) {
+            await page.click(`.sia-hmi [data-alarm="${id}"]`);
+            await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
+            const k = await page.evaluate(() => {
+              const r = document.querySelector(".sia-hmi .keypad").getBoundingClientRect();
+              const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 10);
+              return {
+                left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+                onTop: !!hit?.closest(".keypad"),
+                title: document.querySelector('.sia-hmi [data-id="keypad-title"]').textContent,
+              };
+            });
+            assert.ok(k.onTop, `keypad above the alarm popover (${id})`);
+            assertInside(k, w, h, gap, `keypad (${id})`);
+            await page.click('.sia-hmi [data-id="keypad-cancel"]');
+          }
           await page.click('.sia-hmi [data-id="alarm-panel-close"]');
           assert.equal(await page.isVisible('.sia-hmi [data-id="alarm-panel"]'), false);
         }
@@ -925,22 +962,25 @@ for (const [w, h] of SIZES) {
         assert.equal(sent.method, "low_tank_level");
         assert.equal(sent.request, 25);
 
-        // The "saved" toast is up, clear of every row, and takes no taps: each
-        // row's centre still hits that row (the delay row sat under it at
-        // 800x480, and a tap there was lost for the toast's 3 s).
+        // The "saved" toast is up at the bottom of the screen (below the
+        // popover, or on the bottom edge when there is no room below it), and
+        // takes no taps: each cell's centre still hits that cell (the lower
+        // row's cells can sit under it, and a tap there was lost for the
+        // toast's 3 s).
         const t = await page.evaluate(() => {
           const toast = document.querySelector('.sia-hmi [data-id="command-toast"]');
           const r = toast.getBoundingClientRect();
           return {
             shown: !toast.classList.contains("hidden") && r.height > 0,
             box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
-            rows: [...document.querySelectorAll(".sia-hmi .alarm-row")].map((row) => {
-              const b = row.getBoundingClientRect();
+            pop: document.querySelector('.sia-hmi [data-id="alarm-panel-box"]').getBoundingClientRect().bottom,
+            rows: [...document.querySelectorAll(".sia-hmi .alarm-row [data-alarm]")].map((cell) => {
+              const b = cell.getBoundingClientRect();
               const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
               return {
-                id: row.dataset.alarm,
+                id: cell.dataset.alarm,
                 left: b.left, top: b.top, right: b.right, bottom: b.bottom,
-                hit: hit?.closest(".alarm-row")?.dataset.alarm ?? hit?.className ?? null,
+                hit: hit?.closest("[data-alarm]")?.dataset.alarm ?? hit?.className ?? null,
               };
             }),
           };
@@ -948,31 +988,161 @@ for (const [w, h] of SIZES) {
         const tctx = JSON.stringify(t);
         assert.ok(t.shown, `no toast after the save: ${tctx}`);
         assertInside(t.box, w, h, insetQ ? INSET_PX : 0, "toast");
+        const edge = h - (insetQ ? INSET_PX : 0);
+        assert.ok(
+          t.box.top >= t.pop - 1 || Math.abs(edge - 8 - t.box.bottom) <= 1.5,
+          `toast not at the bottom (below the popover or on the bottom edge): ${tctx}`,
+        );
+        assert.ok(t.box.top > h / 2, `toast not in the lower half: ${tctx}`);
         for (const r of t.rows) {
           assert.equal(r.hit, r.id, `a tap on ${r.id} does not reach it: ${tctx}`);
-          const b = t.box;
-          const overlap = b.left < r.right && r.left < b.right && b.top < r.bottom && r.top < b.bottom;
-          assert.ok(!overlap, `toast over ${r.id}: ${tctx}`);
         }
 
-        // And the tank alarm delay: 600 -> 45 s, read back from its tag.
-        await page.click('.sia-hmi [data-alarm="tank_level_timeout"]');
+        // And the L warning's delay beside it: 600 -> 45 s, read back from
+        // its tag; the LL delay is untouched.
+        await page.click('.sia-hmi [data-alarm="tank_l_delay"]');
         await page.click('.sia-hmi [data-key="clear"]');
         for (const key of ["4", "5"]) await page.click(`.sia-hmi [data-key="${key}"]`);
         await page.click('.sia-hmi [data-id="keypad-ok"]');
         await page.click('.sia-hmi [data-id="confirm-ok"]');
         await page.waitForFunction(
-          () => document.querySelector('.sia-hmi [data-alarm="tank_level_timeout"] [data-alarm-value]')?.textContent === "45 s",
+          () => document.querySelector('.sia-hmi [data-alarm="tank_l_delay"] [data-alarm-value]')?.textContent === "45 s",
         );
         const delay = await page.evaluate(() => window.__rpcLog.at(-1));
-        assert.equal(delay.method, "tank_level_timeout");
+        assert.equal(delay.method, "tank_l_delay");
         assert.equal(delay.request, 45);
+        assert.equal(
+          await page.textContent('.sia-hmi [data-alarm="tank_ll_delay"] [data-alarm-value]'),
+          "600 s",
+        );
+
+        // A pressure delay: 0 s (no delay) -> 10 s.
+        await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+        await page.click('.sia-hmi [data-id="pressure-gear"]');
+        assert.equal(await page.textContent('.sia-hmi [data-alarm="pressure_hh_delay"] [data-alarm-value]'), "0 s");
+        await page.click('.sia-hmi [data-alarm="pressure_hh_delay"]');
+        await page.click('.sia-hmi [data-key="clear"]');
+        for (const key of ["1", "0"]) await page.click(`.sia-hmi [data-key="${key}"]`);
+        await page.click('.sia-hmi [data-id="keypad-ok"]');
+        await page.click('.sia-hmi [data-id="confirm-ok"]');
+        await page.waitForFunction(
+          () => document.querySelector('.sia-hmi [data-alarm="pressure_hh_delay"] [data-alarm-value]')?.textContent === "10 s",
+        );
+        const pdelay = await page.evaluate(() => window.__rpcLog.at(-1));
+        assert.equal(pdelay.method, "pressure_hh_delay");
+        assert.equal(pdelay.request, 10);
       } finally {
         await page.close();
       }
     });
   }
 }
+
+// Flow alarms: only with a dedicated flow meter on the controller (not on
+// this project). The gear sits on the Pump Control tile; the popover fits
+// like the others.
+for (const [w, h] of SIZES) {
+  for (const [insetName, insetQ, gap] of [["no inset", "", 8], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, POP_PX]]) {
+    test(`${w}x${h} Touch, ${insetName}, flow meter: the flow alarm gear and popover fit`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      const shoot = ALARM_SHOTS && w <= 1024 && h <= 600 && insetQ;
+      try {
+        await page.goto(`${base}?host=local&mode=Touch&${ALARM_Q}&flowmeter=1${insetQ}&commission=${encodeURIComponent("Local only")}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.waitForTimeout(150);
+
+        const m = await page.evaluate(measure);
+        assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${m.doc}`);
+        for (const [label, v] of [["content", m.content], ["body", m.body]]) {
+          assert.ok(v[2] <= v[3] + 1, `${label} overflows vertically with the flow gear: ${v}`);
+        }
+        for (const t of m.tiles) assert.ok(t.bottom <= m.barTop + 0.5, `${t.name} under the bar`);
+
+        const g = await page.evaluate(measureAlarmGears);
+        const gctx = JSON.stringify(g);
+        const b = g.gears["flow-gear"];
+        assert.ok(b, `flow-gear not shown: ${gctx}`);
+        assert.ok(b.w >= 44 && b.h >= 44, `flow-gear ${b.w}x${b.h} < 44px`);
+        const tile = g.pump;
+        assert.ok(b.top >= tile.top - 0.5 && b.right <= tile.right + 0.5 && b.left >= tile.left - 0.5, `flow-gear outside its tile: ${gctx}`);
+        assert.ok(b.right >= tile.right - 20 && b.top <= tile.top + 20, `flow-gear not top-right: ${gctx}`);
+        for (const o of g.others) {
+          const overlap = b.left < o.right && o.left < b.right && b.top < o.bottom && o.top < b.bottom;
+          assert.ok(!overlap, `flow-gear overlaps ${o.id}: ${gctx}`);
+        }
+
+        await page.click('.sia-hmi [data-id="flow-gear"]');
+        await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
+        const p = await page.evaluate(measureAlarmPanel);
+        assertAlarmPanel(p, w, h, gap, "Flow Alarms", [["low_flow_percent", "flow_l_delay"], ["low_low_flow_percent", "flow_ll_delay"]], "Flow (% of target)");
+        if (shoot) await page.screenshot({ path: path.join(ALARM_SHOTS, `alarm-flow-${w}x${h}.png`) });
+
+        // The L warning's delay: 120 -> 30 s, read back from its tag.
+        await page.click('.sia-hmi [data-alarm="flow_l_delay"]');
+        await page.click('.sia-hmi [data-key="clear"]');
+        for (const key of ["3", "0"]) await page.click(`.sia-hmi [data-key="${key}"]`);
+        await page.click('.sia-hmi [data-id="keypad-ok"]');
+        await page.click('.sia-hmi [data-id="confirm-ok"]');
+        await page.waitForFunction(
+          () => document.querySelector('.sia-hmi [data-alarm="flow_l_delay"] [data-alarm-value]')?.textContent === "30 s",
+        );
+        const sent = await page.evaluate(() => window.__rpcLog.at(-1));
+        assert.equal(sent.method, "flow_l_delay");
+        assert.equal(sent.request, 30);
+      } finally {
+        await page.close();
+      }
+    });
+  }
+}
+
+// A phone in the cloud (the narrow two-column popover): each cell's range
+// hint wraps rather than being cut off (the kPa H warning's "... 0 = off"),
+// and the two values of a row still sit side by side.
+test("cloud at phone width: the alarm popovers' range hints are whole", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await page.goto(`${base}?host=cloud&width=358&mode=Touch&${ALARM_Q}&flowmeter=1`);
+    await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+    await page.waitForTimeout(150);
+    for (const gear of ["tank-gear", "pressure-gear", "flow-gear"]) {
+      await page.click(`.sia-hmi [data-id="${gear}"]`);
+      await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]', { state: "visible" });
+      const p = await page.evaluate(() => ({
+        doc: document.documentElement.scrollWidth,
+        rows: [...document.querySelectorAll('.sia-hmi [data-id="alarm-rows"] .alarm-row')].map((r) =>
+          [...r.querySelectorAll("[data-alarm]")].map((c) => {
+            const range = c.querySelector("[data-alarm-range]");
+            const v = c.querySelector("[data-alarm-value]");
+            const b = c.getBoundingClientRect();
+            return {
+              id: c.dataset.alarm,
+              top: b.top,
+              left: b.left,
+              right: b.right,
+              range: range.textContent,
+              rangeCut: range.scrollWidth - range.clientWidth,
+              valueCut: v.scrollWidth - v.clientWidth,
+            };
+          }),
+        ),
+      }));
+      const ctx = `${gear}: ${JSON.stringify(p)}`;
+      assert.ok(p.doc <= 390, `page scrolls sideways: ${ctx}`);
+      assert.equal(p.rows.length, 2, ctx);
+      for (const [value, delay] of p.rows) {
+        assert.ok(Math.abs(value.top - delay.top) <= 1 && delay.left >= value.right, `${delay.id} not beside ${value.id}: ${ctx}`);
+        for (const c of [value, delay]) {
+          assert.ok(c.rangeCut <= 1, `${c.id} range "${c.range}" cut off: ${ctx}`);
+          assert.ok(c.valueCut <= 1, `${c.id} value cut off: ${ctx}`);
+        }
+      }
+      await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+    }
+  } finally {
+    await page.close();
+  }
+});
 
 // The keypad's backspace glyph (U+232B) is missing from the kiosk's bold
 // sans, and its font fallback is warmed at load by .glyph-warm. The warm-up

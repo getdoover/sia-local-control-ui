@@ -39,12 +39,14 @@ import {
   validateTestRate,
 } from "./calibration.js";
 import {
+  ALARM_DELAY_MISSING_TEXT,
   ALARM_FIELDS,
   ALARM_GROUPS,
   alarmDecimals,
   alarmRange,
   alarmValue,
   formatAlarmValue,
+  isDelayField,
   validateAlarmValue,
 } from "./alarms.js";
 
@@ -296,8 +298,11 @@ function template(opts) {
 
     <main class="dashboard-content" data-id="content">
       <div class="pump-skid-row" data-id="pump-skid-row">
-        <section class="control-section pump-section">
-          <h2>Pump Control</h2>
+        <section class="control-section pump-section" data-id="pump-section">
+          <h2 class="section-head"><span>Pump Control</span>
+            <button type="button" class="icon-btn section-gear hidden" data-id="flow-gear"
+              aria-label="Flow alarms" title="Flow alarms">${GEAR_ICON}</button>
+          </h2>
           <div class="controls-grid" data-id="pump-control-1">
             <div class="control-card">
               <h3>Target Rate</h3>
@@ -598,7 +603,12 @@ export function samePayloadButTime(a, b) {
 const MODE_LABELS = { read_only: "Read Only", touch: "Touch", button: "Button" };
 
 // Alarm settings gears: [alarm group, gear, the tile section it sits on].
-const ALARM_GEAR_SPECS = [["tank", "tank-gear", "tank-section"], ["pressure", "pressure-gear", "skid-section"]];
+// Flow sits on Pump Control, beside the Flow Rate its alarms watch.
+const ALARM_GEAR_SPECS = [
+  ["tank", "tank-gear", "tank-section"],
+  ["pressure", "pressure-gear", "skid-section"],
+  ["flow", "flow-gear", "pump-section"],
+];
 
 class Hmi {
   constructor(root, opts) {
@@ -625,9 +635,9 @@ class Hmi {
     this.vsdDiag = null;
     this.vsdParams = null;
     this.vsdParamState = {};
-    // Alarm settings popovers (gears on the Tank / Skid tiles).
+    // Alarm settings popovers (gears on the Tank / Skid / Pump Control tiles).
     this.alarmAccess = { enabled: false, canWrite: false, writeBlockedReason: "" };
-    this.alarmOpen = null; // "tank" | "pressure" while shown
+    this.alarmOpen = null; // "tank" | "pressure" | "flow" while shown
     this.alarmState = {};
     // 1min Calibration Sequence wizard state while open (null when closed).
     // Invariant: set only while the calwiz popover is on screen; a session
@@ -749,6 +759,7 @@ class Hmi {
     }
     on("tank-gear", () => this.alarmPanelOpen("tank"));
     on("pressure-gear", () => this.alarmPanelOpen("pressure"));
+    on("flow-gear", () => this.alarmPanelOpen("flow"));
     on("alarm-panel-close", () => this.alarmPanelClose());
     const alarmOverlay = this.$("alarm-panel");
     if (alarmOverlay) {
@@ -1030,11 +1041,11 @@ class Hmi {
 
   // Keep the toast clear of the touch bar wherever the bar is on screen (the
   // bottom edge on the kiosk, sticky in the cloud, one or two rows high).
-  // With a popover open (alarm, VSD, calibration) the bar is under it and
-  // the toast would sit over its lower rows (the alarm delay row at
-  // 800x480), so it goes in the larger gap above or below the popover
-  // instead, or at the top of the screen, over the popover's header, when
-  // neither gap is tall enough. It never takes taps (pointer-events: none).
+  // Always at the bottom of the screen. With a popover open (alarm, VSD,
+  // calibration) the bar is under it, so the toast goes in the gap below the
+  // popover, or on the bottom edge, over the popover's lowest row, when that
+  // gap is not tall enough. It never takes taps (pointer-events: none), so
+  // a row under it still works.
   placeToast(el) {
     el.style.bottom = "";
     el.style.top = "";
@@ -1048,16 +1059,13 @@ class Hmi {
       const r = this.$(`${pop}-box`).getBoundingClientRect();
       const inset = parseFloat(win.getComputedStyle(this.root).getPropertyValue("--hmi-kiosk-inset")) || 0;
       const h = el.offsetHeight;
-      const above = r.top - inset;
       const below = win.innerHeight - inset - r.bottom;
-      const top =
-        Math.max(above, below) < h + 8
-          ? inset + 8
-          : above >= below
-            ? inset + (above - h) / 2
-            : r.bottom + (below - h) / 2;
-      el.style.top = `${Math.round(top)}px`;
-      el.style.bottom = "auto";
+      if (below >= h + 8) {
+        el.style.top = `${Math.round(r.bottom + (below - h) / 2)}px`;
+        el.style.bottom = "auto";
+      } else {
+        el.style.bottom = `${Math.round(inset + 8)}px`;
+      }
       return;
     }
     const bar = this.$("touch-bar");
@@ -1960,13 +1968,15 @@ class Hmi {
     this.setText("vsd-trip", trip);
   }
 
-  // -- Alarm settings (gears on the Tank / Skid tiles) --------------------------
+  // -- Alarm settings (gears on the Tank / Skid / Pump Control tiles) ---------
   // alarm_settings_access decides whether the gears show and whether this
-  // host may change a threshold (setAlarmAccess). Values come from the
-  // controller's Setpoint* tags (payload alarm_settings); a change is a
-  // keypad (range-limited), a confirmation (old -> new), then the ui_cmds
-  // RPC named after the controller's element, with the row's pending / saved
-  // / error state. Rows are built once per open and updated in place.
+  // host may change a setting (setAlarmAccess). Values come from the
+  // controller's Setpoint* / Delay* tags (payload alarm_settings). One row
+  // per alarm: its threshold and its delay side by side, each its own tap
+  // target (data-alarm = the controller's element). A change is a keypad
+  // (range-limited), a confirmation (old -> new), then the ui_cmds RPC named
+  // after the element, with that cell's pending / saved / error state. Rows
+  // are built once per open and updated in place.
 
   setAlarmAccess(access) {
     const was = this.alarmAccess;
@@ -1983,6 +1993,8 @@ class Hmi {
     const a = this.data.alarm_settings;
     if (!this.alarmAccess.enabled || !a || !a[group]) return false;
     if (group === "tank") return !!this.data.tank;
+    // Flow: the payload has the group only with a controller flow meter.
+    if (group === "flow") return !!(this.data.pumps && this.data.pumps.length);
     return !!(this.data.skid && this.data.skid.skid_pressure != null);
   }
 
@@ -2024,61 +2036,85 @@ class Hmi {
     if (!list || !this.alarmOpen) return;
     const doc = this.root.ownerDocument;
     const editable = this.alarmAccess.canWrite;
+    const group = ALARM_GROUPS[this.alarmOpen];
     this.setText("alarm-panel-note", editable ? "Tap a value to change it" : this.alarmAccess.writeBlockedReason || "View only");
     const note = this.$("alarm-panel-note");
     if (note) note.classList.toggle("error", !editable);
     list.textContent = "";
-    for (const field of ALARM_GROUPS[this.alarmOpen].fields) {
+    // A cell: caption (what the value is), the value, then its range or,
+    // after a write, the write's note.
+    const cell = (field, caption, kind) => {
+      const c = doc.createElement(editable ? "button" : "div");
+      if (editable) c.type = "button";
+      c.className = `alarm-cell alarm-cell-${kind} ${editable ? "editable" : "locked"}`;
+      c.setAttribute("data-alarm", field);
+      c.setAttribute("data-id", `alarm-cell-${field}`);
+      c.innerHTML =
+        `<span class="alarm-caption">${escapeHtml(caption)}</span>` +
+        `<span class="alarm-value" data-alarm-value></span>` +
+        `<span class="alarm-range" data-alarm-range></span>` +
+        `<span class="alarm-note" data-alarm-note></span>`;
+      return c;
+    };
+    for (const field of group.fields) {
       const f = ALARM_FIELDS[field];
-      const row = doc.createElement(editable ? "button" : "div");
-      if (editable) row.type = "button";
-      row.className = `alarm-row ${editable ? "editable" : "locked"} alarm-${f.kind.toLowerCase()}`;
+      const row = doc.createElement("div");
+      row.className = `alarm-row alarm-${f.kind.toLowerCase()}`;
       row.setAttribute("role", "listitem");
-      row.setAttribute("data-alarm", field);
       row.setAttribute("data-id", `alarm-row-${field}`);
       row.innerHTML =
-        `<span class="alarm-label">${escapeHtml(f.label)}</span>` +
-        `<span class="alarm-value" data-alarm-value></span>` +
-        `<span class="alarm-meta"><span class="alarm-kind">${f.kind}</span>` +
-        `<span class="alarm-range" data-alarm-range></span></span>` +
-        `<span class="alarm-note" data-alarm-note></span>`;
+        `<span class="alarm-head"><span class="alarm-label">${escapeHtml(f.label)}</span>` +
+        `<span class="alarm-kind">${f.kind}</span></span>`;
+      row.appendChild(cell(field, group.caption, "setpoint"));
+      row.appendChild(cell(f.delay, "Delay", "delay"));
       list.appendChild(row);
     }
     this.renderAlarmValues();
   }
 
-  // Per payload while open: text in place (no row is replaced under a tap).
+  // Per payload while open: text in place (no cell is replaced under a tap).
   renderAlarmValues() {
     const list = this.$("alarm-rows");
     if (!list || !this.alarmOpen) return;
     const settings = this.data.alarm_settings;
-    for (const row of list.querySelectorAll("[data-alarm]")) {
-      const field = row.getAttribute("data-alarm");
+    for (const cell of list.querySelectorAll("[data-alarm]")) {
+      const field = cell.getAttribute("data-alarm");
       const r = alarmRange(field, settings);
       const value = alarmValue(field, settings);
-      setNodeText(row.querySelector("[data-alarm-value]"), formatAlarmValue(field, value, settings, EMPTY_VALUE));
+      setNodeText(cell.querySelector("[data-alarm-value]"), formatAlarmValue(field, value, settings, EMPTY_VALUE));
       const lo = r.offAllowed && r.min === 0 ? r.step : r.min;
-      setNodeText(
-        row.querySelector("[data-alarm-range]"),
-        `${rangeNum(lo)} to ${rangeNum(r.max)} ${r.unit}${r.offAllowed ? " \u00b7 0 = off" : ""}`,
-      );
+      const zero = r.offAllowed ? " \u00b7 0 = off" : isDelayField(field) && r.min === 0 ? " \u00b7 0 = none" : "";
+      setNodeText(cell.querySelector("[data-alarm-range]"), `${rangeNum(lo)} to ${rangeNum(r.max)} ${r.unit}${zero}`);
       const st = this.alarmState[field] || {};
-      setNodeText(row.querySelector("[data-alarm-note]"), st.note || "");
-      row.classList.toggle("ok", st.state === "ok");
-      row.classList.toggle("error", st.state === "error");
-      row.classList.toggle("off", value === 0);
+      setNodeText(cell.querySelector("[data-alarm-note]"), st.note || "");
+      cell.classList.toggle("has-note", !!st.note);
+      cell.classList.toggle("ok", st.state === "ok");
+      cell.classList.toggle("error", st.state === "error");
+      cell.classList.toggle("off", value === 0 && !isDelayField(field));
+      // A delay with no readback (a controller from before the per-alarm
+      // delays): locked until its Delay* tag arrives; a tap says why.
+      if (cell.tagName === "BUTTON") {
+        const missing = isDelayField(field) && value == null;
+        cell.classList.toggle("editable", !missing);
+        cell.classList.toggle("locked", missing);
+        setAttr(cell, "aria-disabled", missing ? "true" : "false");
+      }
     }
   }
 
-  alarmEdit(field, row) {
+  alarmEdit(field, cell) {
     const f = ALARM_FIELDS[field];
     if (!f || !this.alarmOpen) return;
     if (!this.alarmAccess.canWrite) {
       this.showToast(this.alarmAccess.writeBlockedReason || "Alarm settings are view only here", "error");
       return;
     }
-    if (row && row.classList.contains("pending")) {
+    if (cell && cell.classList.contains("pending")) {
       this.showToast("Still waiting for the pump controller to answer");
+      return;
+    }
+    if (isDelayField(field) && alarmValue(field, this.data.alarm_settings) == null) {
+      this.showToast(ALARM_DELAY_MISSING_TEXT, "error");
       return;
     }
     const settings = () => this.data.alarm_settings;
@@ -2086,17 +2122,24 @@ class Hmi {
     const dp = alarmDecimals(field, settings());
     const current = alarmValue(field, settings());
     const fmt = (v) => formatAlarmValue(field, v, settings(), EMPTY_VALUE);
+    const max = `${rangeNum(r.max)} ${r.unit}`;
+    let rangeText;
+    if (isDelayField(field)) {
+      rangeText = r.min === 0
+        ? `0 = no delay (immediate), or up to ${max}, whole seconds`
+        : `Range ${rangeNum(r.min)} to ${max}, whole seconds`;
+    } else if (r.offAllowed) {
+      rangeText = `0 = off, or up to ${max}${r.whole ? ", whole numbers" : ""}`;
+    } else {
+      rangeText = `Range ${rangeNum(r.min)} to ${max} (can't be off)`;
+    }
     this.keypadOpen({
       owner: "alarm",
       title: `${f.label}`,
       value: current,
       min: r.offAllowed ? 0 : r.min,
       max: r.max,
-      rangeText: r.offAllowed
-        ? `0 = off, or up to ${rangeNum(r.max)} ${r.unit}`
-        : r.whole
-          ? `Range ${rangeNum(r.min)} to ${rangeNum(r.max)} ${r.unit}, whole seconds`
-          : `Range ${rangeNum(r.min)} to ${rangeNum(r.max)} ${r.unit} (can't be off)`,
+      rangeText,
       decimals: dp,
       unit: r.unit,
       validate: (v) => validateAlarmValue(field, v, settings()) || null,
@@ -2112,11 +2155,11 @@ class Hmi {
 
   alarmWrite(field, value) {
     const f = ALARM_FIELDS[field];
-    const row = this.$(`alarm-row-${field}`);
+    const cell = this.$(`alarm-cell-${field}`);
     const fmt = (v) => formatAlarmValue(field, v, this.data.alarm_settings, EMPTY_VALUE);
     this.alarmState[field] = { state: "pending", note: "Writing\u2026" };
     this.renderAlarmValues();
-    return this.sendCommand(field, value, row && row.tagName === "BUTTON" ? row : null, { requireTouch: false }).then((ack) => {
+    return this.sendCommand(field, value, cell && cell.tagName === "BUTTON" ? cell : null, { requireTouch: false }).then((ack) => {
       if (this.destroyed) return ack;
       if (ack && ack.ok) {
         this.alarmState[field] = { state: "ok", note: `Saved \u00b7 ${fmt(value)}` };

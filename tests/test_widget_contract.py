@@ -241,22 +241,42 @@ def test_alarm_settings_access_options_match_the_widget():
         == "Hidden"
     )
     assert "alarm_settings_access" in _widget_config_keys()
-    # The four thresholds and the tank alarm delay are the pump controller's
+    # The six thresholds and each alarm's delay are the pump controller's
     # "Alarm Settings" element names, written over ui_cmds like
-    # last_calibration_factor; the delay reads back from its own tag.
+    # last_calibration_factor; each reads back from its own tag. The old
+    # single tank delay is gone.
     commands = (WIDGET / "src" / "lib" / "commands.ts").read_text()
     for name in (
         "low_tank_level",
         "low_low_tank_level",
-        "tank_level_timeout",
         "high_pressure",
         "high_high_pressure",
+        "low_flow_percent",
+        "low_low_flow_percent",
+        "tank_l_delay",
+        "tank_ll_delay",
+        "pressure_h_delay",
+        "pressure_hh_delay",
+        "flow_l_delay",
+        "flow_ll_delay",
     ):
         assert f'"{name}"' in commands
+    assert "tank_level_timeout" not in commands
     assembled = (WIDGET / "src" / "lib" / "assembleDashboardData.ts").read_text()
-    assert '"SetpointTankLevelTimeout"' in assembled
+    for tag in (
+        "DelayTankL",
+        "DelayTankLL",
+        "DelayPressureH",
+        "DelayPressureHH",
+        "DelayFlowL",
+        "DelayFlowLL",
+        "SetpointFlowL",
+        "SetpointFlowLL",
+    ):
+        assert f'"{tag}"' in assembled
+    assert "SetpointTankLevelTimeout" not in assembled
     # The config editor tells whoever picks the access level that the gear
-    # also changes the tank alarm delay, not just the thresholds.
+    # also changes the alarm delays, not just the thresholds.
     assert "alarm delay" in props["alarm_settings_access"]["description"]
 
 
