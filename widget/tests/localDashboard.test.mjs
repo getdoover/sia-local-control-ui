@@ -47,3 +47,71 @@ test("a failed read reports disconnection and polling recovers", async () => {
   assert.ok(errors > 0);
   assert.ok(snapshots > 0);
 });
+
+test("a failing read is logged once per distinct failure, with the channel and the stack, and once on recovery", async () => {
+  const logs = [];
+  let mode = "boom";
+  const stop = pollLocalDashboard({ aggregates: { getAggregate: async ({ channelName }) => {
+    if (mode === "ok") return { data: {} };
+    if (channelName === "tag_values") throw new TypeError(mode);
+    return { data: {} };
+  } } }, "device", () => {}, () => {}, 2, (m) => logs.push(m));
+  await delay(15);
+  mode = "worse";
+  await delay(15);
+  mode = "ok";
+  await delay(15);
+  stop();
+  assert.equal(logs.length, 3, logs.join("\n"));
+  assert.match(logs[0], /^Local dashboard: read failed \(poll 1\), showing Disconnected: tag_values: TypeError: boom/);
+  assert.match(logs[0], /localDashboard\.test\.mjs/); // the stack came through
+  assert.match(logs[1], /read failed \(poll \d+\).*tag_values: TypeError: worse/);
+  assert.match(logs[2], /^Local dashboard: reads recovered after \d+ failed polls$/);
+});
+
+test("a non-Error failure is still described", async () => {
+  const logs = [];
+  const stop = pollLocalDashboard({ aggregates: { getAggregate: async () => { throw { code: 13, detail: "x" }; } } },
+    "device", () => {}, () => {}, 2, (m) => logs.push(m));
+  await delay(10);
+  stop();
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /deployment_config: \{"code":13,"detail":"x"\}/);
+});
+
+test("deployment_config is read on its own slower clock and the same object is reused between reads", async () => {
+  const calls = [];
+  const snapshots = [];
+  let clock = 0;
+  const stop = pollLocalDashboard({ aggregates: { getAggregate: async ({ channelName }) => {
+    calls.push(channelName);
+    return { data: { channel: channelName, n: calls.length } };
+  } } }, "device", (s) => snapshots.push(s), () => assert.fail("unexpected failure"), 2, () => {}, 100, () => clock);
+  await delay(15);
+  assert.equal(calls.filter((c) => c === "deployment_config").length, 1, "one config read while it is fresh");
+  assert.ok(calls.filter((c) => c === "tag_values").length >= 3, "tag_values every poll");
+  assert.ok(snapshots.length >= 3);
+  assert.equal(snapshots[0].deploymentConfig, snapshots.at(-1).deploymentConfig, "same object reused");
+  clock = 100; // the config is now stale
+  await delay(10);
+  assert.equal(calls.filter((c) => c === "deployment_config").length, 2, "re-read once stale");
+  stop();
+});
+
+test("after a failed cycle the next successful cycle re-reads deployment_config", async () => {
+  const calls = [];
+  let fail = false;
+  const stop = pollLocalDashboard({ aggregates: { getAggregate: async ({ channelName }) => {
+    calls.push(channelName);
+    if (fail && channelName === "tag_values") throw new Error("offline");
+    return { data: {} };
+  } } }, "device", () => {}, () => {}, 2, () => {}, 100_000, () => 0);
+  await delay(10);
+  assert.equal(calls.filter((c) => c === "deployment_config").length, 1);
+  fail = true;
+  await delay(10);
+  fail = false;
+  await delay(10);
+  stop();
+  assert.ok(calls.filter((c) => c === "deployment_config").length >= 2, "re-read after the failure");
+});
