@@ -196,9 +196,10 @@ test("calibration: identical payloads still end a run on the wall-clock backstop
   const m = mountLive();
   m.render(stale("2026-09-28T01:00:00.000Z"));
   m.click("touch-cal");
+  m.click("calwiz-run"); // start -> 1
   m.click("calwiz-next"); // 1 -> 2
   m.click("calwiz-field-start");
-  for (const k of ["clear", "5", "0", "0"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
+  for (const k of ["clear", "5", "0"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
   m.click("keypad-ok");
   m.click("calwiz-next"); // 2 -> 3
   m.click("calwiz-next"); // 3 -> 4
@@ -352,9 +353,10 @@ test("rebuilt wizard nodes are found again (countdown after the page is redrawn)
   const cal = (tr, p = standby) => live({ warnings: [], pumps: [pump(p)], calibration: { method: "Manual (HMI)", test_run: run(tr) } });
   m.render(cal({}));
   m.click("touch-cal");
+  m.click("calwiz-run");
   m.click("calwiz-next");
   m.click("calwiz-field-start");
-  for (const k of ["clear", "5", "0", "0"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
+  for (const k of ["clear", "5", "0"]) m.root.querySelector(`.keypad-keys [data-key="${k}"]`).click();
   m.click("keypad-ok");
   m.click("calwiz-next");
   m.click("calwiz-next");

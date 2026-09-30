@@ -34,6 +34,8 @@ import {
   CAL_TEST_DURATION_S,
   computeCalibration,
   formatMl,
+  SITE_GLASS_MAX_ML,
+  testRateRange,
   validateFinalMl,
   validateStartMl,
   validateTestRate,
@@ -140,6 +142,11 @@ const UP_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" f
 const DOWN_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg>`;
 
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+// Two circular arrows: reload the screen.
+const REFRESH_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v5h-5"/><path d="M3 20v-5h5"/><path d="M20.1 9A8.5 8.5 0 0 0 5.6 6.3L3 9"/><path d="M3.9 15a8.5 8.5 0 0 0 14.5 2.7L21 15"/></svg>`;
+
+// The kiosk's Refresh button asks this first (in-page, like every confirm).
+export const RELOAD_CONFIRM_TEXT = "Reload the screen? Live data returns in a few seconds.";
 
 // VSD panel diagnostics, in display order: [field, label, unit, decimals].
 // Decimals null = text. Every value may be null and then shows EMPTY_VALUE.
@@ -294,10 +301,16 @@ function template(opts) {
   const footer = opts.logos && opts.logos.doover
     ? `<div class="footer-logo" data-id="footer-logo"><img src="${escapeAttr(opts.logos.doover)}" alt="Doover"></div>`
     : `<div class="footer-logo hidden" data-id="footer-logo"></div>`;
+  // Refresh (local kiosk only): a full page reload, the one sure recovery for
+  // a wedged kiosk browser. Never in the cloud, where it would reload the
+  // whole customer site.
+  const reload = opts.reloadButton
+    ? `<button type="button" class="icon-btn header-reload" data-id="reload-btn" aria-label="Refresh" title="Refresh">${REFRESH_ICON}</button>`
+    : "";
   return `
 <div class="dashboard-container" data-id="container">
   <div class="hmi-body">
-    <header class="dashboard-header">
+    <header class="dashboard-header${reload ? " has-reload" : ""}">
       <h1>${logo}<span class="header-title">${escapeAttr(opts.title || "SIA Remote Command")}</span></h1>
       <div class="header-info">
         <div class="connection-status">
@@ -306,6 +319,7 @@ function template(opts) {
         <div class="timestamp">Last Update: <span data-id="last-update">--</span></div>
         <div class="host-badge" data-id="host-badge"></div>
       </div>
+      ${reload}
     </header>
 
     <div data-id="fault-banner" class="fault-banner hidden" role="alert">
@@ -529,7 +543,6 @@ function template(opts) {
         <button type="button" class="key key-ok calwiz-next" data-id="calwiz-next"><span class="btn-label" data-id="calwiz-next-label">Confirm</span></button>
       </div>
     </div>
-    <button type="button" class="key calwiz-manual hidden" data-id="calwiz-manual">Enter calibration factor manually</button>
   </div>
 </div>
 
@@ -787,7 +800,6 @@ class Hmi {
     on("calwiz-back", () => this.calwizBack());
     on("calwiz-next", (b) => this.calwizNext(b));
     on("calwiz-discard", () => this.calwizClose());
-    on("calwiz-manual", (b) => this.calwizAction("manual", b));
     // The "?" on the wizard and on the calibration factor keypad: what the
     // factor does, over whichever is open; its X closes it.
     const calHelp = this.$("cal-help");
@@ -813,6 +825,8 @@ class Hmi {
       if (fn) fn();
     });
     on("confirm-cancel", () => this.confirmClose());
+    // Not a control command: works in every HMI Control Mode.
+    on("reload-btn", () => this.confirmAsk(RELOAD_CONFIRM_TEXT, () => this.reloadPage(), "reload"));
 
     on("vsd-gear", () => this.vsdPanelOpen());
     on("vsd-panel-close", () => this.vsdPanelClose());
@@ -999,6 +1013,14 @@ class Hmi {
     this.confirmOk = null;
     this.confirmOwner = null;
     this.hide(this.$("confirm"));
+  }
+
+  // Full page reload (the Refresh button). Injectable so tests need not
+  // reload jsdom.
+  reloadPage() {
+    if (typeof this.opts.reloadPage === "function") return this.opts.reloadPage();
+    const win = this.root.ownerDocument.defaultView;
+    if (win) win.location.reload();
   }
 
   openRateKeypad(btn) {
@@ -1458,7 +1480,9 @@ class Hmi {
   }
 
   // -- 1min Calibration Sequence ------------------------------------------------
-  // Pages: 1 valve shut / site glass open, 2 start mL, 3 test rate, 4 summary
+  // Pages: "start" Run calibration / enter the factor manually, 1 valve shut
+  // and level visible, 2 start mL, 3 test rate (capped by the site glass's
+  // room above the start reading, calibration.js testRateRange), 4 summary
   // + Start Test (start_test_run), 5 running (countdown from the controller's
   // TestRunRemaining_s, Cancel = cancel_test_run), "ended" (cancelled or
   // faulted), 6 final mL, 7 results + Set calibration factor (closes) / Discard.
@@ -1522,7 +1546,7 @@ class Hmi {
     }
     const t = this.data.touch || {};
     this.cal = {
-      page: 1,
+      page: "start",
       startMl: null,
       rate: null,
       finalMl: null,
@@ -1601,7 +1625,7 @@ class Hmi {
 
   calwizBack() {
     if (!this.cal) return;
-    const back = { 1: null, 2: 1, 3: 2, 4: 3, 6: 2, ended: 2 }[this.cal.page];
+    const back = { start: null, 1: "start", 2: 1, 3: 2, 4: 3, 6: 2, ended: 2 }[this.cal.page];
     if (back === undefined) return; // running, results: no back
     if (back === null) {
       this.calwizClose();
@@ -1627,6 +1651,8 @@ class Hmi {
       this.setText("calwiz-error", msg);
     };
     switch (c.page) {
+      case "start":
+        return undefined; // its two choices are in the body
       case 1:
         return this.calwizGo(2);
       case 2: {
@@ -1636,11 +1662,11 @@ class Hmi {
           const pump = this.calPump();
           if (pump && pump.target_rate != null) c.rate = Number(pump.target_rate);
         }
+        this.calCapRate();
         return this.calwizGo(3);
       }
       case 3: {
-        const pump = this.calPump() || {};
-        const err = validateTestRate(c.rate, pump.min_rate, pump.max_rate);
+        const err = validateTestRate(c.rate, ...this.calRateArgs());
         if (err) return fail(err);
         return this.calwizGo(4);
       }
@@ -1675,6 +1701,28 @@ class Hmi {
       default:
         return undefined;
     }
+  }
+
+  /** `validateTestRate`'s range arguments: the pump's range, this start reading, the rate units. */
+  calRateArgs() {
+    const pump = this.calPump() || {};
+    return [pump.min_rate, pump.max_rate, this.cal ? this.cal.startMl : null, this.units.rate];
+  }
+
+  /** The test rate's range now (calibration.js testRateRange). */
+  calRateRange() {
+    return testRateRange(...this.calRateArgs());
+  }
+
+  // Bring the test rate down to what the site glass has room for. The
+  // default (the current target) is often above it, and a rate entered
+  // before the start reading changed may be too; page 3 says what the
+  // limit is and why.
+  calCapRate() {
+    const c = this.cal;
+    if (!c || c.rate == null) return;
+    const range = this.calRateRange();
+    if (range.cappedByGlass && Number.isFinite(range.max) && c.rate > range.max) c.rate = range.max;
   }
 
   calResult() {
@@ -1753,19 +1801,28 @@ class Hmi {
         onSubmit: (value) => {
           c.startMl = value;
           if (c.finalMl != null && validateFinalMl(c.finalMl, value)) c.finalMl = null;
+          this.calCapRate();
           this.renderCalwiz();
         },
       });
+    } else if (act === "run") {
+      this.calwizGo(1);
     } else if (act === "edit-rate") {
+      const range = this.calRateRange();
+      // No keypad min/max: validateTestRate does the range, so a rate the
+      // glass rules out is told why rather than "out of range".
       this.keypadOpen({
         owner: "calwiz",
         title: "Test rate",
         value: c.rate,
-        min: pump.min_rate,
-        max: pump.max_rate,
+        min: null,
+        max: null,
+        rangeText: range.cappedByGlass
+          ? `Range ${this.fmt(range.min, 2)} to ${this.fmt(range.max, 2)} ${this.units.rate} (site glass limit)`
+          : `Range ${this.fmt(range.min, 2)} to ${this.fmt(range.max, 2)} ${this.units.rate}`,
         decimals: 2,
         unit: this.units.rate,
-        validate: (v) => validateTestRate(v, pump.min_rate, pump.max_rate),
+        validate: (v) => validateTestRate(v, ...this.calRateArgs()),
         onSubmit: (value) => {
           c.rate = value;
           this.renderCalwiz();
@@ -1837,7 +1894,7 @@ class Hmi {
     const c = this.cal;
     if (c.page !== 5) {
       // Started from another screen while this one was on pages 1 to 4.
-      if (tr.active && [1, 2, 3, 4].includes(c.page)) {
+      if (tr.active && ["start", 1, 2, 3, 4].includes(c.page)) {
         c.run = { seenActive: true, startedAt: Date.now(), duration: tr.duration_s || CAL_TEST_DURATION_S, rate: tr.rate };
         this.calwizGo(5);
       } else {
@@ -1906,28 +1963,39 @@ class Hmi {
       `<span class="calwiz-row-value">${value}${unit ? ` <span class="calwiz-unit">${unit}</span>` : ""}</span></div>`;
     const ml = (v) => (v == null ? "--" : formatMl(v));
     const steps = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, ended: 5, 6: 6, 7: 7 };
-    this.setText("calwiz-step", `Step ${steps[c.page]} of 7`);
+    this.setText("calwiz-step", steps[c.page] ? `Step ${steps[c.page]} of 7` : "");
     let html = "";
     switch (c.page) {
+      case "start":
+        html =
+          `<button type="button" class="key key-ok calwiz-choice" data-act="run" data-id="calwiz-run">Run calibration</button>` +
+          `<button type="button" class="key calwiz-choice calwiz-manual" data-act="manual" data-id="calwiz-manual">Enter calibration factor manually</button>`;
+        break;
       case 1:
         html =
-          `<p class="calwiz-text calwiz-lead">Please confirm the tank valve is shut off and the site glass has fluid in it.</p>`;
+          `<p class="calwiz-text calwiz-lead">Make sure the tank valve is shut, AND make sure you can see the fluid level in the site glass.</p>` +
+          `<p class="calwiz-note calwiz-lead-note">You may need to manually start the pump to bring the level down if the tank is over half full.</p>`;
         break;
       case 2:
         html =
           field("edit-start", "Site glass mL", c.startMl == null ? null : formatMl(c.startMl), "mL", "Read the site glass before the test.");
         break;
-      case 3:
-        html = field(
-          "edit-rate",
-          "Test rate",
-          c.rate == null ? null : this.fmt(c.rate, 2),
-          u,
-          pump.min_rate != null && pump.max_rate != null
-            ? `Range ${this.fmt(pump.min_rate, 2)} to ${this.fmt(pump.max_rate, 2)} ${u}`
-            : "",
-        );
+      case 3: {
+        const range = this.calRateRange();
+        const rangeNote = pump.min_rate != null && pump.max_rate != null
+          ? `Range ${this.fmt(range.min, 2)} to ${this.fmt(range.max, 2)} ${u}`
+          : "";
+        html = field("edit-rate", "Test rate", c.rate == null ? null : this.fmt(c.rate, 2), u, rangeNote);
+        if (range.glass) {
+          const g = range.glass;
+          const room = `Site glass: ${ml(c.startMl)} mL now, ${SITE_GLASS_MAX_ML} mL at the bottom of the scale, so ${formatMl(g.roomMl)} mL of room.`;
+          const limit = range.cappedByGlass
+            ? ` Over the ${CAL_TEST_DURATION_S} s test the rate is limited to ${this.fmt(range.max, 2)} ${u}: any faster and the level would drop below what the glass can measure.`
+            : ` That is enough for the pump's full range over the ${CAL_TEST_DURATION_S} s test.`;
+          html += `<p class="calwiz-note${range.cappedByGlass ? " calwiz-warn" : ""}" data-id="calwiz-glass-note">${room}${limit}</p>`;
+        }
         break;
+      }
       case 4:
         html =
           `<div class="calwiz-rows">` +
@@ -2000,13 +2068,13 @@ class Hmi {
     const discard = this.$("calwiz-discard");
     const close = this.$("calwiz-close");
     const running = c.page === 5;
-    // Page 1 has no Back (the X closes): its Confirm stands alone under the
-    // prompt, with the manual entry below it. The results page has none
-    // either: Set calibration factor or Discard only.
-    this.toggle(back, !running && c.page !== 1 && c.page !== 7);
-    this.toggle(this.$("calwiz-manual"), c.page === 1);
+    const choosing = c.page === "start";
+    // The first page is its two choices, with the X to close: no Back, no
+    // Next. The results page has no Back either: Set calibration factor or
+    // Discard only.
+    this.toggle(back, !running && !choosing && c.page !== 7);
     this.toggle(close, !running && c.page !== 7);
-    this.toggle(next, !running);
+    this.toggle(next, !running && !choosing);
     this.toggle(discard, c.page === 7);
     if (!next) return;
     const labels = { 1: "Confirm", 2: "Confirm", 3: "Confirm", 4: "Start Test", 6: "Confirm", 7: "Set calibration factor", ended: "Close" };
@@ -2015,7 +2083,7 @@ class Hmi {
     const pump = this.calPump() || {};
     let disabled = false;
     if (c.page === 2) disabled = !!validateStartMl(c.startMl);
-    if (c.page === 3) disabled = !!validateTestRate(c.rate, pump.min_rate, pump.max_rate);
+    if (c.page === 3) disabled = !!validateTestRate(c.rate, ...this.calRateArgs());
     if (c.page === 4) disabled = !!(pump.fault || pump.running || pump.state === "pumping");
     if (c.page === 6) disabled = !!(validateStartMl(c.startMl) || validateFinalMl(c.finalMl, c.startMl));
     // Looks disabled but takes the tap: calwizNext then says why (the
@@ -2937,6 +3005,10 @@ class Hmi {
  *   vsdPanel?: {diagnostics(), parameters(), write(param, value)}
  *                                // VSD commissioning RPCs (lib/vsdPanel.ts);
  *                                // the gear also needs setVsdPanel(access)
+ *   reloadButton?: boolean,      // Refresh button in the header (local
+ *                                // kiosk only; default off)
+ *   reloadPage?: () => void      // what Refresh does after its confirmation
+ *                                // (default window.location.reload())
  * }
  *
  * setDisplay({kioskInsetMm, popoverInsetMm, pxPerMm}): the cover-plate

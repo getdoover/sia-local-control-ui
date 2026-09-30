@@ -13,6 +13,10 @@ export interface HmiOptions {
   commandTimeoutMs?: number | (() => number);
   /** VSD commissioning RPCs; the gear also needs `setVsdPanel(access)`. */
   vsdPanel?: VsdPanelApi;
+  /** Refresh button (full page reload) in the header: the local kiosk only. */
+  reloadButton?: boolean;
+  /** What Refresh does once confirmed (default `window.location.reload()`). */
+  reloadPage?: () => void;
 }
 
 /** Cover-plate insets (kiosk layout only; ignored when embedded). */
@@ -41,6 +45,7 @@ export declare const COMMAND_TIMEOUT_MS: number;
 export declare const NO_REPLY_TEXT: string;
 export declare function setNodeText(el: Element | null, text: string | number): void;
 export declare const CAL_TITLE: string;
+export declare const RELOAD_CONFIRM_TEXT: string;
 export declare const CAL_STORE_KEY: string;
 export declare const RATE_CONFIRM_FRACTION: number;
 export declare const VSD_POLL_MS: number;

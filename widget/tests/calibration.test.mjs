@@ -10,6 +10,9 @@ import {
   CAL_TEST_DURATION_S,
   computeCalibration,
   mlOverSecondsToRate,
+  SITE_GLASS_MAX_ML,
+  siteGlassRateLimit,
+  testRateRange,
   validateFinalMl,
   validateStartMl,
   validateTestRate,
@@ -17,8 +20,8 @@ import {
 
 const calc = (over) =>
   computeCalibration({
-    startMl: 500,
-    finalMl: 700,
+    startMl: 50,
+    finalMl: 250,
     elapsedS: 60,
     targetRate: 12.5,
     oldFactor: 1.0,
@@ -76,11 +79,11 @@ test("the factor makes the controller's calculated flow equal the measured flow"
   const nominalMax = 92.16;
   const trueMax = 80; // the pump really delivers less than nominal
   const oldFactor = 1.0;
-  const target = 30;
+  const target = 15; // 217 mL over the test: fits the site glass
   const duty = target / (nominalMax / oldFactor);
   const measured = duty * trueMax; // L/Hr, what the site glass shows
   const deliveredMl = (measured * 1000 * 60) / 3600;
-  const r = calc({ startMl: 1000, finalMl: 1000 + deliveredMl, targetRate: target, oldFactor });
+  const r = calc({ startMl: 0, finalMl: deliveredMl, targetRate: target, oldFactor });
   // With the unrounded factor the controller's duty for the same target
   // now delivers exactly the target.
   const newDuty = target / (nominalMax / r.rawFactor);
@@ -89,14 +92,14 @@ test("the factor makes the controller's calculated flow equal the measured flow"
 });
 
 test("clamped high to 1.7, with the raw value kept for the note", () => {
-  const r = calc({ finalMl: 550 }); // 50 mL -> 3 L/Hr; 12.5 / 3 = 4.17
+  const r = calc({ finalMl: 100 }); // 50 mL -> 3 L/Hr; 12.5 / 3 = 4.17
   assert.equal(r.newFactor, 1.7);
   assert.equal(r.clamped, "high");
   assert.ok(r.rawFactor > 4);
 });
 
 test("clamped low to 0.3", () => {
-  const r = calc({ startMl: 1000, finalMl: 3000 }); // 2000 mL -> 120 L/Hr; 0.104
+  const r = calc({ startMl: 0, finalMl: 250, targetRate: 1.5 }); // 250 mL -> 15 L/Hr; 0.1
   assert.equal(r.newFactor, 0.3);
   assert.equal(r.clamped, "low");
 });
@@ -105,7 +108,7 @@ test("rounded to 2 dp before the clamp, like the controller", () => {
   // raw 1.7049 rounds to 1.70: inside the range, not clamped.
   const measured = 12.5 / 1.7049;
   const ml = (measured * 1000 * 60) / 3600;
-  const r = calc({ startMl: 500, finalMl: 500 + ml });
+  const r = calc({ startMl: 0, finalMl: ml });
   assert.equal(r.newFactor, 1.7);
   assert.equal(r.clamped, null);
 });
@@ -122,22 +125,73 @@ test("mL over seconds in each rate unit", () => {
   assert.ok(Math.abs(mlOverSecondsToRate(3785.411784, 86400, "Gal/Day") - 1) < 1e-12);
 });
 
-test("start mL can be 0 or more (the site glass reads up as it drains)", () => {
+test("start mL can be 0 up to the bottom of the site glass (it reads up as it drains)", () => {
+  assert.equal(SITE_GLASS_MAX_ML, 268);
   assert.equal(validateStartMl(250), null);
+  assert.equal(validateStartMl(267.9), null);
   assert.equal(validateStartMl(0.1), null);
   assert.equal(validateStartMl(0), null);
   assert.match(validateStartMl(-5), /negative/);
+  assert.match(validateStartMl(268), /less than 268 mL/);
+  assert.match(validateStartMl(500), /less than 268 mL/);
   assert.ok(validateStartMl(null));
   assert.ok(validateStartMl(NaN));
 });
 
-test("final mL must be more than the start (the site glass reads up as it drains)", () => {
-  assert.equal(validateFinalMl(400, 250), null);
+test("final mL must be more than the start, and no more than the glass can show", () => {
+  assert.equal(validateFinalMl(260, 250), null);
+  assert.equal(validateFinalMl(268, 250), null);
   assert.equal(validateFinalMl(150, 0), null);
   assert.match(validateFinalMl(250, 250), /more than the starting 250 mL/);
   assert.match(validateFinalMl(100, 250), /more than/);
+  assert.match(validateFinalMl(268.1, 250), /at most 268 mL/);
   assert.match(validateFinalMl(-1, 250), /negative/);
   assert.ok(validateFinalMl(null, 250));
+});
+
+test("the site glass caps the test rate: 180 mL start leaves 88 mL, 5.28 L/Hr over 60 s", () => {
+  assert.deepEqual(siteGlassRateLimit(180, "L/Hr"), { roomMl: 88, maxRate: 5.28 });
+  // Rounded down, never up: 268 mL of room is 16.08 L/Hr exactly; 267 mL is
+  // 16.02 exactly; 100 mL is 6.0 exactly; 150 mL is 9.0.
+  assert.equal(siteGlassRateLimit(0, "L/Hr").maxRate, 16.08);
+  assert.equal(siteGlassRateLimit(118, "L/Hr").maxRate, 9);
+  assert.equal(siteGlassRateLimit(180.5, "L/Hr").maxRate, 5.25); // 87.5 mL -> 5.25
+  assert.equal(siteGlassRateLimit(181, "L/Hr").maxRate, 5.22); // 87 mL -> 5.22
+  // Other units: 88 mL over 60 s in Gal/Day.
+  assert.equal(siteGlassRateLimit(180, "Gal/Day").maxRate, 33.47);
+  assert.equal(siteGlassRateLimit(268, "L/Hr"), null);
+  assert.equal(siteGlassRateLimit(null, "L/Hr"), null);
+});
+
+test("the test rate range is the pump's, capped by the glass when that is lower", () => {
+  assert.deepEqual(testRateRange(2, 92.16, 180, "L/Hr"), {
+    min: 2,
+    max: 5.28,
+    glass: { roomMl: 88, maxRate: 5.28 },
+    cappedByGlass: true,
+  });
+  // A pump slower than the glass allows: its own range stands.
+  assert.deepEqual(testRateRange(0.5, 4, 180, "L/Hr"), {
+    min: 0.5,
+    max: 4,
+    glass: { roomMl: 88, maxRate: 5.28 },
+    cappedByGlass: false,
+  });
+  // No start reading yet: the pump's range.
+  assert.deepEqual(testRateRange(2, 92.16, null, "L/Hr"), { min: 2, max: 92.16, glass: null, cappedByGlass: false });
+});
+
+test("validation against the glass: at the limit passes, above it says why", () => {
+  assert.equal(validateTestRate(5.28, 2, 92.16, 180, "L/Hr"), null);
+  assert.equal(validateTestRate(2, 2, 92.16, 180, "L/Hr"), null);
+  assert.match(validateTestRate(5.29, 2, 92.16, 180, "L/Hr"), /Above 5\.28 the site glass would run past 268 mL in 60 s/);
+  assert.match(validateTestRate(1.5, 2, 92.16, 180, "L/Hr"), /Out of range \(2\.00 to 5\.28\)/);
+  // Too little room for even the pump's minimum: no rate passes, and the
+  // message says to go back.
+  const tooFull = validateTestRate(2, 2, 92.16, 260, "L/Hr");
+  assert.match(tooFull, /Only 8 mL of room/);
+  assert.match(tooFull, /minimum 2\.00/);
+  assert.match(tooFull, /Go back/);
 });
 
 test("test rate within MinRate..MaxRate (as shown, to 2 dp)", () => {

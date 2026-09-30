@@ -16,8 +16,8 @@
 // scroll; only the parameter list may scroll, inside the popover.
 //
 // 1min Calibration Sequence (controller CalibrationMethod "Manual (HMI)"):
-// the CALIBRATE tile keeps the bar's targets, and every wizard page (1 valve,
-// 2 start mL + keypad, 3 test rate, 4 summary, 5 countdown, 6 final mL,
+// the CALIBRATE tile keeps the bar's targets, and every wizard page (start: Run /
+// enter manually, 1 valve, 2 start mL + keypad, 3 test rate, 4 summary, 5 countdown, 6 final mL,
 // 7 results) fits the screen with no page scroll and no scroll inside the
 // popover, with >= 44 px buttons.
 //
@@ -40,6 +40,9 @@
 // the whole HMI inside the inset, the VSD popover (with its up / down scroll
 // buttons, no scrollbar), the wizard, keypad and confirmation inside the
 // popover inset. Screenshots: INSET_SHOTS=<dir> (inset-*.png at 1024x600)
+// Refresh button (local kiosk only): top right of the header, >= 44 px, clear
+// of the title and status, with and without the insets; none in the cloud.
+// Screenshots: HEADER_SHOTS=<dir> (header-refresh-1024x600*.png)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -481,6 +484,17 @@ for (const [w, h] of SIZES) {
       assert.match(tile, /Factor 1\.00/);
 
       await page.click('.sia-hmi [data-id="touch-cal"]');
+      await wizardPage(page, "start");
+      const m0 = await page.evaluate(measureWizard);
+      assertWizardFits(m0, w, h, "first page");
+      for (const id of ["calwiz-run", "calwiz-manual"]) {
+        const key = m0.buttons.find((b) => b.id === id);
+        assert.ok(key, `${id} shown`);
+        assert.ok(key.h >= 56, `${id} ${key.h}px < 56`);
+        assert.ok(key.w >= m0.panel.w * 0.8, `${id} not full width: ${key.w} of ${m0.panel.w}`);
+      }
+      await shot("p0");
+      await page.click('.sia-hmi [data-id="calwiz-run"]');
       await wizardPage(page, "1");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 1");
       await shot("p1");
@@ -517,7 +531,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "2");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 2");
       await page.click('.sia-hmi [data-id="calwiz-field-start"]');
-      await keypadEntry(page, ["5", "0", "0"], w, h);
+      await keypadEntry(page, ["5", "0"], w, h);
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 2 entered");
 
       await page.click('.sia-hmi [data-id="calwiz-next"]');
@@ -541,7 +555,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "6");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 6");
       await page.click('.sia-hmi [data-id="calwiz-field-final"]');
-      await keypadEntry(page, ["7", "0", "0"], w, h); // the site glass reads up as it drains
+      await keypadEntry(page, ["2", "5", "0"], w, h); // the site glass reads up as it drains
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "7");
       const m7 = await page.evaluate(measureWizard);
@@ -777,13 +791,17 @@ for (const [w, h] of SIZES) {
       await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
       await page.waitForTimeout(150);
       await page.click('.sia-hmi [data-id="touch-cal"]');
-      await wizardPage(page, "1");
-      const m1 = await fits("page 1");
-      const manual = m1.buttons.find((b) => b.id === "calwiz-manual");
+      await wizardPage(page, "start");
+      const m0 = await fits("first page");
+      const manual = m0.buttons.find((b) => b.id === "calwiz-manual");
       assert.ok(manual, "manual entry key shown");
       assert.ok(manual.h >= 56, `manual key ${manual.h}px < 56`);
-      assert.ok(manual.w >= m1.panel.w * 0.8, `manual key not full width: ${manual.w} of ${m1.panel.w}`);
+      assert.ok(manual.w >= m0.panel.w * 0.8, `manual key not full width: ${manual.w} of ${m0.panel.w}`);
       assert.equal(manual.text, "Enter calibration factor manually");
+      if (shoot) await page.screenshot({ path: path.join(INSET_SHOTS, "inset-calwiz-p0.png") });
+      await page.click('.sia-hmi [data-id="calwiz-run"]');
+      await wizardPage(page, "1");
+      await fits("page 1");
       if (shoot) await page.screenshot({ path: path.join(INSET_SHOTS, "inset-calwiz-p1.png") });
 
       await page.click('.sia-hmi [data-id="calwiz-next"]');
@@ -795,7 +813,7 @@ for (const [w, h] of SIZES) {
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
       });
       assertInside(k, w, h, POP_PX, "keypad");
-      await keypadEntry(page, ["5", "0", "0"], w, h);
+      await keypadEntry(page, ["5", "0"], w, h);
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "3");
       await fits("page 3");
@@ -808,7 +826,7 @@ for (const [w, h] of SIZES) {
       await wizardPage(page, "6");
       await fits("page 6");
       await page.click('.sia-hmi [data-id="calwiz-field-final"]');
-      await keypadEntry(page, ["7", "0", "0"], w, h); // the site glass reads up as it drains
+      await keypadEntry(page, ["2", "5", "0"], w, h); // the site glass reads up as it drains
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "7");
       await fits("page 7");
@@ -816,7 +834,7 @@ for (const [w, h] of SIZES) {
       await page.waitForSelector('.sia-hmi [data-id="calwiz"].hidden', { state: "attached" }); // set: it closes
       // The confirmation (manual factor) sits inside the inset too.
       await page.click('.sia-hmi [data-id="touch-cal"]');
-      await wizardPage(page, "1");
+      await wizardPage(page, "start");
       await page.click('.sia-hmi [data-id="calwiz-manual"]');
       await page.click('.sia-hmi [data-key="clear"]');
       for (const key of ["1", ".", "1"]) await page.click(`.sia-hmi [data-key="${key}"]`);
@@ -1485,6 +1503,140 @@ test("cloud at phone width: the Sensor tabs fit, nothing cut off", async () => {
       if (SENSOR_SHOTS) await page.screenshot({ path: path.join(SENSOR_SHOTS, `sensor-cloud-phone-${gear.split("-")[0]}.png`) });
       await page.click('.sia-hmi [data-id="alarm-panel-close"]');
     }
+  } finally {
+    await page.close();
+  }
+});
+
+// --- Refresh button (local kiosk only) ------------------------------------------
+//
+// The header's top-right corner, just right of the connection status: a
+// >= 44 px target inside the header, clear of the title and the status block,
+// in every mode, with and without the cover-plate insets; its confirmation
+// fits the screen. None in the cloud. Screenshots (1024x600 Touch):
+// HEADER_SHOTS=<dir> (header-refresh-1024x600.png the header strip,
+// screen-refresh-1024x600.png the whole screen, the same with -inset, and
+// header-refresh-confirm-1024x600.png with the confirmation open)
+
+const HEADER_SHOTS = process.env.HEADER_SHOTS;
+
+function measureHeader() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (sel) => document.querySelector(`.sia-hmi ${sel}`);
+  const btn = q('[data-id="reload-btn"]');
+  const header = q(".dashboard-header");
+  const title = q(".dashboard-header h1");
+  return {
+    btn: vis(btn) ? { ...box(btn), label: btn.getAttribute("aria-label") } : null,
+    header: box(header),
+    title: box(title),
+    titleOverflow: title.scrollWidth - title.clientWidth,
+    info: box(q(".header-info")),
+    status: box(q('[data-id="connection-status"]')),
+    others: [...document.querySelectorAll(".sia-hmi .dashboard-container button")]
+      .filter((b) => b !== btn && vis(b))
+      .map((b) => ({ id: b.dataset.id, ...box(b) })),
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+  };
+}
+
+const overlaps = (a, b) =>
+  a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+
+const HEADER_CASES = [
+  { name: "running", q: "scenario=running" },
+  { name: "faulted + warning + solar", q: "scenario=faulted&warning=1&solar=1" },
+  { name: "calibrate tile, tank L + mm, faulted + two warnings", q: "scenario=faulted&warning=2&cal=manual&tank=L,mm" },
+];
+
+for (const [w, h] of SIZES) {
+  for (const mode of MODES) {
+    for (const [insetName, insetQ, gap] of [["no inset", "", 0], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, INSET_PX]]) {
+      for (const c of HEADER_CASES) {
+        test(`${w}x${h} ${mode}, ${insetName}, ${c.name}: Refresh button top right of the header`, async () => {
+          const page = await browser.newPage({ viewport: { width: w, height: h } });
+          try {
+            await page.goto(`${base}?host=local&mode=${encodeURIComponent(mode)}${insetQ}&${c.q}`);
+            await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+            await page.waitForTimeout(150);
+            const m = await page.evaluate(measureHeader);
+            const ctx = JSON.stringify(m);
+            assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${ctx}`);
+            assert.ok(m.btn, `Refresh not shown: ${ctx}`);
+            assert.equal(m.btn.label, "Refresh");
+            // >= 44 px, inside the header, inside the plate.
+            assert.ok(m.btn.w >= 44 && m.btn.h >= 44, `Refresh ${m.btn.w}x${m.btn.h} < 44px`);
+            const hd = m.header;
+            assert.ok(
+              m.btn.left >= hd.left - 0.5 &&
+                m.btn.right <= hd.right + 0.5 &&
+                m.btn.top >= hd.top - 0.5 &&
+                m.btn.bottom <= hd.bottom + 0.5,
+              `Refresh outside the header: ${ctx}`,
+            );
+            assertInside(m.btn, w, h, gap, "Refresh");
+            // Top right: at the header's right edge, right of the status block.
+            assert.ok(m.btn.right >= hd.right - 24, `Refresh not at the right edge: ${ctx}`);
+            assert.ok(m.btn.top <= hd.top + 16, `Refresh not at the top: ${ctx}`);
+            assert.ok(m.btn.left >= m.info.right - 0.5, `Refresh not right of the status: ${ctx}`);
+            // Clear of the title and the status; the title not squeezed.
+            for (const [label, b] of [["title", m.title], ["status block", m.info], ["status", m.status]]) {
+              assert.ok(!overlaps(m.btn, b), `Refresh overlaps the ${label}: ${ctx}`);
+            }
+            assert.ok(!overlaps(m.title, m.info), `title overlaps the status: ${ctx}`);
+            assert.ok(m.titleOverflow <= 1, `title clipped: ${ctx}`);
+            assert.ok(m.info.left >= hd.left && m.info.right <= hd.right + 0.5, `status off the header: ${ctx}`);
+            for (const o of m.others) assert.ok(!overlaps(m.btn, o), `Refresh overlaps ${o.id}: ${ctx}`);
+            const shoot = HEADER_SHOTS && w === 1024 && h === 600 && mode === "Touch" && c.name === "running";
+            if (shoot) {
+              fs.mkdirSync(HEADER_SHOTS, { recursive: true });
+              const suffix = insetQ ? "-inset" : "";
+              const clip = { x: 0, y: 0, width: w, height: Math.min(h, Math.ceil(hd.bottom + 8)) };
+              await page.screenshot({ path: path.join(HEADER_SHOTS, `header-refresh-${w}x${h}${suffix}.png`), clip });
+              await page.screenshot({ path: path.join(HEADER_SHOTS, `screen-refresh-${w}x${h}${suffix}.png`) });
+            }
+
+            // Tap: the confirmation opens, on screen; Cancel closes it.
+            await page.click('.sia-hmi [data-id="reload-btn"]');
+            const cf = await page.evaluate(() => {
+              const r = document.querySelector('.sia-hmi [data-id="confirm"] .confirm-box').getBoundingClientRect();
+              return {
+                open: !document.querySelector('.sia-hmi [data-id="confirm"]').classList.contains("hidden"),
+                text: document.querySelector('.sia-hmi [data-id="confirm-message"]').textContent,
+                left: r.left,
+                top: r.top,
+                right: r.right,
+                bottom: r.bottom,
+              };
+            });
+            assert.ok(cf.open, "confirmation open");
+            assert.equal(cf.text, "Reload the screen? Live data returns in a few seconds.");
+            assertInside(cf, w, h, 0, "confirmation");
+            if (shoot && !insetQ) {
+              await page.screenshot({ path: path.join(HEADER_SHOTS, `header-refresh-confirm-${w}x${h}.png`) });
+            }
+            await page.click('.sia-hmi [data-id="confirm-cancel"]');
+            assert.equal(await page.isVisible('.sia-hmi [data-id="confirm"]'), false, "Cancel closes it");
+          } finally {
+            await page.close();
+          }
+        });
+      }
+    }
+  }
+}
+
+test("cloud: no Refresh button", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
+  try {
+    await page.goto(`${base}?host=cloud&mode=Touch&scenario=running`);
+    await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+    assert.equal(await page.$('.sia-hmi [data-id="reload-btn"]'), null);
+    assert.ok(await page.$(".sia-hmi .dashboard-header"), "header rendered");
   } finally {
     await page.close();
   }
