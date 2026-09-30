@@ -471,6 +471,34 @@ for (const [w, h] of SIZES) {
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 1");
       await shot("p1");
 
+      // The "?" (top left) opens the calibration factor help over the wizard;
+      // it fits the screen and its X closes it.
+      await page.click('.sia-hmi [data-id="calwiz-help"]');
+      const help = await page.evaluate(() => {
+        const q = (sel) => document.querySelector(`.sia-hmi ${sel}`).getBoundingClientRect();
+        const box = q(".cal-help-box");
+        const x = q('[data-id="cal-help-close"]');
+        const btn = q('[data-id="calwiz-help"]');
+        const wiz = q('[data-id="calwiz-box"]');
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 10);
+        const el = document.querySelector(".sia-hmi .cal-help-box");
+        return {
+          box: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
+          onTop: !!hit?.closest(".cal-help-box"),
+          clipped: el.scrollHeight > el.clientHeight + 1,
+          xRight: box.right - x.right, xTop: x.top - box.top, xSize: Math.min(x.width, x.height),
+          btnLeft: btn.left - wiz.left, btnTop: btn.top - wiz.top, btnSize: Math.min(btn.width, btn.height),
+        };
+      });
+      const hctx = JSON.stringify(help);
+      assertInside(help.box, w, h, 0, "calibration help");
+      assert.ok(help.onTop && !help.clipped, `help not on top, or clipped: ${hctx}`);
+      assert.ok(help.xSize >= 44 && help.xRight <= 20 && help.xTop <= 20, `X not top right: ${hctx}`);
+      assert.ok(help.btnSize >= 44 && help.btnLeft <= 20 && help.btnTop <= 20, `? not top left: ${hctx}`);
+      await shot("help");
+      await page.click('.sia-hmi [data-id="cal-help-close"]');
+      await wizardPage(page, "1");
+
       await page.click('.sia-hmi [data-id="calwiz-next"]');
       await wizardPage(page, "2");
       assertWizardFits(await page.evaluate(measureWizard), w, h, "page 2");

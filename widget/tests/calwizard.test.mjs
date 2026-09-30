@@ -140,6 +140,46 @@ test("tile: no touch bar at all in Read Only, even with Manual (HMI)", () => {
   assert.ok(!wizardOpen(m));
 });
 
+// --- help -----------------------------------------------------------------------
+
+test("the ? opens the calibration factor help over the wizard; its X closes only the help", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  m.click("touch-cal");
+  const help = m.byId("cal-help");
+  assert.ok(isHidden(help));
+  // Top left: the first thing in the wizard's header.
+  assert.equal(m.root.querySelector(".calwiz-head").firstElementChild, m.byId("calwiz-help"));
+  m.click("calwiz-help");
+  assert.ok(!isHidden(help));
+  assert.match(help.textContent, /real flow matches the target rate/);
+  assert.match(help.textContent, /less than the target: raise the factor/);
+  assert.match(help.textContent, /more than the target: lower the factor/);
+  m.click("cal-help-close");
+  assert.ok(isHidden(help));
+  assert.ok(wizardOpen(m));
+  assert.equal(page(m), "1");
+});
+
+test("the ? is on the calibration factor keypad only", () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  m.click("touch-cal");
+  next(m);
+  m.click("calwiz-field-start"); // Site glass mL keypad: no ?
+  assert.ok(isHidden(m.byId("keypad-help")));
+  m.click("keypad-cancel");
+  back(m);
+  m.click("calwiz-manual"); // Calibration factor keypad
+  assert.equal(text(m, "keypad-title"), "Calibration factor");
+  assert.ok(!isHidden(m.byId("keypad-help")));
+  m.click("keypad-help");
+  assert.ok(!isHidden(m.byId("cal-help")));
+  m.click("cal-help-close");
+  assert.ok(isHidden(m.byId("cal-help")));
+  assert.equal(text(m, "keypad-title"), "Calibration factor"); // keypad still open
+});
+
 // --- pages ----------------------------------------------------------------------
 
 test("every page carries the title; page 1 asks about the valve and site glass", () => {

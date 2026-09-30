@@ -478,6 +478,7 @@ function template(opts) {
 <div data-id="calwiz" class="modal-overlay calwiz-overlay hidden" role="dialog" aria-modal="true" aria-label="${CAL_TITLE}">
   <div class="calwiz" data-id="calwiz-box">
     <div class="calwiz-head">
+      <button type="button" class="icon-btn cal-help-btn" data-id="calwiz-help" aria-label="What is the calibration factor?">?</button>
       <h2 class="calwiz-title">${CAL_TITLE}</h2>
       <span class="calwiz-step" data-id="calwiz-step"></span>
       <button type="button" class="icon-btn calwiz-close" data-id="calwiz-close" aria-label="Close">${CLOSE_ICON}</button>
@@ -498,7 +499,10 @@ function template(opts) {
 <div data-id="keypad" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="keypad">
     <div class="keypad-info">
-      <div class="keypad-title" data-id="keypad-title"></div>
+      <div class="keypad-head">
+        <button type="button" class="icon-btn cal-help-btn hidden" data-id="keypad-help" aria-label="What is the calibration factor?">?</button>
+        <div class="keypad-title" data-id="keypad-title"></div>
+      </div>
       <div class="keypad-display">
         <span class="keypad-entry" data-id="keypad-entry"></span>
         <span class="keypad-unit" data-id="keypad-unit"></span>
@@ -535,6 +539,22 @@ function template(opts) {
       <button type="button" class="key key-cancel" data-id="confirm-cancel">Cancel</button>
       <button type="button" class="key key-ok" data-id="confirm-ok">Confirm</button>
     </div>
+  </div>
+</div>
+
+<div data-id="cal-help" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Calibration factor help">
+  <div class="confirm-box cal-help-box">
+    <div class="cal-help-head">
+      <h2 class="cal-help-title">Calibration factor</h2>
+      <button type="button" class="icon-btn" data-id="cal-help-close" aria-label="Close">${CLOSE_ICON}</button>
+    </div>
+    <p class="cal-help-text">Corrects the pump so the real flow matches the target rate.</p>
+    <ul class="cal-help-list">
+      <li><strong>1.00</strong> = no correction.</li>
+      <li>Pump delivers <strong>less</strong> than the target: <strong>raise</strong> the factor.</li>
+      <li>Pump delivers <strong>more</strong> than the target: <strong>lower</strong> the factor.</li>
+    </ul>
+    <p class="cal-help-text">The 1 minute calibration test works it out for you. Range 0.30 to 1.70.</p>
   </div>
 </div>
 
@@ -719,6 +739,12 @@ class Hmi {
     on("calwiz-next", (b) => this.calwizNext(b));
     on("calwiz-discard", () => this.calwizClose());
     on("calwiz-manual", (b) => this.calwizAction("manual", b));
+    // The "?" on the wizard and on the calibration factor keypad: what the
+    // factor does, over whichever is open; its X closes it.
+    const calHelp = this.$("cal-help");
+    on("calwiz-help", () => this.show(calHelp));
+    on("keypad-help", () => this.show(calHelp));
+    on("cal-help-close", () => this.hide(calHelp));
     const calBody = this.$("calwiz-body");
     if (calBody) {
       calBody.addEventListener("click", (e) => {
@@ -844,6 +870,7 @@ class Hmi {
     this.keypadOpts = opts;
     this.keypadText = "";
     this.setText("keypad-title", opts.title || "");
+    this.toggle(this.$("keypad-help"), !!opts.calHelp);
     this.setText("keypad-unit", opts.unit || "");
     const dp = opts.decimals != null ? opts.decimals : 2;
     const unit = opts.unit ? " " + opts.unit : "";
@@ -940,6 +967,7 @@ class Hmi {
     if (!this.touch || !t) return;
     this.keypadOpen({
       title: "Calibration factor",
+      calHelp: true,
       value: t.calibration_factor,
       min: t.calibration_min,
       max: t.calibration_max,

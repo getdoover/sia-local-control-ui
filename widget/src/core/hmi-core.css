@@ -1339,6 +1339,39 @@
 
 .sia-hmi .calwiz-close.hidden { display: none; }
 
+/* The "?" (top left of the wizard and of the calibration factor keypad) and
+   its help popover: what the factor does, closed with the X. */
+.sia-hmi .cal-help-btn { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+.sia-hmi .cal-help-btn.hidden { display: none; }
+.sia-hmi .keypad-head { display: flex; align-items: center; gap: 8px; }
+.sia-hmi .cal-help-box {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(560px, 100%);
+    max-height: 100%;
+    overflow: hidden;
+}
+.sia-hmi .cal-help-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--hmi-edge);
+}
+.sia-hmi .cal-help-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--hmi-text);
+}
+.sia-hmi .cal-help-text,
+.sia-hmi .cal-help-list { font-size: 1.1rem; font-weight: 600; line-height: 1.35; color: var(--hmi-text); }
+.sia-hmi .cal-help-list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
+.sia-hmi .cal-help-list strong { color: var(--hmi-green); }
+
 .sia-hmi .calwiz-body {
     flex: 1 1 auto;
     min-height: 0;
