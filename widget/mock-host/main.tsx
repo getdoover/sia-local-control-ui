@@ -7,7 +7,7 @@
  *   &scenario=running|faulted|standby
  *   &control=local|dcs|cloud the mode the controller enforces
  *   &vsd=0                   controller without a VSD
- *   &warning=1               add a warning banner
+ *   &warning=1               add a warning banner (warning=2: two at once)
  *   &solar=1                 configure a solar controller
  *   &tank=L,mm               tank primary,secondary reading (unset = defaults)
  *   &width=480               cloud card width (px)
@@ -44,7 +44,8 @@ const opts: MockOptions = {
   scenario: (q.get("scenario") as MockOptions["scenario"]) ?? "running",
   controlMode: (q.get("control") as MockOptions["controlMode"]) ?? "local",
   vsd: q.get("vsd") !== "0",
-  warning: q.get("warning") === "1",
+  warning: q.get("warning") === "1" || q.get("warning") === "2",
+  secondWarning: q.get("warning") === "2",
   solar: q.get("solar") === "1",
   tankPrimary: q.get("tank")?.split(",")[0] || undefined,
   tankSecondary: q.get("tank")?.split(",")[1] || undefined,

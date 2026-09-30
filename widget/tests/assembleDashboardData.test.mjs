@@ -137,6 +137,19 @@ test("warning surfaces without a trip", () => {
   assert.deepEqual(data.faults, []);
 });
 
+test("concurrent warnings joined by the controller become one banner item each", () => {
+  const data = build({
+    tags: legacyControllerTags({
+      Warning: true,
+      WarningReason: "Pressure data stale - pressure alarms held; Tank level data stale - tank alarms held",
+    }),
+  });
+  assert.deepEqual(data.warnings, [
+    { pump: "Pump", reason: "Pressure data stale - pressure alarms held" },
+    { pump: "Pump", reason: "Tank level data stale - tank alarms held" },
+  ]);
+});
+
 test("min/max stay null until published; a missing target stays null", () => {
   const data = build({ tags: legacyControllerTags({ MinRate: null, MaxRate: undefined, TargetRate: null }) });
   assert.equal(data.pumps[0].min_rate, null);

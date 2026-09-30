@@ -69,6 +69,8 @@ const CASES = [
   // CALIBRATE tile in place of CAL FACTOR (Calibration Method Manual (HMI)).
   { name: "calibrate tile", q: "scenario=standby&cal=manual" },
   { name: "calibrate tile, faulted + warning + solar", q: "scenario=faulted&warning=1&solar=1&cal=manual" },
+  // Two concurrent warnings: one row each, the second below the first.
+  { name: "tank L + mm, solar, faulted + two warnings", q: "scenario=faulted&warning=2&solar=1&tank=L,mm" },
 ];
 const SHOTS = process.env.SHOTS;
 const VSD_SHOTS = process.env.VSD_SHOTS;
@@ -177,6 +179,13 @@ for (const [w, h] of SIZES) {
           await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
           await page.waitForTimeout(150);
           const m = await page.evaluate(measure);
+          if (c.q.includes("warning=2")) {
+            const rows = await page.$$eval(".sia-hmi .warning-banner-list li", (lis) =>
+              lis.map((li) => li.getBoundingClientRect().toJSON()),
+            );
+            assert.equal(rows.length, 2, "one banner row per warning");
+            assert.ok(rows[1].top >= rows[0].bottom - 0.5, `second warning not below the first: ${JSON.stringify(rows)}`);
+          }
           if (SHOTS) {
             const slug = `${w}x${h}-${mode.replace(" ", "").toLowerCase()}-${c.name.replace(/[^a-z0-9]+/gi, "-")}`;
             await page.screenshot({ path: path.join(SHOTS, `layout-${slug}.png`) });

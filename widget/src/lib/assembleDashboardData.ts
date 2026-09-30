@@ -715,7 +715,13 @@ export function assembleDashboardData(inputs: AssembleInputs): DashboardData {
     if (fault) {
       faults.push({ pump: pump.name, reason: reason ?? tripText(get, key) ?? "Pump tripped" });
     }
-    if (warning) warnings.push({ pump: pump.name, reason: warningReason ?? "Warning" });
+    if (warning) {
+      // The controller joins concurrent warnings with "; " in one tag; give
+      // each its own banner row.
+      const reasons = (warningReason ?? "").split("; ").filter((r) => r.trim() !== "");
+      if (!reasons.length) reasons.push("Warning");
+      for (const r of reasons) warnings.push({ pump: pump.name, reason: r });
+    }
   });
 
   const solar = collectSolar(get, cfg.solarControllers);

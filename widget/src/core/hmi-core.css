@@ -435,6 +435,9 @@
     font-size: clamp(0.9rem, 2vw, 1.15rem);
 }
 
+/* One warning per row: a second warning stacks below the first. */
+.sia-hmi .warning-banner-list { flex-direction: column; }
+
 /* VSD */
 .sia-hmi .action-btn {
     flex: 1;

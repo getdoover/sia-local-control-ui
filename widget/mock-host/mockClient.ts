@@ -20,6 +20,8 @@ export interface MockOptions {
   vsd?: boolean;
   /** Raise a warning alongside the scenario. */
   warning?: boolean;
+  /** A second concurrent warning, joined into WarningReason as the controller does. */
+  secondWarning?: boolean;
   /** Configure a solar controller. */
   solar?: boolean;
   /** tank_primary_reading / tank_secondary_reading (unset = app defaults). */
@@ -90,7 +92,11 @@ export function scenarioTags(opts: MockOptions): Json {
       Fault: faulted,
       FaultReason: faulted ? "VSD trip: Over current (code 3)" : null,
       Warning: !!opts.warning,
-      WarningReason: opts.warning ? "No stroke feedback: pump commanded but no stroke pulses" : null,
+      WarningReason: opts.warning
+        ? ["No stroke feedback: pump commanded but no stroke pulses"]
+            .concat(opts.secondWarning ? ["Tank level data stale - tank alarms held"] : [])
+            .join("; ")
+        : null,
       CorrectionFactor: 1.0,
       ControlMode: opts.controlMode,
       ControlAuthorityActive: true,
