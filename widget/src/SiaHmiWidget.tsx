@@ -15,6 +15,7 @@ import { useAgentChannel, useDooverClient } from "doover-js/react";
 import { createHmi, type HmiHandle } from "./core/hmi-core.js";
 import {
   assembleDashboardData,
+  type DashboardData,
   createFeatureMemory,
   liveTagIds,
   resolveConfig,
@@ -24,6 +25,7 @@ import { resolveAppKey, type UiRemoteComponent } from "./lib/appKey.ts";
 import { detectHost, hostLabel, resolveActor, type CloudUser } from "./lib/host.ts";
 import { overlayLiveValues } from "./lib/liveTags.ts";
 import { useLiveTags } from "./lib/useLiveTags.ts";
+import { createRenderScheduler, type RenderScheduler } from "./lib/renderCadence.ts";
 import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
 import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
 
@@ -238,8 +240,23 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     };
   }, [host.kind]);
 
+  // Renders are paced (lib/renderCadence.ts): the kiosk composites in
+  // software, so each painted frame is dear and the feed arrives faster than
+  // the readings change. The scheduler lives as long as the render core.
+  const schedulerRef = useRef<RenderScheduler<DashboardData | null> | null>(null);
   useEffect(() => {
-    hmiRef.current?.update(data, { connected });
+    const scheduler = createRenderScheduler<DashboardData | null>({
+      render: (d, status) => hmiRef.current?.update(d, status),
+    });
+    schedulerRef.current = scheduler;
+    return () => {
+      scheduler.dispose();
+      schedulerRef.current = null;
+    };
+  }, [host.kind]);
+
+  useEffect(() => {
+    schedulerRef.current?.push(data, { connected });
   }, [data, connected]);
 
   useEffect(() => {
