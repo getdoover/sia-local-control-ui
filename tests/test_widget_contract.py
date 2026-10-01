@@ -323,6 +323,29 @@ def test_sensor_settings_access_options_match_the_widget():
     )
 
 
+def test_dcs_connected_is_off_by_default_and_read_by_the_widget():
+    """DCS command pop-ups: a Boolean "DCS Connected", off by default (many
+    skids have no DCS), read by the widget, which shows the pop-ups from the
+    pump controller's DCS result tags on the local panel only."""
+    props = SiaLocalControlUiConfig.to_schema()["properties"]
+    dcs_type = props["dcs_connected"]["type"]
+    assert "boolean" in (dcs_type if isinstance(dcs_type, list) else [dcs_type])
+    assert props["dcs_connected"]["default"] is False
+    assert props["dcs_connected"]["title"] == "DCS Connected"
+    assert "Modbus" in props["dcs_connected"]["description"]
+    assert "dcs_connected" in _widget_config_keys()
+    assembled = ADAPTER.read_text()
+    for tag in (
+        "DcsCmdSeq",
+        "DcsLastCommand",
+        "DcsCmdResult",
+        "DcsCmdError",
+        "DcsCmdRequest",
+        "DcsAppliedRate",
+    ):
+        assert f'"{tag}"' in assembled
+
+
 def test_vsd_panel_calls_the_techtop_rpc_channel():
     """The panel talks to the Techtop app on pydoover's default RPC channel
     (the Techtop app's RPC_CHANNEL), not on this app's ui_cmds."""

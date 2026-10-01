@@ -35,6 +35,7 @@ import { createRenderScheduler, type RenderScheduler } from "./lib/renderCadence
 import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
 import { pollLocalDashboard, type LocalReader, type LocalSnapshot } from "./lib/localDashboard.ts";
 import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
+import { dcsNoticesEnabled } from "./lib/dcsNotices.ts";
 import {
   isSensorGroup,
   SENSOR_APP_NAMES,
@@ -69,6 +70,8 @@ import {
  *     `sensor_settings_access` "Local only" allows sensor calibration changes
  *     from the local host only (lib/sensorSettings.ts); those RPCs go to the
  *     sensor app's key, not the pump controller's;
+ *   - the DCS command card: with `dcs_connected` on, a card per DCS command
+ *     on the local panel only, never in the cloud (lib/dcsNotices.ts);
  *   - live tags: the cloud claims the tags it renders so they stream in
  *     seconds rather than every 15 minutes; the local host already reads the
  *     device's own state and skips it.
@@ -194,6 +197,11 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.sensorSettingsAccess, host.kind],
   );
 
+  const dcsNotices = useMemo(
+    () => dcsNoticesEnabled(cfg.dcsConnected, host.kind),
+    [cfg.dcsConnected, host.kind],
+  );
+
   const data = useMemo(() => {
     if (tagValues === undefined) return null;
     const live = overlayLiveValues(
@@ -223,8 +231,8 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.kioskInsetMm, cfg.popoverInsetMm, cfg.kioskPxPerMm],
   );
 
-  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess });
-  latest.current = { cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess };
+  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess, dcsNotices });
+  latest.current = { cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess, dcsNotices };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hmiRef = useRef<HmiHandle | null>(null);
@@ -302,6 +310,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     hmiRef.current.setDisplay(latest.current.display);
     hmiRef.current.setAlarmAccess(latest.current.alarmAccess);
     hmiRef.current.setSensorAccess(latest.current.sensorAccess);
+    hmiRef.current.setDcsNotices(latest.current.dcsNotices);
     return () => {
       hmiRef.current?.destroy();
       hmiRef.current = null;
@@ -342,6 +351,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.setSensorAccess(sensorAccess);
   }, [sensorAccess]);
+
+  useEffect(() => {
+    hmiRef.current?.setDcsNotices(dcsNotices);
+  }, [dcsNotices]);
 
   return <div ref={rootRef} />;
 }

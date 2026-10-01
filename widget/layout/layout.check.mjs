@@ -48,6 +48,10 @@
 // inset) with no scroll and no clipped text, sits above everything with one
 // >= 56 px OK, and OK closes it for good. Screenshots: CAL_SHOTS=<dir>
 // (run-notice-<w>x<h>.png, run-notice-<w>x<h>-inset.png)
+// DCS command card (dcs_connected, mock dcs=on): under the header, clear of
+// the touch bar and of any open popover (also as wizard pages change its
+// height), keys still tappable; under a popover it stays until seen; never
+// in the cloud or with the flag off. Screenshots: DCS_SHOTS=<dir> (dcs-*.png)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -56,6 +60,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
+
+import { DCS_NOTICE_HOLD_MS } from "../src/core/dcsCommand.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(here, "..", "mock-host", "dist");
@@ -1750,3 +1756,343 @@ for (const [w, h] of SIZES) {
     });
   }
 }
+
+// --- DCS command card (dcs_connected, local panel only) ---------------------------------
+// A command from the DCS (mock dcs=on&dcscmd=..., or window.__dcsCommand):
+// the card sits under the header, inside the screen (and the cover-plate
+// inset), clear of the touch bar, its text whole; it covers no open popover
+// (it moves above it, or drops under its backdrop), so an open keypad /
+// alarm popover stays open with every key tappable; a tap closes the card
+// only. Never in the cloud, never with dcs_connected off. Screenshots:
+// DCS_SHOTS=<dir> (dcs-*.png)
+
+const DCS_SHOTS = process.env.DCS_SHOTS;
+const dcsShot = async (page, name) => {
+  if (!DCS_SHOTS) return;
+  fs.mkdirSync(DCS_SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(DCS_SHOTS, `${name}.png`) });
+};
+
+/** The card and what it must stay clear of. */
+function measureDcs() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const card = q("dcs-notice");
+  const text = q("dcs-notice-text");
+  const bar = q("touch-bar");
+  const header = document.querySelector(".sia-hmi .dashboard-header");
+  const open = vis(card);
+  const b = open ? box(card) : null;
+  const hit = open ? document.elementFromPoint(b.left + b.w / 2, b.top + b.h / 2) : null;
+  const pops = [...document.querySelectorAll(".sia-hmi .modal-overlay")]
+    .filter((o) => vis(o))
+    .map((o) => ({ id: o.dataset.id, ...box(o.firstElementChild) }));
+  return {
+    open,
+    card: b,
+    under: open && card.classList.contains("under"),
+    state: open ? ["pending", "ok", "failed", "timeout"].find((s) => card.classList.contains(`dcs-${s}`)) : null,
+    title: card.querySelector(".dcs-notice-title").textContent,
+    text: text.textContent,
+    textOverflow: open ? [text.scrollWidth - text.clientWidth, text.scrollHeight - text.clientHeight] : null,
+    cardOnTop: !!hit?.closest('[data-id="dcs-notice"]'),
+    header: header ? box(header) : null,
+    barTop: vis(bar) ? box(bar).top : innerHeight,
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    pops,
+    focusInCard: !!document.activeElement?.closest?.('[data-id="dcs-notice"]'),
+  };
+}
+
+async function dcsCardText(page, re) {
+  await page.waitForFunction(
+    (src) => new RegExp(src).test(document.querySelector('.sia-hmi [data-id="dcs-notice-text"]')?.textContent ?? ""),
+    re.source,
+    { timeout: 10_000 },
+  );
+}
+
+function assertDcsCard(m, w, h, gap) {
+  const ctx = JSON.stringify(m);
+  assert.ok(m.open, `card not shown: ${ctx}`);
+  assert.equal(m.title, "DCS command");
+  assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${ctx}`);
+  assertInside(m.card, w, h, gap, "DCS card");
+  assert.ok(m.card.w >= 280, `card too narrow: ${ctx}`);
+  assert.ok(m.textOverflow[0] <= 1 && m.textOverflow[1] <= 1, `text clipped: ${ctx}`);
+  assert.ok(m.card.bottom <= m.barTop - 4, `card over the touch bar: ${ctx}`);
+  assert.ok(!m.focusInCard, `card took focus: ${ctx}`);
+}
+
+for (const [w, h] of SIZES) {
+  for (const [insetName, insetQ, gap] of [["no inset", "", 0], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, INSET_PX]]) {
+    const suffix = `${w}x${h}${insetQ ? "-inset" : ""}`;
+
+    test(`${w}x${h} Touch, ${insetName}: DCS card under the header, clear of the touch bar; tap closes it`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      try {
+        await page.goto(`${base}?host=local&mode=Touch&scenario=running&warning=1&dcs=on&dcscmd=rate:15:13.1${insetQ}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.waitForTimeout(300);
+        // The command already in the tags at load (seq 7) is not shown.
+        assert.equal(await page.isVisible('.sia-hmi [data-id="dcs-notice"]'), false, "baseline shown at load");
+        await page.waitForSelector('.sia-hmi [data-id="dcs-notice"]:not(.hidden)', { timeout: 5_000 });
+        await page.waitForTimeout(100);
+        let m = await page.evaluate(measureDcs);
+        assertDcsCard(m, w, h, gap);
+        assert.equal(m.text, "Target rate 15.00 L/Hr - Received - applying...");
+        assert.equal(m.state, "pending");
+        assert.ok(m.cardOnTop, `card covered: ${JSON.stringify(m)}`);
+        assert.ok(!m.under, "under with no popover open");
+        // Below the header, over the banner / tiles.
+        assert.ok(m.card.top >= m.header.bottom - 0.5 && m.card.top <= m.header.bottom + 16, `not under the header: ${JSON.stringify(m)}`);
+        await dcsShot(page, `dcs-pending-${suffix}`);
+
+        await dcsCardText(page, /limited to 13\.10/);
+        m = await page.evaluate(measureDcs);
+        assertDcsCard(m, w, h, gap);
+        assert.equal(m.text, "Target rate 15.00 L/Hr - limited to 13.10 L/Hr");
+        assert.equal(m.state, "ok");
+        await dcsShot(page, `dcs-done-${suffix}`);
+
+        // A tap on the card closes it and nothing else (no popover opens).
+        await page.mouse.click(m.card.left + m.card.w / 2, m.card.top + m.card.h / 2);
+        assert.equal(await page.isVisible('.sia-hmi [data-id="dcs-notice"]'), false, "tap did not close it");
+        const pops = await page.evaluate(measureDcs);
+        assert.deepEqual(pops.pops, [], "the tap went through to the tiles");
+      } finally {
+        await page.close();
+      }
+    });
+
+    test(`${w}x${h} Touch, ${insetName}: DCS card over an open keypad leaves every key tappable`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      try {
+        await page.goto(`${base}?host=local&mode=Touch&scenario=running&dcs=on${insetQ}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.waitForTimeout(300);
+        await page.click('.sia-hmi [data-id="touch-rate"]');
+        await page.waitForSelector('.sia-hmi [data-id="keypad"]:not(.hidden)');
+        await page.evaluate(() => window.__dcsCommand("start"));
+        await page.waitForSelector('.sia-hmi [data-id="dcs-notice"]:not(.hidden)', { timeout: 5_000 });
+        await page.waitForTimeout(100);
+        const m = await page.evaluate(measureDcs);
+        const ctx = JSON.stringify(m);
+        assert.ok(m.open, `card not shown: ${ctx}`);
+        assert.ok(m.textOverflow[0] <= 1 && m.textOverflow[1] <= 1, `text clipped: ${ctx}`);
+        assert.ok(!m.focusInCard, `card took focus: ${ctx}`);
+        const keypad = m.pops.find((p) => p.id === "keypad");
+        assert.ok(keypad, `keypad closed: ${ctx}`);
+        // On top only where it covers no popover; otherwise under the backdrop.
+        if (!m.under) {
+          for (const p of m.pops) assert.ok(!overlaps(m.card, p), `card covers ${p.id}: ${ctx}`);
+          assert.ok(m.cardOnTop, `card above the backdrop but covered: ${ctx}`);
+        }
+        assertInside(m.card, w, h, gap, "DCS card");
+        // Every key (and OK / Cancel) still takes its tap.
+        const blocked = await page.evaluate(() =>
+          [...document.querySelectorAll('.sia-hmi [data-id="keypad"] button')]
+            .filter((b) => b.getClientRects().length > 0 && getComputedStyle(b).display !== "none")
+            .filter((b) => {
+              const r = b.getBoundingClientRect();
+              return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) !== b;
+            })
+            .map((b) => b.dataset.key || b.dataset.id),
+        );
+        assert.deepEqual(blocked, [], `keys covered: ${ctx}`);
+        await dcsShot(page, `dcs-keypad-${suffix}`);
+        await page.click('.sia-hmi [data-key="5"]');
+        await page.click('.sia-hmi [data-key="1"]');
+        assert.equal(await page.textContent('.sia-hmi [data-id="keypad-entry"]'), "51");
+        await dcsCardText(page, /Start pump - done/);
+        assert.ok(await page.isVisible('.sia-hmi [data-id="keypad"]'), "the result closed the keypad");
+        if (!m.under) {
+          // Tapping the card closes the card only.
+          const c = (await page.evaluate(measureDcs)).card;
+          await page.mouse.click(c.left + c.w / 2, c.top + c.h / 2);
+          assert.equal(await page.isVisible('.sia-hmi [data-id="dcs-notice"]'), false);
+          assert.ok(await page.isVisible('.sia-hmi [data-id="keypad"]'), "the tap closed the keypad");
+          assert.equal(await page.textContent('.sia-hmi [data-id="keypad-entry"]'), "51");
+        }
+      } finally {
+        await page.close();
+      }
+    });
+  }
+
+  test(`${w}x${h} Touch: DCS card over an open alarm popover leaves it open and its controls tappable`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    try {
+      await page.goto(`${base}?host=local&mode=Touch&dcs=on&${ALARM_Q}`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await page.waitForTimeout(300);
+      await page.click('.sia-hmi [data-id="tank-gear"]');
+      await page.waitForSelector('.sia-hmi [data-id="alarm-panel"]:not(.hidden)');
+      await page.evaluate(() => window.__dcsCommand("delay:9:601"));
+      await page.waitForSelector('.sia-hmi [data-id="dcs-notice"]:not(.hidden)', { timeout: 5_000 });
+      await dcsCardText(page, /refused: invalid value/);
+      const m = await page.evaluate(measureDcs);
+      const ctx = JSON.stringify(m);
+      assert.equal(m.text, "Tank LL alarm delay 601 s - refused: invalid value");
+      assert.equal(m.state, "failed");
+      assert.ok(m.pops.some((p) => p.id === "alarm-panel"), `alarm popover closed: ${ctx}`);
+      if (!m.under) for (const p of m.pops) assert.ok(!overlaps(m.card, p), `card covers ${p.id}: ${ctx}`);
+      const blocked = await page.evaluate(() =>
+        [...document.querySelectorAll('.sia-hmi [data-id="alarm-panel"] button, .sia-hmi [data-id="alarm-panel"] [data-alarm]')]
+          .filter((b) => b.getClientRects().length > 0 && getComputedStyle(b).display !== "none")
+          .filter((b) => {
+            const r = b.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return !hit || !b.contains(hit);
+          })
+          .map((b) => b.dataset.alarm || b.dataset.id),
+      );
+      assert.deepEqual(blocked, [], `popover controls covered: ${ctx}`);
+      await dcsShot(page, `dcs-alarm-${w}x${h}`);
+      await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+      assert.equal(await page.isVisible('.sia-hmi [data-id="alarm-panel"]'), false, "close X did not work");
+      // Popover gone: the card comes back on top, under the header.
+      const after = await page.evaluate(measureDcs);
+      assert.ok(after.open && !after.under && after.cardOnTop, `card not back on top: ${JSON.stringify(after)}`);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test(`${w}x${h} Touch: DCS card wording fits for each command family`, async () => {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    try {
+      await page.goto(`${base}?host=local&mode=Touch&scenario=faulted&warning=1&solar=1&dcs=on`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      await page.waitForTimeout(300);
+      for (const [cmd, want, shot] of [
+        ["vsdreset/refuse:13", "VSD fault reset - refused: drive still tripped", "dcs-refused"],
+        ["start/refuse:3", "Start pump - refused: pump is tripped", null],
+        ["reset/refuse:7", "Process fault reset - refused: fault still active", null],
+        ["run:7", "Run request 7 - refused: invalid value", null],
+        ["stop", "Stop pump - done", null],
+        ["delay:6:120", "Pressure H alarm delay 120 s - done", null],
+      ]) {
+        await page.evaluate((c) => window.__dcsCommand(c), cmd);
+        await dcsCardText(page, new RegExp(want.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        const m = await page.evaluate(measureDcs);
+        assertDcsCard(m, w, h, 0);
+        assert.equal(m.text, want);
+        if (shot && w === 1024 && h === 600) await dcsShot(page, `${shot}-${w}x${h}`);
+      }
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+// A popover that changes height while the card is up (wizard pages) moves
+// the card at once, not at the next payload: measured two frames after each
+// page change, it is under the backdrop or clear of the wizard, and the
+// wizard's "?" / X / Back still take their taps.
+const nextFrames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+for (const [w, h] of SIZES) {
+  for (const [insetName, insetQ, gap] of [["no inset", "", 0], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, INSET_PX]]) {
+    test(`${w}x${h} Touch, ${insetName}: DCS card follows the wizard as its pages change height`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      try {
+        await page.goto(`${base}?host=local&mode=Touch&scenario=standby&cal=manual&calspeed=15&dcs=on${insetQ}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.waitForTimeout(300);
+        await page.click('.sia-hmi [data-id="touch-cal"]');
+        await wizardPage(page, "start");
+        await page.evaluate(() => window.__dcsCommand("delay:6:120"));
+        await dcsCardText(page, /Pressure H alarm delay 120 s - done/);
+        const steps = [
+          ["start", null],
+          ["1", "calwiz-run"],
+          ["2", "calwiz-next"],
+          ["1", "calwiz-back"],
+          ["start", "calwiz-back"],
+        ];
+        for (const [want, click] of steps) {
+          if (click) {
+            await page.click(`.sia-hmi [data-id="${click}"]`);
+            await wizardPage(page, want);
+            await nextFrames(page);
+          }
+          const m = await page.evaluate(measureDcs);
+          const ctx = `page ${want}: ${JSON.stringify(m)}`;
+          assert.ok(m.open, `card gone: ${ctx}`);
+          assertInside(m.card, w, h, gap, "DCS card");
+          const wiz = m.pops.find((p) => p.id === "calwiz");
+          assert.ok(wiz, `wizard closed: ${ctx}`);
+          if (!m.under) {
+            assert.ok(!overlaps(m.card, wiz), `card covers the wizard: ${ctx}`);
+            assert.ok(m.cardOnTop, `card above the backdrop but covered: ${ctx}`);
+          }
+          const blocked = await page.evaluate(() =>
+            ["calwiz-help", "calwiz-close", "calwiz-back", "calwiz-next", "calwiz-run", "calwiz-manual"]
+              .map((id) => document.querySelector(`.sia-hmi [data-id="${id}"]`))
+              .filter((b) => b && b.getClientRects().length > 0 && getComputedStyle(b).display !== "none")
+              .filter((b) => {
+                const r = b.getBoundingClientRect();
+                const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                return !hit || !b.contains(hit);
+              })
+              .map((b) => b.dataset.id),
+          );
+          assert.deepEqual(blocked, [], `wizard controls covered: ${ctx}`);
+        }
+      } finally {
+        await page.close();
+      }
+    });
+  }
+}
+
+// Under the VSD popover (no gap above it at any size) the card is not seen,
+// so its 8 s hold waits; closed, the card is back on top for the full 8 s.
+test("800x480 Touch: DCS card under the VSD popover stays until it is seen, then 8 s", async () => {
+  const page = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await page.goto(`${base}?host=local&mode=Touch&commission=${encodeURIComponent("Local only")}&scenario=running&dcs=on`);
+    await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+    await page.waitForTimeout(300);
+    await page.click('.sia-hmi [data-id="vsd-gear"]');
+    await page.waitForSelector(".sia-hmi .vsd-param", { state: "visible" });
+    await page.evaluate(() => window.__dcsCommand("rate:15:13.1"));
+    await dcsCardText(page, /limited to 13\.10/);
+    let m = await page.evaluate(measureDcs);
+    assert.ok(m.open && m.under, `card not under the VSD popover: ${JSON.stringify(m)}`);
+    await page.waitForTimeout(DCS_NOTICE_HOLD_MS + 1000);
+    m = await page.evaluate(measureDcs);
+    assert.ok(m.open && m.under, `dismissed unseen under the VSD popover: ${JSON.stringify(m)}`);
+    await page.click('.sia-hmi [data-id="vsd-panel-close"]');
+    assert.equal(await page.isVisible('.sia-hmi [data-id="vsd-panel"]'), false, "close X did not work");
+    m = await page.evaluate(measureDcs);
+    assert.ok(m.open && !m.under && m.cardOnTop, `card not back on top: ${JSON.stringify(m)}`);
+    assert.equal(m.text, "Target rate 15.00 L/Hr - limited to 13.10 L/Hr");
+    await dcsShot(page, "dcs-after-vsd-800x480");
+    await page.waitForTimeout(DCS_NOTICE_HOLD_MS - 1500);
+    assert.ok(await page.isVisible('.sia-hmi [data-id="dcs-notice"]'), "gone before 8 s on top");
+    await page.waitForSelector('.sia-hmi [data-id="dcs-notice"].hidden', { state: "attached", timeout: 3000 });
+  } finally {
+    await page.close();
+  }
+});
+
+test("DCS card: never in the cloud, never with dcs_connected off, nothing from an older controller", async () => {
+  for (const q of ["host=cloud&dcs=on&dcscmd=start", "host=local&dcs=off&dcscmd=start", "host=local&dcs=old"]) {
+    const page = await browser.newPage({ viewport: { width: 1024, height: 600 } });
+    try {
+      await page.goto(`${base}?mode=Touch&scenario=running&${q}`);
+      await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+      // Past the command (1.5 s) and its answer (1.2 s).
+      await page.waitForTimeout(3500);
+      assert.equal(await page.isVisible('.sia-hmi [data-id="dcs-notice"]'), false, q);
+    } finally {
+      await page.close();
+    }
+  }
+});

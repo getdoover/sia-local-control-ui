@@ -40,6 +40,16 @@
  *   &sensorcal=on|off|old    the sensor apps' Operator Sensor Calibration:
  *                            on (default), off (cells locked, RPCs refused),
  *                            old (an app without the feature: no tags)
+ *   &dcs=on|off|old          DCS command pop-ups: on (dcs_connected, the
+ *                            controller's DCS tags), off (the tags but
+ *                            dcs_connected off), old (dcs_connected, an
+ *                            older controller without the tags)
+ *   &dcscmd=rate:15:13.1     the DCS sends this command 1.5 s after load
+ *                            (mockClient.ts parseDcsCommand: start, stop,
+ *                            run:7, rate:<req>[:<applied>], reset,
+ *                            vsdreset, delay:<code 6..11>:<s>, each with an
+ *                            optional /ok, /none or /refuse:<error>); any
+ *                            time after: window.__dcsCommand("start")
  */
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -79,6 +89,8 @@ const opts: MockOptions = {
   flowMeter: q.get("flowmeter") === "1",
   sensorAccess: q.get("sensors") ?? undefined,
   sensorCal: (q.get("sensorcal") as MockOptions["sensorCal"]) ?? undefined,
+  dcs: (["on", "off", "old"] as const).find((v) => v === q.get("dcs")),
+  dcsCommand: q.get("dcscmd") ?? undefined,
 };
 const client = createMockClient(opts);
 const queryClient = new QueryClient();

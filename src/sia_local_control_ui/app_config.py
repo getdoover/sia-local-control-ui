@@ -507,6 +507,25 @@ class SiaLocalControlUiConfig(config.Schema):
         ),
     )
 
+    # --- DCS command pop-ups (widget only) ------------------------------------
+    # Many skids have no DCS, so off by default: nothing new on screen and no
+    # new tags claimed. On, the LOCAL panel (never the cloud) shows a short,
+    # non-blocking card for each command the DCS sends over Modbus, from the
+    # pump controller's DcsCmdSeq / DcsLastCommand / DcsCmdResult / DcsCmdError
+    # / DcsCmdRequest / DcsAppliedRate tags. An older controller without
+    # DcsCmdSeq shows nothing. This flag decides, not the controller's own
+    # dcs_interface_enabled.
+    dcs_connected = config.Boolean(
+        "DCS Connected",
+        default=False,
+        description=(
+            "A DCS (the site's control system) commands this skid over Modbus. "
+            "On: the local panel shows a pop-up for each DCS command (start, "
+            "stop, target rate, fault resets, alarm delays) and whether the "
+            "pump controller did it or refused it. Off (no DCS): no pop-ups."
+        ),
+    )
+
     @classmethod
     def to_schema(cls):
         """pydoover's schema, with the physical-button fields made conditional.

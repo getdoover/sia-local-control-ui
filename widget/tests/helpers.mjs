@@ -76,6 +76,7 @@ export const NEW_ONLY_IDS = [
   "pump-drive-line",
   "vsd-section",
   "command-toast",
+  "dcs-notice",
   "touch-bar",
   "keypad",
   "confirm",

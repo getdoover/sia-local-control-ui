@@ -756,6 +756,65 @@
 .sia-hmi .command-toast.error { background: #c0392b; }
 .sia-hmi .command-toast.ok { background: #185c3b; }
 
+/* DCS command card (local panel, dcs_connected): just under the header
+   (placeDcsNotice sets top), over the tiles, never modal. Above the
+   popovers' backdrop only where it covers none of them; otherwise "under"
+   puts it beneath the backdrop until the popover closes. Only its own box
+   takes taps (one closes it). The warning banner's look, with the state as
+   the accent: blue applying, green done, red refused, amber no answer. */
+.sia-hmi .dcs-notice {
+    position: fixed;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
+    width: min(560px, calc(100% - 2 * var(--hmi-kiosk-inset, 0px) - 24px));
+    z-index: 1150;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px 10px 16px;
+    border-radius: 3px;
+    background: var(--hmi-panel);
+    color: var(--hmi-text);
+    box-shadow: inset 4px 0 0 var(--hmi-blue), inset 0 0 0 1px var(--hmi-edge), 0 8px 32px #000a;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.sia-hmi .dcs-notice.under { z-index: 1050; }
+.sia-hmi .dcs-notice.dcs-ok { box-shadow: inset 4px 0 0 var(--hmi-green), inset 0 0 0 1px var(--hmi-edge), 0 8px 32px #000a; }
+.sia-hmi .dcs-notice.dcs-failed {
+    background: #4a1f1d;
+    box-shadow: inset 4px 0 0 var(--hmi-red), inset 0 0 0 1px #922c29, 0 8px 32px #000a;
+}
+.sia-hmi .dcs-notice.dcs-timeout { box-shadow: inset 4px 0 0 var(--hmi-amber), inset 0 0 0 1px var(--hmi-edge), 0 8px 32px #000a; }
+.sia-hmi .dcs-notice-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.sia-hmi .dcs-notice-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--hmi-muted);
+}
+.sia-hmi .dcs-notice-close { display: inline-flex; width: 18px; height: 18px; color: var(--hmi-muted); }
+.sia-hmi .dcs-notice-close svg { width: 100%; height: 100%; }
+.sia-hmi .dcs-notice-text {
+    font-size: clamp(1rem, 3.4cqh, 1.25rem);
+    font-weight: 700;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+.sia-hmi .dcs-notice.dcs-ok .dcs-notice-text { color: var(--hmi-green); }
+.sia-hmi .dcs-notice.dcs-failed .dcs-notice-text { color: #ffd2cd; }
+.sia-hmi .dcs-notice.dcs-timeout .dcs-notice-text { color: var(--hmi-amber); }
+.sia-hmi .dcs-notice * { pointer-events: none; }
+
 /* ------------------------------------------------------------------
    VSD commissioning: the gear on the VSD tile and its popover (same
    overlay, panel and key styling as the keypad and confirmation).

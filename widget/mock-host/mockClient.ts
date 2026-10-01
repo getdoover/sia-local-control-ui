@@ -67,6 +67,72 @@ export interface MockOptions {
    * feature: no such tags, no handlers, so an RPC never answers).
    */
   sensorCal?: "on" | "off" | "old";
+  /**
+   * DCS command pop-ups: "on" (HMI dcs_connected on; the controller
+   * publishes its DCS result tags, the last command long done), "off" (the
+   * same tags, dcs_connected off: nothing may show) or "old" (dcs_connected
+   * on, an older controller without the tags). Unset: no DCS at all.
+   */
+  dcs?: "on" | "off" | "old";
+  /** A DCS command to send DCS_COMMAND_AT_MS after load (parseDcsCommand). */
+  dcsCommand?: string;
+}
+
+/**
+ * A command the mock DCS sends: the controller's DcsLastCommand code, the
+ * value written (DcsCmdRequest), and how the controller answers after
+ * `answerMs` ("none": never, it stays pending).
+ */
+export interface DcsCommandSpec {
+  command: number;
+  request: number;
+  outcome?: "ok" | "failed" | "none";
+  error?: number;
+  /** DcsAppliedRate for a rate command (default: the request, capped at MaxRate). */
+  applied?: number;
+  answerMs?: number;
+}
+
+/** When the mock's `dcsCommand` goes out after load. */
+export const DCS_COMMAND_AT_MS = 1500;
+/** How long the mock controller takes to answer a DCS command. */
+export const DCS_ANSWER_MS = 1200;
+
+/**
+ * "start" / "stop" / "run:7" / "rate:15" / "rate:15:13.1" (applied) /
+ * "reset" / "vsdreset" / "reset:9" / "delay:8:601" (code, seconds), each
+ * optionally followed by "/ok", "/none" or "/refuse:<error>". Without one the
+ * mock controller answers as the real one would here: an invalid run / reset
+ * value or a delay out of range is refused (error 1), a VSD reset with no
+ * trip is refused (14), anything else is done.
+ */
+export function parseDcsCommand(text: string): DcsCommandSpec | null {
+  const [what, how] = text.split("/");
+  const [name, a, b] = what.split(":");
+  const n = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
+  let spec: DcsCommandSpec;
+  switch (name) {
+    case "start": spec = { command: 2, request: 2 }; break;
+    case "stop": spec = { command: 0, request: 0 }; break;
+    case "run": spec = { command: 2, request: n(a) ?? 7, outcome: "failed", error: 1 }; break;
+    case "rate": spec = { command: 3, request: n(a) ?? 15, applied: n(b) }; break;
+    case "reset": spec = { command: 4, request: n(a) ?? 4 }; break;
+    case "vsdreset": spec = { command: 5, request: 5 }; break;
+    case "delay": {
+      const code = n(a) ?? 8;
+      const secs = n(b) ?? 600;
+      const min = code === 8 || code === 9 ? 1 : 0;
+      spec = { command: code, request: secs };
+      if (!(Number.isInteger(secs) && secs >= min && secs <= 600)) Object.assign(spec, { outcome: "failed", error: 1 });
+      break;
+    }
+    default: return null;
+  }
+  if (name === "reset" && spec.request !== 4) Object.assign(spec, { outcome: "failed", error: 1 });
+  if (how === "ok") Object.assign(spec, { outcome: "ok", error: 0 });
+  else if (how === "none") spec.outcome = "none";
+  else if (how?.startsWith("refuse")) Object.assign(spec, { outcome: "failed", error: n(how.split(":")[1]) ?? 12 });
+  return spec;
 }
 
 export const TECHTOP = "techtop_motor_controller_1";
@@ -202,6 +268,19 @@ export function scenarioTags(opts: MockOptions): Json {
   };
 }
 
+/** The controller's DCS result tags at load: command 7, a rate set long ago. */
+export function dcsTags(opts: MockOptions): Json {
+  if (opts.dcs !== "on" && opts.dcs !== "off") return {};
+  return {
+    DcsCmdSeq: 7,
+    DcsLastCommand: 3,
+    DcsCmdResult: 2,
+    DcsCmdError: 0,
+    DcsCmdRequest: 12.5,
+    DcsAppliedRate: 12.5,
+  };
+}
+
 export function createMockClient(opts: MockOptions) {
   const now = Date.now();
   const aggregates: Record<string, { data: Json; last_updated: number }> = {
@@ -224,6 +303,7 @@ export function createMockClient(opts: MockOptions) {
             ...(opts.kioskPxPerMm != null ? { kiosk_px_per_mm: opts.kioskPxPerMm } : {}),
             ...(opts.alarmAccess ? { alarm_settings_access: opts.alarmAccess } : {}),
             ...(opts.sensorAccess ? { sensor_settings_access: opts.sensorAccess } : {}),
+            ...(opts.dcs === "on" || opts.dcs === "old" ? { dcs_connected: true } : {}),
           },
           [PRESSURE_APP]: {
             min_range: PRESSURE_DEFAULTS.range_low,
@@ -251,7 +331,11 @@ export function createMockClient(opts: MockOptions) {
       },
       last_updated: now,
     },
-    tag_values: { data: scenarioTags(opts), last_updated: now },
+    tag_values: (() => {
+      const data = scenarioTags(opts);
+      data[CTRL] = { ...(data[CTRL] as Json), ...dcsTags(opts) };
+      return { data, last_updated: now };
+    })(),
     ui_cmds: { data: { [CTRL]: { last_calibration_factor: 1.0 } }, last_updated: now },
   };
   const subs = new Map<string, Set<Handlers>>();
@@ -321,6 +405,58 @@ export function createMockClient(opts: MockOptions) {
     const t0 = Date.now() - (60 - opts.testRunRemaining) * 1000;
     testElapsed = () => (Date.now() - t0) / 1000;
     scheduleStop(testElapsed);
+  }
+
+  // The DCS (over Modbus): a command lands as the controller's DCS
+  // interface publishes it: request, command, pending and the next
+  // sequence in one flush, then the answer.
+  const sendDcsCommand = (spec: DcsCommandSpec): number => {
+    const tags = aggregates.tag_values.data[CTRL] as Json;
+    const seq = (Number(tags.DcsCmdSeq) || 0) + 1;
+    const rejected = spec.outcome === "failed" && spec.error === 1;
+    patchTags({
+      DcsCmdRequest: spec.request,
+      DcsLastCommand: spec.command,
+      // An invalid write is refused at once (no pending).
+      DcsCmdResult: rejected ? 3 : 1,
+      DcsCmdError: rejected ? 1 : 0,
+      DcsCmdSeq: seq,
+    });
+    if (rejected || spec.outcome === "none") return seq;
+    setTimeout(() => {
+      const now = aggregates.tag_values.data[CTRL] as Json;
+      if (now.DcsCmdSeq !== seq) return; // superseded
+      const tripped = Boolean(now.VsdTripCode);
+      let error = spec.outcome === "failed" ? (spec.error ?? 12) : 0;
+      if (spec.outcome === undefined && spec.command === 5 && !tripped) error = 14;
+      if (error) {
+        patchTags({ DcsCmdResult: 3, DcsCmdError: error });
+        return;
+      }
+      const patch: Json = { DcsCmdResult: 2, DcsCmdError: 0 };
+      if (spec.command === 3) {
+        const applied = spec.applied ?? Math.min(spec.request, Number(now.MaxRate) || spec.request);
+        Object.assign(patch, { DcsAppliedRate: applied, TargetRate: applied });
+      } else if (spec.command === 2) {
+        Object.assign(patch, { StateString: "pumping", Running: true, FlowRate: 11.9 });
+      } else if (spec.command === 0) {
+        Object.assign(patch, { StateString: "standby", Running: false, FlowRate: 0 });
+      } else if (spec.command === 5) {
+        Object.assign(patch, { VsdTripCode: 0, VsdTripDescription: null });
+      }
+      patchTags(patch);
+    }, spec.answerMs ?? DCS_ANSWER_MS);
+    return seq;
+  };
+  if (opts.dcs === "on" || opts.dcs === "off") {
+    (window as unknown as { __dcsCommand: (spec: DcsCommandSpec | string) => number | null }).__dcsCommand = (
+      spec,
+    ) => {
+      const s = typeof spec === "string" ? parseDcsCommand(spec) : spec;
+      return s ? sendDcsCommand(s) : null;
+    };
+    const first = opts.dcsCommand ? parseDcsCommand(opts.dcsCommand) : null;
+    if (first) setTimeout(() => sendDcsCommand(first), DCS_COMMAND_AT_MS);
   }
 
   const rpcError = (code: string, message: string) =>

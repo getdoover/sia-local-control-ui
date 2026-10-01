@@ -37,6 +37,8 @@ export interface HmiHandle {
   setAlarmAccess(access: { enabled: boolean; canWrite: boolean; writeBlockedReason: string }): void;
   /** Sensor tab on the Tank / Skid pressure popovers (lib/sensorSettings.ts sensorSettingsAccess). */
   setSensorAccess(access: { enabled: boolean; canWrite: boolean; writeBlockedReason: string }): void;
+  /** DCS command card (payload `dcs_command`): lib/dcsNotices.ts dcsNoticesEnabled; kiosk layout only. */
+  setDcsNotices(enabled: boolean): void;
   destroy(): void;
 }
 

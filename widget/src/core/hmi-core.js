@@ -14,7 +14,12 @@
  *   {pumps:[], faults:[], warnings:[], link_ok, units:{rate,pressure},
  *    timestamp, hmi_mode, vsd?:{tripped, trip_code,
  *    trip_description, motor_hz, pump_rpm}, touch?:{calibration_factor,
- *    calibration_min, calibration_max}, solar?, tank?, skid?}
+ *    calibration_min, calibration_max}, solar?, tank?, skid?,
+ *    dcs_command?:{seq, command, result, error, request, applied_rate}}
+ *
+ * DCS command card (payload `dcs_command`, HMI config dcs_connected, local
+ * panel only via setDcsNotices): a non-blocking card under the header for
+ * each command the DCS sends, its outcome, then gone (core/dcsCommand.js).
  *
  * On-screen controls exist only in HMI Control Mode "Touch" (payload
  * `touch`): the bottom bar (Start / STOP / - target + / Reset Fault / Cal
@@ -42,6 +47,13 @@ import {
   validateStartMl,
   validateTestRate,
 } from "./calibration.js";
+import {
+  DCS_NOTICE_HOLD_MS,
+  DCS_NOTICE_PENDING_MS,
+  DCS_NOTICE_TITLE,
+  dcsNotice,
+  followDcsSeq,
+} from "./dcsCommand.js";
 import {
   ALARM_DELAY_MISSING_TEXT,
   ALARM_FIELDS,
@@ -622,6 +634,17 @@ function template(opts) {
   </div>
 </div>
 
+<!-- DCS command card (setDcsNotices): over the dashboard, never modal. It
+     takes no focus, only its own area takes taps (one closes it), and it
+     drops under any open popover it would cover (placeDcsNotice). -->
+<div data-id="dcs-notice" class="dcs-notice hidden" role="status" aria-live="polite" aria-label="${DCS_NOTICE_TITLE}">
+  <div class="dcs-notice-head">
+    <span class="dcs-notice-title">${DCS_NOTICE_TITLE}</span>
+    <span class="dcs-notice-close" aria-hidden="true">${CLOSE_ICON}</span>
+  </div>
+  <p class="dcs-notice-text" data-id="dcs-notice-text"></p>
+</div>
+
 <div data-id="command-toast" class="command-toast hidden" role="status"></div>
 
 <!-- Warms the font fallback for the keypad's backspace glyph (hmi-core.css). -->
@@ -743,6 +766,16 @@ class Hmi {
     // payload), and the source whose notice is on screen (null when closed).
     this.runEndKey = null;
     this.runNotice = null;
+    // DCS command card (setDcsNotices): on only on the local panel with
+    // dcs_connected. dcsSeqKey is followDcsSeq's baseline (undefined until
+    // the first payload after load, a reconnect or turning it on); dcsShown
+    // the command on screen, {seq, final, timedOut, state, under}, or null;
+    // dcsPopObserver re-places the card while it is up and a popover resizes.
+    this.dcsEnabled = false;
+    this.dcsSeqKey = undefined;
+    this.dcsShown = null;
+    this.dcsTimer = null;
+    this.dcsPopObserver = null;
     this.resizeObserver = null;
     // The last payload fully rendered and the connection it was drawn with
     // (update's fast path); null until then, and after a null payload.
@@ -825,6 +858,16 @@ class Hmi {
     on("keypad-help", () => this.show(calHelp));
     on("cal-help-close", () => this.hide(calHelp));
     on("run-notice-ok", () => this.runNoticeClose());
+    const dcsCard = this.$("dcs-notice");
+    if (dcsCard) {
+      // A tap closes it and does nothing else: it takes no focus from an
+      // open keypad, and the tap goes no further.
+      dcsCard.addEventListener("mousedown", (e) => e.preventDefault());
+      dcsCard.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.dcsNoticeClose();
+      });
+    }
     const calBody = this.$("calwiz-body");
     if (calBody) {
       calBody.addEventListener("click", (e) => {
@@ -1223,6 +1266,8 @@ class Hmi {
     if (status && typeof status.connected === "boolean") this.connected = status.connected;
     if (!data) {
       this.rendered = null;
+      // No data: the next payload is a fresh start for the DCS card too.
+      this.dcsSeqKey = undefined;
       this.setConnection(this.connected, undefined);
       return;
     }
@@ -1240,6 +1285,7 @@ class Hmi {
       if (data.units) this.units = data.units;
       if (this.alarmOpen) this.renderAlarmPanelValues();
       this.renderCalwizLive();
+      if (this.dcsShown) this.placeDcsNotice();
       this.setLastUpdate(data.timestamp);
       return;
     }
@@ -1266,6 +1312,7 @@ class Hmi {
     this.renderCalwizLive();
     this.renderVsd(data.vsd);
     if (this.vsdOpen) this.renderVsdReset();
+    this.renderDcsCommand();
     this.setLastUpdate(data.timestamp);
     this.rendered = { data, connected: this.connected };
   }
@@ -2179,6 +2226,181 @@ class Hmi {
     this.hide(this.$("run-notice"));
   }
 
+  // -- DCS command card -------------------------------------------------------
+  // One card per command the DCS sends (payload dcs_command; dcs_connected,
+  // local panel only): "Start pump - Received - applying..." then
+  // "Start pump - done" / "... - refused: <why>", gone DCS_NOTICE_HOLD_MS
+  // after the final result, or "no answer from the pump controller" after
+  // DCS_NOTICE_PENDING_MS still pending; that hold only counts while the card
+  // is on top of any popover. A newer command replaces it; a tap
+  // closes it. When a command is new is dcsCommand.js followDcsSeq: never
+  // for the command already there at load or after a reconnect.
+
+  setDcsNotices(enabled) {
+    // Belt and braces: the kiosk (local panel) layout only.
+    const on = !!enabled && this.opts.layout === "kiosk";
+    if (on === this.dcsEnabled) return;
+    this.dcsEnabled = on;
+    this.dcsSeqKey = undefined;
+    if (!on) this.dcsNoticeClose();
+    // Turned on with data already here: that is the baseline.
+    else if (this.rendered) this.renderDcsCommand();
+  }
+
+  renderDcsCommand() {
+    if (!this.dcsEnabled) return;
+    const dcs = this.data.dcs_command;
+    if (!dcs) return;
+    if (!this.connected) {
+      // Whatever arrives while disconnected is old news on reconnect: the
+      // first payload after it is the new baseline.
+      this.dcsSeqKey = undefined;
+      return;
+    }
+    const { key, show } = followDcsSeq(this.dcsSeqKey, dcs.seq);
+    this.dcsSeqKey = key;
+    if (show) this.dcsNoticeOpen(dcs.seq);
+    else if (this.dcsShown && this.dcsShown.seq === dcs.seq) this.dcsNoticeRefresh();
+  }
+
+  dcsNoticeOpen(seq) {
+    this.dcsTimerClear();
+    this.dcsShown = { seq, final: false, timedOut: false, state: null, under: false };
+    this.show(this.$("dcs-notice"));
+    this.dcsWatchPopovers(true);
+    this.dcsNoticeRefresh();
+  }
+
+  // Redraw from the tags: pending until a final result (ok / failed), which
+  // starts the hold; once final, only that result's text may still change
+  // (a late DcsAppliedRate), never back to pending.
+  dcsNoticeRefresh() {
+    const s = this.dcsShown;
+    if (!s) return;
+    const n = dcsNotice(this.data.dcs_command, this.units.rate, { timedOut: s.timedOut });
+    const final = n.state === "ok" || n.state === "failed";
+    if (s.final) {
+      if (n.state !== s.state) return;
+    } else if (final) {
+      s.final = true;
+      this.dcsHoldStart();
+    } else if (!s.timedOut && !this.dcsTimer) {
+      this.dcsTimerSet(() => this.dcsNoticeTimeout(), DCS_NOTICE_PENDING_MS);
+    }
+    s.state = n.state;
+    this.dcsNoticeDraw(n);
+  }
+
+  dcsNoticeTimeout() {
+    const s = this.dcsShown;
+    if (!s || s.final) return;
+    s.timedOut = true;
+    this.dcsHoldStart();
+    this.dcsNoticeRefresh();
+  }
+
+  // The final (or no-answer) text stays DCS_NOTICE_HOLD_MS where the
+  // operator can see it. Under a popover's backdrop it is not seen, so the
+  // hold waits and starts in full when the card is back on top
+  // (placeDcsNotice). The pending timeout runs either way: it times the pump
+  // controller, not the operator.
+  dcsHoldStart() {
+    const s = this.dcsShown;
+    if (!s) return;
+    if (s.under) this.dcsTimerClear();
+    else this.dcsTimerSet(() => this.dcsNoticeClose(), DCS_NOTICE_HOLD_MS);
+  }
+
+  dcsNoticeDraw(n) {
+    const el = this.$("dcs-notice");
+    if (!el) return;
+    // dcs-<state>: the bare "pending" / "ok" are the controls' command
+    // feedback classes (dimmed, a trailing ellipsis).
+    for (const st of ["pending", "ok", "failed", "timeout"]) setClass(el, `dcs-${st}`, st === n.state);
+    this.setText("dcs-notice-text", n.text);
+    this.placeDcsNotice();
+  }
+
+  dcsNoticeClose() {
+    this.dcsTimerClear();
+    this.dcsWatchPopovers(false);
+    if (!this.dcsShown) return;
+    this.dcsShown = null;
+    this.hide(this.$("dcs-notice"));
+  }
+
+  // While the card is up, an open popover that changes height (a wizard
+  // page, an alarm panel tab, VSD parameters arriving) moves its top: the
+  // card is placed again then, not at the next payload.
+  dcsWatchPopovers(on) {
+    if (!on) {
+      if (this.dcsPopObserver) this.dcsPopObserver.disconnect();
+      this.dcsPopObserver = null;
+      return;
+    }
+    if (this.dcsPopObserver) return;
+    const win = this.root.ownerDocument.defaultView;
+    if (!win || typeof win.ResizeObserver !== "function") return;
+    this.dcsPopObserver = new win.ResizeObserver(() => {
+      if (this.dcsShown) this.placeDcsNotice();
+    });
+    for (const o of this.$$(".modal-overlay")) {
+      if (o.firstElementChild) this.dcsPopObserver.observe(o.firstElementChild);
+    }
+  }
+
+  dcsTimerSet(fn, ms) {
+    this.dcsTimerClear();
+    const t = this.later(() => {
+      if (this.dcsTimer === t) this.dcsTimer = null;
+      fn();
+    }, ms);
+    this.dcsTimer = t;
+  }
+
+  dcsTimerClear() {
+    if (!this.dcsTimer) return;
+    clearTimeout(this.dcsTimer);
+    this.timers.delete(this.dcsTimer);
+    this.dcsTimer = null;
+  }
+
+  // Just under the header, over the tiles. An open popover (keypad,
+  // confirmation, alarm / VSD / wizard panel, notice) is never covered: the
+  // card moves up into the gap above it, or, with no such gap, drops under
+  // the popover's backdrop (class "under") until the popover closes or
+  // shrinks; the hold before it goes waits for that (dcsHoldStart).
+  placeDcsNotice() {
+    const el = this.$("dcs-notice");
+    if (!el || el.classList.contains("hidden")) return;
+    const win = this.root.ownerDocument.defaultView;
+    const header = this.root.querySelector(".dashboard-header");
+    const inset = win
+      ? parseFloat(win.getComputedStyle(this.root).getPropertyValue("--hmi-kiosk-inset")) || 0
+      : 0;
+    let top = header ? header.getBoundingClientRect().bottom + 6 : inset + 8;
+    let under = false;
+    const boxes = this.$$(".modal-overlay:not(.hidden)")
+      .map((o) => o.firstElementChild)
+      .filter(Boolean)
+      .map((b) => b.getBoundingClientRect())
+      .filter((r) => r.height > 0);
+    if (boxes.length) {
+      const popTop = Math.min(...boxes.map((r) => r.top));
+      const room = popTop - 6 - el.offsetHeight;
+      if (room < inset + 4) under = true;
+      else top = Math.min(top, room);
+    }
+    el.style.top = `${Math.round(top)}px`;
+    setClass(el, "under", under);
+    const s = this.dcsShown;
+    if (s && s.under !== under) {
+      s.under = under;
+      // Under: the hold stops; back on top: it starts again in full.
+      if (s.final || s.timedOut) this.dcsHoldStart();
+    }
+  }
+
   renderVsd(vsd) {
     const section = this.$("vsd-section");
     const line = this.$("pump-drive-line");
@@ -3038,6 +3260,7 @@ class Hmi {
 
   show(e) {
     setClass(e, "hidden", false);
+    if (this.dcsShown && e && e.classList.contains("modal-overlay")) this.placeDcsNotice();
   }
 
   toggle(e, visible) {
@@ -3047,6 +3270,7 @@ class Hmi {
 
   hide(e) {
     setClass(e, "hidden", true);
+    if (this.dcsShown && e && e.classList.contains("modal-overlay")) this.placeDcsNotice();
   }
 
   destroy() {
@@ -3054,6 +3278,7 @@ class Hmi {
     this.vsdOpen = false;
     if (this.onKey) this.root.ownerDocument.removeEventListener("keydown", this.onKey);
     if (this.resizeObserver) this.resizeObserver.disconnect();
+    this.dcsWatchPopovers(false);
     this.root.style.removeProperty("--hmi-kiosk-inset");
     this.root.style.removeProperty("--hmi-popover-inset");
     for (const t of this.timers) clearTimeout(t);
@@ -3088,6 +3313,10 @@ class Hmi {
  *
  * setDisplay({kioskInsetMm, popoverInsetMm, pxPerMm}): the cover-plate
  * insets, applied in the kiosk layout only.
+ *
+ * setDcsNotices(enabled): the DCS command card (payload dcs_command); the
+ * shell turns it on with dcs_connected on the local panel only
+ * (lib/dcsNotices.ts), and the kiosk layout is required here too.
  */
 export function createHmi(root, opts) {
   const hmi = new Hmi(root, opts);
@@ -3098,6 +3327,7 @@ export function createHmi(root, opts) {
     setDisplay: (display) => hmi.setDisplay(display),
     setAlarmAccess: (access) => hmi.setAlarmAccess(access),
     setSensorAccess: (access) => hmi.setSensorAccess(access),
+    setDcsNotices: (enabled) => hmi.setDcsNotices(enabled),
     destroy: () => hmi.destroy(),
     /** For tests: the underlying instance. */
     _hmi: hmi,

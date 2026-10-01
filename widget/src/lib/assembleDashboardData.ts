@@ -182,6 +182,12 @@ export interface HmiConfig {
   popoverInsetMm: number;
   /** Local panel pixels per mm, to turn the insets into pixels. */
   kioskPxPerMm: number;
+  /**
+   * `dcs_connected`: a DCS commands this skid over Modbus, so the local panel
+   * shows a pop-up per DCS command (payload `dcs_command`, lib/dcsNotices.ts).
+   * Off by default: no payload key and no live tags claimed.
+   */
+  dcsConnected: boolean;
 }
 
 /**
@@ -204,6 +210,11 @@ function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
+}
+
+/** A Boolean config value: true (or the string "true") only. */
+function asBool(value: unknown): boolean {
+  return value === true || (typeof value === "string" && value.trim().toLowerCase() === "true");
 }
 
 function asString(value: unknown): string | null {
@@ -291,6 +302,7 @@ export function resolveConfig(
     kioskInsetMm: clampNum(c.kiosk_inset_mm, 0, 0, 30),
     popoverInsetMm: clampNum(c.popover_inset_mm, 0, 0, 40),
     kioskPxPerMm: positiveNum(c.kiosk_px_per_mm, DEFAULT_KIOSK_PX_PER_MM),
+    dcsConnected: asBool(c.dcs_connected),
   };
 }
 
@@ -563,6 +575,47 @@ export function collectSensorSettings(
   return out.pressure || out.tank ? out : undefined;
 }
 
+/**
+ * The last DCS command (the controller's DCS interface, CONTRACT.md REQ-008):
+ * for the local panel's pop-up (core/dcsCommand.js). `seq` (DcsCmdSeq) goes
+ * up by one per command the DCS sends, accepted, refused or invalid; the
+ * rest describe that command. Each reads null when the controller does not
+ * publish it (an older controller, or its DCS interface off).
+ */
+export interface DcsCommandData {
+  /** DcsCmdSeq. */
+  seq: number | null;
+  /** DcsLastCommand: 0 stop, 2 start, 3 rate, 4 / 5 process / VSD reset, 6..11 alarm delays. */
+  command: number | null;
+  /** DcsCmdResult: 0 idle, 1 pending, 2 ok, 3 failed. */
+  result: number | null;
+  /** DcsCmdError: the Rev 0.3 error table (0 none). */
+  error: number | null;
+  /** DcsCmdRequest: the value the DCS wrote (rate units, 0 / 2, 4 / 5, seconds). */
+  request: number | null;
+  /** DcsAppliedRate: the target rate a rate command applied (rate units). */
+  applied_rate: number | null;
+}
+
+/** The controller's DCS result tags the pop-up reads (live). */
+export const DCS_COMMAND_TAGS = {
+  seq: "DcsCmdSeq",
+  command: "DcsLastCommand",
+  result: "DcsCmdResult",
+  error: "DcsCmdError",
+  request: "DcsCmdRequest",
+  applied_rate: "DcsAppliedRate",
+} as const;
+
+/** The last DCS command from the primary controller's tags. */
+export function collectDcsCommand(get: TagReader, key: string): DcsCommandData {
+  const out = {} as DcsCommandData;
+  for (const [field, tag] of Object.entries(DCS_COMMAND_TAGS) as [keyof DcsCommandData, string][]) {
+    out[field] = optNum(get(tag, key));
+  }
+  return out;
+}
+
 export interface DashboardData {
   pumps: PumpData[];
   faults: BannerItem[];
@@ -578,6 +631,8 @@ export interface DashboardData {
   alarm_settings?: AlarmSettingsData;
   /** Sensor apps' operator calibration (Sensor tab), with sensor_settings_access on. */
   sensor_settings?: SensorSettingsData;
+  /** The last DCS command, with dcs_connected on only (the local panel's pop-up). */
+  dcs_command?: DcsCommandData;
   solar?: {
     battery_voltage?: number;
     battery_percentage?: number;
@@ -914,6 +969,9 @@ export function assembleDashboardData(inputs: AssembleInputs): DashboardData {
   );
   if (sensors) data.sensor_settings = sensors;
 
+  // DCS Connected off (the default): no key, so the payload is as before.
+  if (cfg.dcsConnected && primaryKey !== null) data.dcs_command = collectDcsCommand(get, primaryKey);
+
   return data;
 }
 
@@ -987,6 +1045,12 @@ export function liveTagIds(cfg: HmiConfig): string[] {
       if (!app) continue;
       for (const tag of [SENSOR_ENABLED_TAG, ...tags.values, tags.loop]) ids.push(`${app}.${tag}`);
     }
+  }
+  // DCS command pop-up (only with dcs_connected on): the primary
+  // controller's DCS result tags.
+  const primary = cfg.controllers[0];
+  if (cfg.dcsConnected && primary) {
+    for (const tag of Object.values(DCS_COMMAND_TAGS)) ids.push(`${primary}.${tag}`);
   }
   return ids;
 }
