@@ -112,6 +112,15 @@ function tankReading(value: unknown): TankReading | null {
   return (TANK_READINGS as readonly string[]).includes(t) ? (t as TankReading) : null;
 }
 
+/**
+ * The tank app's level-sensor fault tag: "under_range" while the loop current
+ * is below the sensor's 4 mA zero, null / absent otherwise (and never
+ * published by an older tank app). While it is set the tank app nulls its
+ * level tags and keeps publishing `raw_level_reading` (the loop current, mA:
+ * SENSOR_TAGS.tank.loop).
+ */
+export const TANK_SENSOR_FAULT_TAG = "sensor_fault";
+
 export interface TankLevelReading {
   /** Already scaled and rounded; null when the tag has no value. */
   value: number | null;
@@ -639,13 +648,23 @@ export interface DashboardData {
     panel_power?: number;
     battery_ah?: number;
   };
+  /** Present whenever a tank level app is configured, like `skid`: a reading
+   *  is null while the app has no value (sensor disconnected, out of range or
+   *  in fault), so the tile and its gear stay on screen reading "--". */
   tank?: {
-    tank_level_mm?: number;
-    tank_level_percent?: number;
-    /** Only when the primary reading is not the default mm. */
+    tank_level_mm: number | null;
+    tank_level_percent: number | null;
+    /** Only when the primary reading is not the default mm (value may be null). */
     level_primary?: TankLevelReading;
     /** Only when configured AND its tag has a value. */
     level_secondary?: TankLevelReading;
+    /**
+     * The tank app's `sensor_fault` ("under_range"), only while it is set.
+     * No level readings are carried alongside it.
+     */
+    sensor_fault?: string;
+    /** The loop current (`raw_level_reading`, mA), only alongside sensor_fault. */
+    raw_ma?: number;
   };
   /** A reading is present when its app is configured; null while that app
    *  has no value (sensor disconnected or out of range), so the tile and its
@@ -932,22 +951,33 @@ export function assembleDashboardData(inputs: AssembleInputs): DashboardData {
   if (solar) data.solar = solar;
 
   if (cfg.tankLevelApp) {
-    const tank: NonNullable<DashboardData["tank"]> = {};
-    const metres = optNum(get("level_reading", cfg.tankLevelApp));
-    if (metres !== null) tank.tank_level_mm = metres * 1000;
-    const pct = optNum(get("level_filled_percentage", cfg.tankLevelApp));
-    if (pct !== null) tank.tank_level_percent = pct;
+    const app = cfg.tankLevelApp;
+    const fault = asString(get(TANK_SENSOR_FAULT_TAG, app));
+    // In fault no level is shown, even one a host still holds from before.
+    const level: TagReader = fault ? () => null : get;
+    const metres = optNum(level("level_reading", app));
+    const tank: NonNullable<DashboardData["tank"]> = {
+      tank_level_mm: metres === null ? null : metres * 1000,
+      tank_level_percent: optNum(level("level_filled_percentage", app)),
+    };
+    if (fault) {
+      tank.sensor_fault = fault;
+      const ma = optNum(get(SENSOR_TAGS.tank.loop, app));
+      if (ma !== null) tank.raw_ma = ma;
+    }
     // The default (primary mm, no secondary) adds nothing: the payload and
     // the card are exactly as before.
     if (cfg.tankPrimary !== DEFAULT_TANK_PRIMARY) {
-      const primary = readTankLevel(get, cfg.tankLevelApp, cfg.tankPrimary);
-      if (primary.value !== null || Object.keys(tank).length) tank.level_primary = primary;
+      tank.level_primary = readTankLevel(level, app, cfg.tankPrimary);
     }
     if (cfg.tankSecondary) {
-      const secondary = readTankLevel(get, cfg.tankLevelApp, cfg.tankSecondary);
+      const secondary = readTankLevel(level, app, cfg.tankSecondary);
       if (secondary.value !== null) tank.level_secondary = secondary;
     }
-    if (Object.keys(tank).length) data.tank = tank;
+    // Kept whenever the tank app is configured: no reading (no sensor, an
+    // older tank app under range, a sensor fault) reads "--", and the gear
+    // (alarms, Sensor tab) stays reachable to fix it.
+    data.tank = tank;
   }
 
   const skid: NonNullable<DashboardData["skid"]> = {};
@@ -1028,7 +1058,12 @@ export function liveTagIds(cfg: HmiConfig): string[] {
     for (const tag of controllerTags) ids.push(`${key}.${tag}`);
   }
   if (cfg.tankLevelApp) {
-    ids.push(`${cfg.tankLevelApp}.level_reading`, `${cfg.tankLevelApp}.level_filled_percentage`);
+    ids.push(
+      `${cfg.tankLevelApp}.level_reading`,
+      `${cfg.tankLevelApp}.level_filled_percentage`,
+      // Claimed in case the tank app streams it; harmless if it does not.
+      `${cfg.tankLevelApp}.${TANK_SENSOR_FAULT_TAG}`,
+    );
     // level_volume is not a live tag on the tank app; it arrives with the
     // tag_values aggregate instead.
   }

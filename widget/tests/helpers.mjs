@@ -81,6 +81,8 @@ export const NEW_ONLY_IDS = [
   "keypad",
   "confirm",
   "tank-level-secondary",
+  "tank-fault",
+  "tank-fault-reason",
 ];
 
 export const TOUCH = { calibration_factor: 1.0, calibration_min: 0.3, calibration_max: 1.7 };

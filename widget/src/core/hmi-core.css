@@ -291,6 +291,28 @@
     color: var(--hmi-muted);
 }
 
+/* Tank level sensor fault (the tank app's sensor_fault): the fault badge
+   beside the Tank heading (sized from the heading, so the heading keeps its
+   height), a red edge on the tile like the fault banner's, and the reason on
+   one line under both instruments, red like the VSD trip text. */
+.sia-hmi .control-section h2 .tank-fault {
+    margin-right: auto;
+    font-size: max(0.72rem, 0.72em);
+    line-height: 1.2;
+    padding: 0.1em 0.6em;
+    white-space: nowrap;
+}
+.sia-hmi .control-section.tank-section.sensor-fault {
+    box-shadow: inset 4px 0 0 var(--hmi-red), inset 0 0 0 1px var(--hmi-edge), 0 3px 0 #090e11;
+}
+.sia-hmi .tank-fault-reason {
+    margin-top: clamp(4px, 0.8vh, 8px);
+    font-size: clamp(0.72rem, 1.6vw, 0.9rem);
+    line-height: 1.2;
+    color: var(--hmi-red);
+    font-weight: 600;
+}
+
 .sia-hmi .state-display {
     margin-bottom: clamp(6px, 1vh, 10px);
 }
@@ -1240,6 +1262,7 @@
 .sia-hmi.kiosk .unit { font-size: clamp(0.68rem, 1.9cqh, 0.85rem); }
 .sia-hmi.kiosk .tank-level-secondary { margin-top: 0; }
 .sia-hmi.kiosk .tank-level-secondary .value { font-size: clamp(1rem, 3cqh, 1.3rem); line-height: 1.1; }
+.sia-hmi.kiosk .tank-fault-reason { margin-top: 0.5cqh; font-size: clamp(0.72rem, 2cqh, 0.9rem); }
 .sia-hmi.kiosk .state-display { margin-bottom: 0.4cqh; }
 .sia-hmi.kiosk .state-value {
     font-size: clamp(0.72rem, 2.2cqh, 0.95rem);

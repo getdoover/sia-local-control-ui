@@ -43,6 +43,11 @@
 // Refresh button (local kiosk only): top right of the header, >= 44 px, clear
 // of the title and status, with and without the insets; none in the cloud.
 // Screenshots: HEADER_SHOTS=<dir> (header-refresh-1024x600*.png)
+// Tank level sensor fault (mock tankfault=1) and no reading (tankfault=old):
+// the Tank tile stays with "--" and an empty bar; in fault a SENSOR FAULT
+// badge in its heading and the reason whole under the instruments, at every size, with
+// the alarm gear, with and without the insets. Screenshots (1024x600):
+// TANK_SHOTS=<dir> (tank-fault-*.png, tank-noreading-*.png)
 // "Calibration stopped" (a test run the DCS cancelled, mock testrun=dcs): the
 // notice replaces the reattached countdown, fits the screen (and the popover
 // inset) with no scroll and no clipped text, sits above everything with one
@@ -89,6 +94,12 @@ const CASES = [
   { name: "calibrate tile, faulted + warning + solar", q: "scenario=faulted&warning=1&solar=1&cal=manual" },
   // Two concurrent warnings: one row each, the second below the first.
   { name: "tank L + mm, solar, faulted + two warnings", q: "scenario=faulted&warning=2&solar=1&tank=L,mm" },
+  // Tank level sensor under range: SENSOR FAULT badge + reason, "--" values.
+  { name: "tank sensor fault", q: "scenario=running&tankfault=1" },
+  { name: "tank sensor fault, no VSD", q: "scenario=running&vsd=0&tankfault=1" },
+  { name: "tank sensor fault, L + mm, solar, faulted + two warnings", q: "scenario=faulted&warning=2&solar=1&tank=L,mm&tankfault=1" },
+  // An older tank app under range: no reading, no fault tag: "--" only.
+  { name: "tank no reading, faulted + warning", q: "scenario=faulted&warning=1&tankfault=old" },
 ];
 const SHOTS = process.env.SHOTS;
 const VSD_SHOTS = process.env.VSD_SHOTS;
@@ -239,8 +250,12 @@ for (const [w, h] of SIZES) {
           } else if (!c.q.includes("solar=1")) {
             assert.ok(m.tank.width >= m.rowWidth - 1, `tank ${m.tank.width} does not span ${m.rowWidth}`);
           }
-          // Tank secondary reading: shown only when configured, inside its card.
-          if (c.q.includes("tank=")) {
+          // Tank secondary reading: shown only when configured and published,
+          // inside its card (in a sensor fault there is no reading).
+          if (c.q.includes("tankfault=")) {
+            assert.equal(m.secondary, null, "no secondary reading without a level");
+            assertTankTile(await page.evaluate(measureTank), c.q.includes("tankfault=1") ? "fault" : "empty");
+          } else if (c.q.includes("tank=")) {
             assert.ok(m.secondary, "tank secondary reading shown");
             assert.equal(m.secondary.text, "850mm");
             assert.ok(m.secondary.bottom <= m.secondary.cardBottom + 0.5, `secondary spills out of its card: ${ctx}`);
@@ -259,6 +274,168 @@ for (const [w, h] of SIZES) {
       });
     }
   }
+}
+
+// --- Tank level sensor fault / no reading ------------------------------------------
+//
+// tankfault=1: the tank app's sensor_fault "under_range" at 3.73 mA. The Tank
+// tile stays, both readings "--" with an empty bar, a SENSOR FAULT badge in
+// its heading (right of the title, left of the alarm gear) and "Signal below
+// range (3.73 mA)" whole, on one line, under the two instruments. tankfault=old: an older tank app with no level and no fault tag: the
+// same tile with "--" and no badge. Checked at every size, with the alarm
+// gear in, with and without the insets.
+// Screenshots (1024x600 Touch): TANK_SHOTS=<dir> (tank-fault-1024x600.png,
+// tank-fault-tile-1024x600.png, tank-noreading-1024x600.png,
+// tank-noreading-tile-1024x600.png, and each with the Sensor tab open:
+// *-sensor-tab-1024x600.png)
+
+const TANK_SHOTS = process.env.TANK_SHOTS;
+
+function measureTank() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const section = q("tank-section");
+  const head = section.querySelector("h2");
+  const badge = q("tank-fault");
+  const reason = q("tank-fault-reason");
+  const card = q("tank-level-mm").closest(".control-card");
+  const gear = q("tank-gear");
+  const font = (el) => parseFloat(getComputedStyle(el).fontSize);
+  return {
+    section: vis(section) ? box(section) : null,
+    head: box(head),
+    title: box(head.querySelector("span")),
+    badge: vis(badge)
+      ? { ...box(badge), text: badge.textContent, cut: badge.scrollWidth - badge.clientWidth, font: font(badge) }
+      : null,
+    reason: vis(reason)
+      ? { ...box(reason), text: reason.textContent, cut: reason.scrollWidth - reason.clientWidth, font: font(reason) }
+      : null,
+    card: { ...box(card), overflowY: card.scrollHeight - card.clientHeight, overflowX: card.scrollWidth - card.clientWidth },
+    gear: vis(gear) ? box(gear) : null,
+    values: ["tank-level-mm", "tank-level-percent"].map((id) => q(id).querySelector(".value").textContent),
+    bar: q("tank-progress").getBoundingClientRect().width,
+  };
+}
+
+function assertTankTile(t, kind) {
+  const ctx = JSON.stringify(t);
+  assert.ok(t.section, `tank tile hidden: ${ctx}`);
+  assert.deepEqual(t.values, ["--", "--"], ctx);
+  assert.equal(t.bar, 0, `fill bar not empty: ${ctx}`);
+  assert.ok(t.card.overflowY <= 1 && t.card.overflowX <= 1, `tank level card overflows: ${ctx}`);
+  if (kind === "empty") {
+    assert.equal(t.badge, null, `fault badge without a fault: ${ctx}`);
+    assert.equal(t.reason, null, `fault reason without a fault: ${ctx}`);
+    return;
+  }
+  const b = t.badge;
+  assert.ok(b, `no SENSOR FAULT badge: ${ctx}`);
+  assert.equal(b.text, "SENSOR FAULT");
+  assert.ok(b.cut <= 1, `badge text cut off: ${ctx}`);
+  assert.ok(b.font >= 11, `badge text ${b.font}px`);
+  assert.ok(b.left >= t.title.right, `badge over the title: ${ctx}`);
+  assert.ok(
+    b.top >= t.head.top - 0.5 && b.bottom <= t.head.bottom + 0.5 && b.right <= t.head.right + 0.5,
+    `badge outside the heading: ${ctx}`,
+  );
+  if (t.gear) assert.ok(b.right <= t.gear.left, `badge under the alarm gear: ${ctx}`);
+  const r = t.reason;
+  assert.ok(r, `no fault reason: ${ctx}`);
+  assert.equal(r.text, "Signal below range (3.73 mA)");
+  assert.ok(r.cut <= 1, `reason cut off: ${ctx}`);
+  assert.ok(r.font >= 11, `reason text ${r.font}px`);
+  assert.ok(r.h < 2 * r.font, `reason wraps: ${ctx}`);
+  assert.ok(r.top >= t.card.bottom - 0.5, `reason not under the instruments: ${ctx}`);
+  assert.ok(
+    r.left >= t.section.left - 0.5 && r.right <= t.section.right + 0.5 && r.bottom <= t.section.bottom + 0.5,
+    `reason outside the tile: ${ctx}`,
+  );
+}
+
+for (const [w, h] of SIZES) {
+  for (const mode of MODES) {
+    for (const [insetName, inset] of [["no inset", false], ["inset 2 mm", true]]) {
+      for (const [kind, q] of [["fault", "tankfault=1"], ["empty", "tankfault=old"]]) {
+        const label = kind === "fault" ? "tank sensor fault" : "tank no reading";
+        test(`${w}x${h} ${mode}, ${insetName}, ${label} + alarm gear, faulted + warning + solar: fits`, async () => {
+          const page = await browser.newPage({ viewport: { width: w, height: h } });
+          // INSET_Q is declared further down: read it when the test runs.
+          const insetQ = inset ? `&${INSET_Q}` : "";
+          try {
+            await page.goto(
+              `${base}?host=local&mode=${encodeURIComponent(mode)}&alarms=${encodeURIComponent("Local only")}` +
+                `&sensors=${encodeURIComponent("Local only")}&scenario=faulted&warning=1&solar=1&${q}${insetQ}`,
+            );
+            await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+            await page.waitForTimeout(150);
+            const m = await page.evaluate(measure);
+            assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${m.doc}`);
+            for (const [lbl, v] of [["content", m.content], ["body", m.body]]) {
+              assert.ok(v[0] <= v[1] + 1, `${lbl} overflows horizontally: ${v}`);
+              assert.ok(v[2] <= v[3] + 1, `${lbl} overflows vertically: ${v}`);
+            }
+            for (const t of m.tiles) assert.ok(t.bottom <= m.barTop + 0.5, `${t.name} under the bar/edge`);
+            assert.ok(Math.min(...m.valueFonts) >= 16, `value text ${Math.min(...m.valueFonts)}px`);
+            const t = await page.evaluate(measureTank);
+            assert.ok(t.gear, "alarm gear on the Tank tile");
+            assert.ok(t.gear.w >= 44 && t.gear.h >= 44, `tank gear ${t.gear.w}x${t.gear.h} < 44px`);
+            assertTankTile(t, kind);
+            if (insetQ) {
+              const plate = await page.evaluate(measureInset);
+              for (const it of plate.items) assertInside(it, w, h, INSET_PX, it.name);
+            }
+            // The gear still opens the tank alarms and the Sensor tab, which
+            // shows the live loop current (the fault's cause) and no level.
+            await openSensorTab(page, "tank-gear");
+            const s = await page.evaluate(measureSensorPane);
+            const sctx = JSON.stringify(s);
+            assert.equal(s.title, "Tank Level Sensor", sctx);
+            assert.ok(s.paneShown && !s.rowsShown, `sensor pane not shown: ${sctx}`);
+            assert.ok(s.doc[0] <= w && s.doc[1] <= h, `page scrolls with the popover: ${sctx}`);
+            assertInside(s.panel, w, h, inset ? POP_PX : 8, "Tank Level Sensor");
+            assert.ok(s.panel.sh <= s.panel.ch + 1 && s.panel.sw <= s.panel.cw + 1, `popover overflows: ${sctx}`);
+            assert.match(s.live[0].text, /3\.73/, `loop current not shown: ${sctx}`);
+            assert.equal(s.live[1].text, "—", `a level shown in fault: ${sctx}`);
+            assert.deepEqual(s.cells.map((c) => c.id), ["zero_m", "span_m", "fluid_density"], sctx);
+            for (const c of s.cells) assert.ok(!c.locked && c.h >= 56, `${c.id} not editable: ${sctx}`);
+            await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+          } finally {
+            await page.close();
+          }
+        });
+      }
+    }
+  }
+}
+
+if (TANK_SHOTS) {
+  test("tank screenshots (1024x600 Touch): sensor fault and no reading", async () => {
+    fs.mkdirSync(TANK_SHOTS, { recursive: true });
+    for (const [name, q] of [["tank-fault", "tankfault=1"], ["tank-noreading", "tankfault=old"]]) {
+      const page = await browser.newPage({ viewport: { width: 1024, height: 600 } });
+      try {
+        await page.goto(
+          `${base}?host=local&mode=Touch&alarms=${encodeURIComponent("Local only")}` +
+            `&sensors=${encodeURIComponent("Local only")}&scenario=running&${q}`,
+        );
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.waitForTimeout(700); // the fill bar's width transition
+        await page.screenshot({ path: path.join(TANK_SHOTS, `${name}-1024x600.png`) });
+        await page.locator('.sia-hmi [data-id="tank-section"]').screenshot({
+          path: path.join(TANK_SHOTS, `${name}-tile-1024x600.png`),
+        });
+        await openSensorTab(page, "tank-gear");
+        await page.screenshot({ path: path.join(TANK_SHOTS, `${name}-sensor-tab-1024x600.png`) });
+      } finally {
+        await page.close();
+      }
+    }
+  });
 }
 
 // --- VSD commissioning gear + popover ------------------------------------------
