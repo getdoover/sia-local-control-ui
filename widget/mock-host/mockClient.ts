@@ -39,6 +39,13 @@ export interface MockOptions {
   testRunRemaining?: number;
   /** Speed-up for the mock test run clock (1 = real time). */
   testRunSpeed?: number;
+  /**
+   * Who stops every test run TEST_RUN_STOP_MS after it starts (the one
+   * running at load, and each one started from the wizard): it ends
+   * "cancelled" with this TestRunEndedBy, as the controller does when a
+   * command from that source (a DCS stop over Modbus) interrupts it.
+   */
+  testRunStoppedBy?: "dcs" | "cloud" | "hmi";
   /** kiosk_inset_mm / popover_inset_mm / kiosk_px_per_mm (unset = app defaults). */
   kioskInsetMm?: number;
   popoverInsetMm?: number;
@@ -63,6 +70,9 @@ export interface MockOptions {
 }
 
 export const TECHTOP = "techtop_motor_controller_1";
+
+/** How long into a test run the mock's `testRunStoppedBy` stops it (real time). */
+export const TEST_RUN_STOP_MS = 3000;
 
 /** Optidrive E3 parameters as the Techtop app's read_parameters reports them. */
 function techtopParameters() {
@@ -170,6 +180,7 @@ export function scenarioTags(opts: MockOptions): Json {
             TestRunDuration_s: 60,
             TestRunElapsed_s: 60 - opts.testRunRemaining,
             TestRunResult: null,
+            TestRunEndedBy: null,
           }
         : {}),
     },
@@ -255,14 +266,17 @@ export function createMockClient(opts: MockOptions) {
 
   // The controller's timed test run, on a (possibly sped-up) mock clock.
   let testTimer: ReturnType<typeof setInterval> | undefined;
-  const endTest = (result: string, elapsed: number) => {
+  let stopTimer: ReturnType<typeof setTimeout> | undefined;
+  const endTest = (result: string, elapsed: number, endedBy: string | null) => {
     clearInterval(testTimer);
+    clearTimeout(stopTimer);
     testTimer = undefined;
     patchTags({
       TestRunActive: false,
       TestRunRemaining_s: 0,
       TestRunElapsed_s: Math.round(elapsed * 100) / 100,
       TestRunResult: result,
+      TestRunEndedBy: endedBy,
       StateString: "standby",
       Running: false,
       FlowRate: 0,
@@ -279,18 +293,31 @@ export function createMockClient(opts: MockOptions) {
       TestRunDuration_s: duration,
       TestRunElapsed_s: 0,
       TestRunResult: null,
+      TestRunEndedBy: null,
       StateString: "pumping",
       Running: true,
       FlowRate: Math.round(rate * 0.96 * 100) / 100,
     });
     testTimer = setInterval(() => {
       const e = elapsed();
-      if (e >= duration) endTest("completed", duration);
+      if (e >= duration) endTest("completed", duration, "deadline");
       else patchTags({ TestRunRemaining_s: Math.round((duration - e) * 10) / 10, TestRunElapsed_s: Math.round(e * 100) / 100 });
     }, 250);
+    scheduleStop(elapsed);
     return elapsed;
   };
+  // testRunStoppedBy: that source stops the run a few seconds in.
+  const scheduleStop = (elapsed: () => number) => {
+    const by = opts.testRunStoppedBy;
+    if (by) stopTimer = setTimeout(() => endTest("cancelled", elapsed(), by), TEST_RUN_STOP_MS);
+  };
   let testElapsed: (() => number) | undefined;
+  if (opts.testRunRemaining != null) {
+    // The run already going at load (calrun / testrun).
+    const t0 = Date.now() - (60 - opts.testRunRemaining) * 1000;
+    testElapsed = () => (Date.now() - t0) / 1000;
+    scheduleStop(testElapsed);
+  }
 
   const rpcError = (code: string, message: string) =>
     Object.assign(new Error(message), { status: { code: "error", message: { code, message } } });
@@ -311,6 +338,8 @@ export function createMockClient(opts: MockOptions) {
     await new Promise((r) => setTimeout(r, 400));
     switch (req.method) {
       case "set_pump_state":
+        // Any pump command ends a running test (cancelled, by its source).
+        if (tags.TestRunActive) endTest("cancelled", testElapsed ? testElapsed() : 0, source);
         patchTags(
           req.request === "start"
             ? { StateString: "pumping", Running: true, FlowRate: 11.9 }
@@ -346,7 +375,7 @@ export function createMockClient(opts: MockOptions) {
         return { active: true, rate: r.rate, duration_s: r.duration_s };
       }
       case "cancel_test_run":
-        if (tags.TestRunActive) endTest("cancelled", testElapsed ? testElapsed() : 0);
+        if (tags.TestRunActive) endTest("cancelled", testElapsed ? testElapsed() : 0, source);
         return { active: false, result: "cancelled" };
       case "low_tank_level":
       case "low_low_tank_level":

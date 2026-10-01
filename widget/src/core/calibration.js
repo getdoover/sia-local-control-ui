@@ -193,3 +193,63 @@ export function computeCalibration({ startMl, finalMl, elapsedS, targetRate, old
     clamped,
   };
 }
+
+// --- "Calibration stopped": a test run another source cancelled --------------
+
+/**
+ * The notice for a test run cancelled by a command from somewhere other than
+ * this panel, keyed by the controller's TestRunEndedBy. "hmi" (this panel's
+ * own Cancel / Stop) has none: the wizard's cancelled page says it. A fault
+ * has none either: the fault banner and the wizard's faulted page say it.
+ */
+export const RUN_STOP_NOTICES = {
+  dcs: {
+    title: "Calibration stopped",
+    lead: "The calibration test was stopped by the DCS.",
+    note: "No calibration factor was changed. Run the calibration again when the DCS allows.",
+  },
+  cloud: {
+    title: "Calibration stopped",
+    lead: "The calibration test was stopped from Doover.",
+    note: "No calibration factor was changed. Run the calibration again when ready.",
+  },
+};
+
+/**
+ * The test run's state as far as the notice cares: "active" while it runs,
+ * else "<result>|<ended by>" ("|" before any run, or from a controller that
+ * does not publish them); null without the calibration payload.
+ */
+export function testRunEndKey(tr) {
+  if (!tr) return null;
+  if (tr.active) return "active";
+  return `${tr.result || ""}|${tr.ended_by || ""}`;
+}
+
+/**
+ * Follow the controller's test run from one payload to the next and say when
+ * to raise the "Calibration stopped" notice: once, on the change INTO a run
+ * cancelled by one of `sources`.
+ *
+ *  - Every later payload with the same tags is no change, so no repeat; a new
+ *    run moves the key to "active", so the next such ending raises it again.
+ *  - The tags may land one at a time (active off, then the result, then who
+ *    ended it): each is a change, and only the last one matches.
+ *  - The first payload seen (prevKey null) only sets the baseline. The tags
+ *    carry no time or run id, so a cancellation already there when the page
+ *    loads may be a minute or a month old; it is not raised again.
+ *  - No payload (tr null: not Manual (HMI)) keeps the last key, so switching
+ *    the method or the HMI mode away and back does not raise an old ending.
+ *
+ * -> {key, notice: the source ("dcs" / "cloud") or null}
+ */
+export function followTestRunEnd(prevKey, tr, sources = Object.keys(RUN_STOP_NOTICES)) {
+  const key = testRunEndKey(tr);
+  if (key === null) return { key: prevKey, notice: null };
+  const changed = prevKey != null && key !== prevKey;
+  const notice =
+    changed && tr.result === "cancelled" && sources.includes(tr.ended_by) && RUN_STOP_NOTICES[tr.ended_by]
+      ? tr.ended_by
+      : null;
+  return { key, notice };
+}

@@ -43,6 +43,11 @@
 // Refresh button (local kiosk only): top right of the header, >= 44 px, clear
 // of the title and status, with and without the insets; none in the cloud.
 // Screenshots: HEADER_SHOTS=<dir> (header-refresh-1024x600*.png)
+// "Calibration stopped" (a test run the DCS cancelled, mock testrun=dcs): the
+// notice replaces the reattached countdown, fits the screen (and the popover
+// inset) with no scroll and no clipped text, sits above everything with one
+// >= 56 px OK, and OK closes it for good. Screenshots: CAL_SHOTS=<dir>
+// (run-notice-<w>x<h>.png, run-notice-<w>x<h>-inset.png)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -1641,3 +1646,78 @@ test("cloud: no Refresh button", async () => {
     await page.close();
   }
 });
+
+// --- "Calibration stopped" (a test run the DCS cancelled) -----------------------------
+
+/** The open notice: on screen, no scroll, its one key, what is on top. */
+function measureRunNotice() {
+  const vis = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).display !== "none";
+  const box = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const q = (id) => document.querySelector(`.sia-hmi [data-id="${id}"]`);
+  const panel = q("run-notice-box");
+  const ok = q("run-notice-ok");
+  const okBox = box(ok);
+  const hit = document.elementFromPoint(okBox.left + okBox.w / 2, okBox.top + okBox.h / 2);
+  return {
+    open: vis(q("run-notice")),
+    wizard: vis(q("calwiz")),
+    doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+    panel: { ...box(panel), sh: panel.scrollHeight, ch: panel.clientHeight, sw: panel.scrollWidth, cw: panel.clientWidth },
+    buttons: [...panel.querySelectorAll("button")].filter(vis).map((b) => ({ id: b.dataset.id, ...box(b) })),
+    okOnTop: !!hit?.closest('[data-id="run-notice-ok"]'),
+    texts: [...panel.querySelectorAll("h2, p")].map((e) => ({
+      text: e.textContent, ...box(e), overflowX: e.scrollWidth - e.clientWidth, overflowY: e.scrollHeight - e.clientHeight,
+    })),
+  };
+}
+
+for (const [w, h] of SIZES) {
+  for (const [insetName, insetQ, gap] of [["no inset", "", 0], ["inset 2 mm + popover 10 mm", `&${INSET_Q}`, POP_PX]]) {
+    test(`${w}x${h} Touch, ${insetName}: "Calibration stopped" after a DCS stop fits, one OK closes it`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      try {
+        await page.goto(`${base}?host=local&mode=Touch&scenario=standby&testrun=dcs${insetQ}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        // The run going at load: the wizard reattaches to its countdown ...
+        await wizardPage(page, "5");
+        // ... until the mock DCS stops it (TEST_RUN_STOP_MS).
+        await page.waitForSelector('.sia-hmi [data-id="run-notice"]:not(.hidden)', { timeout: 10_000 });
+        await page.waitForTimeout(150);
+        const m = await page.evaluate(measureRunNotice);
+        const ctx = JSON.stringify(m);
+        if (CAL_SHOTS) {
+          await page.screenshot({ path: path.join(CAL_SHOTS, `run-notice-${w}x${h}${insetQ ? "-inset" : ""}.png`) });
+        }
+        assert.ok(m.open, `notice not open: ${ctx}`);
+        assert.ok(!m.wizard, `the wizard is still up behind it: ${ctx}`);
+        assert.ok(m.doc[0] <= w && m.doc[1] <= h, `page scrolls: ${ctx}`);
+        assertInside(m.panel, w, h, gap, "notice");
+        assert.ok(m.panel.sh <= m.panel.ch + 1 && m.panel.sw <= m.panel.cw + 1, `notice overflows: ${ctx}`);
+        assert.deepEqual(m.buttons.map((b) => b.id), ["run-notice-ok"], "one button");
+        const ok = m.buttons[0];
+        assert.ok(ok.h >= 56 && ok.w >= 120, `OK ${ok.w}x${ok.h} too small`);
+        assert.ok(ok.bottom <= m.panel.bottom + 0.5, `OK outside the notice: ${ctx}`);
+        assert.ok(m.okOnTop, `something covers OK: ${ctx}`);
+        assert.match(m.texts.map((t) => t.text).join(" "), /stopped by the DCS/);
+        for (const t of m.texts) {
+          assert.ok(t.overflowX <= 1 && t.overflowY <= 1, `text clipped: ${JSON.stringify(t)}`);
+          assert.ok(t.bottom <= m.panel.bottom + 0.5, `text outside the notice: ${JSON.stringify(t)}`);
+        }
+
+        await page.click('.sia-hmi [data-id="run-notice-ok"]');
+        assert.equal(await page.isVisible('.sia-hmi [data-id="run-notice"]'), false, "OK closes it");
+        // Later updates with the same run tags do not bring it back (+ nudges
+        // the target rate: the mock controller republishes its tags).
+        await page.click('.sia-hmi [data-id="touch-rate-up"]');
+        await page.waitForTimeout(800);
+        assert.equal(await page.isVisible('.sia-hmi [data-id="run-notice"]'), false, "shown once");
+        assert.equal(await page.isVisible('.sia-hmi [data-id="calwiz"]'), false, "no wizard either");
+      } finally {
+        await page.close();
+      }
+    });
+  }
+}
