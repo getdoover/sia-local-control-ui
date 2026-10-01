@@ -54,6 +54,9 @@ export declare const CAL_STORE_KEY: string;
 export declare const RATE_CONFIRM_FRACTION: number;
 export declare const VSD_POLL_MS: number;
 export declare const EMPTY_VALUE: string;
+export declare const TANK_FAULT_LABEL: string;
+/** The Tank tile's fault reason, e.g. "Signal below range (3.73 mA)". */
+export declare function tankFaultReason(fault: string, rawMa?: number | null): string;
 export declare function formatDiagnostic(d: unknown, field: string): string;
 export declare function formatParameter(p: { value: number | null; step: number | null }, value?: number | null): string;
 export declare function keypadInput(text: string, key: string): string;

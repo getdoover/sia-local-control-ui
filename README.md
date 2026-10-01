@@ -108,6 +108,14 @@ computes volume. `L` shows the tank app's `level_volume`, which it computes from
 its **Volume Units** (default `L`): set those on the tank app, in litres, before choosing
 `L`. The legacy dashboard ignores both keys and always shows mm.
 
+The Tank tile shows whenever `tank_level_app` is set, in every mode, like the Skid tile:
+with no level published (no sensor, nothing yet, an older tank app under range) both
+readings show `--` and the bar is empty. When the tank app publishes `sensor_fault`
+(`"under_range"`: loop current below 4 mA) the tile also shows a red **SENSOR FAULT**
+badge in its heading and the reason under the readings, e.g. `Signal below range
+(3.73 mA)` from `raw_level_reading`; no level is shown while it is set. The gear (alarms,
+Sensor tab) stays reachable throughout.
+
 ## VSD commissioning panel
 
 A gear button in the top-right corner of the widget's VSD tile opens a popover with live
@@ -277,6 +285,9 @@ drift). The widget must stay one file (`chunkSplit: all-in-one`, inlined CSS and
 `vsdapp`, `legacy=1` (an older Techtop app without `get_diagnostics`), e.g.
 `index.html?host=local&mode=Touch&commission=Local%20only&click=vsd-gear`.
 `VSD_SHOTS=dir npm --prefix widget run test:layout` saves `vsd-panel-<w>x<h>.png`.
+`tankfault=1` puts the tank sensor in fault (3.73 mA, `sensor_fault` "under_range");
+`tankfault=old` is an older tank app with no level and no fault tag.
+`TANK_SHOTS=dir` saves `tank-fault-*.png` / `tank-noreading-*.png` at 1024x600.
 
 ## Publishing
 

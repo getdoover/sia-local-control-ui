@@ -27,6 +27,12 @@ export interface MockOptions {
   /** tank_primary_reading / tank_secondary_reading (unset = app defaults). */
   tankPrimary?: string;
   tankSecondary?: string;
+  /**
+   * Tank level sensor below its 4 mA zero (3.73 mA): "fault" = a tank app
+   * that publishes sensor_fault "under_range" and nulls its level tags; "old"
+   * = an older tank app that only leaves the level tags null.
+   */
+  tankFault?: "fault" | "old";
   /** vsd_commissioning ("Hidden" / "Local only" / "Local and cloud"). */
   commissioning?: string;
   /** vsd_motor_app (defaults to the Techtop key when commissioning is set). */
@@ -259,6 +265,18 @@ export function scenarioTags(opts: MockOptions): Json {
       level_filled_percentage: 64,
       level_volume: 1284.6,
       ...sensorTags(opts.sensorCal, TANK_DEFAULTS, "raw_level_reading", TANK_MA),
+      // The loop below its 4 mA zero: no level; a current tank app also
+      // publishes sensor_fault, an older one does not.
+      ...(opts.tankFault
+        ? {
+            level_reading: null,
+            level_filled_percentage: null,
+            level_reading_display: null,
+            level_volume: null,
+            raw_level_reading: 3.73,
+            ...(opts.tankFault === "fault" ? { sensor_fault: "under_range" } : {}),
+          }
+        : {}),
     },
     [PRESSURE_APP]: {
       value: 350.2,
