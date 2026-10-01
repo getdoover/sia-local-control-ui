@@ -38,9 +38,10 @@ First in the config editor. Governs **on-screen** controls only, identically in 
 and the legacy dashboard:
 
 - `Read Only` (default): display only.
-- `Touch`: a bottom touch bar with Start, STOP (always available), rate step down/up
-  (`nudge_rate`), tap the rate for a keypad setpoint (`set_target_rate`, within
-  MinRate..MaxRate), Reset Fault, and the calibration factor (`last_calibration_factor`,
+- `Touch`: a bottom touch bar with Start, STOP (always available), tap the target rate
+  for a keypad setpoint (`set_target_rate`, within MinRate..MaxRate; in the widget the
+  keypad's -/+ steps the entry by 5% of MaxRate, the legacy dashboard keeps its rate step
+  down/up buttons, `nudge_rate`), Reset Fault, and the calibration factor (`last_calibration_factor`,
   0.3 to 1.7). The VSD card's Reset VSD is live. Calibration changes and rate changes over
   20% ask for confirmation first.
 - `Button`: behaves exactly like Read Only on screen, and **reveals the physical-button

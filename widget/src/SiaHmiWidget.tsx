@@ -301,6 +301,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
       // The kiosk hides the footer in every mode (hmi-core.css), so it gets
       // the empty placeholder rather than an SVG image it would never show.
       logos: { remoteCommand: remoteCommandLogo, doover: host.kind === "local" ? undefined : dooverLogo },
+      title: latest.current.cfg.headerTitle ?? undefined,
       vsdPanel,
       // Refresh (full page reload) on the kiosk only: in the cloud it would
       // reload the whole customer site.
@@ -343,6 +344,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.setDisplay(display);
   }, [display]);
+
+  useEffect(() => {
+    hmiRef.current?.setTitle(cfg.headerTitle);
+  }, [cfg.headerTitle]);
 
   useEffect(() => {
     hmiRef.current?.setAlarmAccess(alarmAccess);

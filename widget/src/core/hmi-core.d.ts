@@ -33,6 +33,8 @@ export interface HmiHandle {
   notify(message: string, level?: "ok" | "error"): void;
   setVsdPanel(access: VsdPanelAccess): void;
   setDisplay(display: HmiDisplay): void;
+  /** Header title; empty falls back to the default. */
+  setTitle(title: string | null | undefined): void;
   /** Alarm settings gears / writes (lib/alarmSettings.ts alarmSettingsAccess). */
   setAlarmAccess(access: { enabled: boolean; canWrite: boolean; writeBlockedReason: string }): void;
   /** Sensor tab on the Tank / Skid pressure popovers (lib/sensorSettings.ts sensorSettingsAccess). */

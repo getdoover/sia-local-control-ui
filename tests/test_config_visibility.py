@@ -103,7 +103,7 @@ def test_config_keys_unchanged_from_the_deployed_schema():
     """Same keys as before: the deployed schema plus the new settings, all
     defaulting to the old behaviour (Read Only, dashboard on, tank mm only,
     no VSD commissioning gear, no cover-plate insets, no alarm settings
-    gears, no Sensor tab, no DCS command pop-ups)."""
+    gears, no Sensor tab, no DCS command pop-ups, default header title)."""
     schema = _schema()
     keys = set(schema["properties"]) | set(schema["allOf"][0]["then"]["properties"])
     deployed = set(_kuwait())
@@ -120,8 +120,16 @@ def test_config_keys_unchanged_from_the_deployed_schema():
         "alarm_settings_access",
         "sensor_settings_access",
         "dcs_connected",
+        "header_title",
     }
     assert deployed - keys == set()
+
+
+def test_header_title_defaults_blank():
+    """Blank keeps the widget's default title, so existing installs are unchanged."""
+    prop = _schema()["properties"]["header_title"]
+    assert prop["default"] == ""
+    assert prop["title"] == "Header Title"
 
 
 def test_kuwait_config_loads_with_no_insets():

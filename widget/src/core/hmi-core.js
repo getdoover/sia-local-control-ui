@@ -90,6 +90,8 @@ export const COMMAND_DONE = {
   last_calibration_factor: "Calibration factor updated",
 };
 
+export const DEFAULT_TITLE = "SIA Remote Command";
+
 // A keypad rate entry moving the target by more than this fraction asks first.
 export const RATE_CONFIRM_FRACTION = 0.2;
 const KEYPAD_MAX_CHARS = 8;
@@ -133,6 +135,24 @@ export function validateKeypadEntry(text, min, max) {
     return { ok: false, error: `Out of range (${min} to ${max})` };
   }
   return { ok: true, value };
+}
+
+/** The rate popover's +/- step: the controller's own nudge, 5% of the
+ *  maximum rate (injection controller `_parse_nudge`). */
+export function rateStep(maxRate) {
+  const max = Number(maxRate);
+  return max > 0 ? Math.round((max / 20) * 1000) / 1000 : 0;
+}
+
+/** Keypad entry after a +/- step from `text` (the typed entry, or the current
+ *  value), clamped to the range and shown to `decimals` places. */
+export function keypadStep(text, direction, { step, min, max, decimals = 2 }) {
+  let base = Number(text);
+  if (text === "" || text == null || !isFinite(base)) base = min != null ? Number(min) : 0;
+  let next = base + direction * step;
+  if (min != null) next = Math.max(Number(min), next);
+  if (max != null) next = Math.min(Number(max), next);
+  return next.toFixed(decimals);
 }
 
 /** Whether a keypad rate entry is a big enough change to confirm first. */
@@ -325,15 +345,18 @@ function template(opts) {
 <div class="dashboard-container" data-id="container">
   <div class="hmi-body">
     <header class="dashboard-header${reload ? " has-reload" : ""}">
-      <h1>${logo}<span class="header-title">${escapeAttr(opts.title || "SIA Remote Command")}</span></h1>
-      <div class="header-info">
-        <div class="connection-status">
-          <span data-id="connection-status" class="status-disconnected">&#9679; Disconnected</span>
+      <div class="header-brand">${logo}</div>
+      <h1><span class="header-title" data-id="header-title">${escapeAttr(opts.title || DEFAULT_TITLE)}</span></h1>
+      <div class="header-end">
+        <div class="header-info">
+          <div class="connection-status">
+            <span data-id="connection-status" class="status-disconnected">&#9679; Disconnected</span>
+          </div>
+          <div class="timestamp">Last Update: <span data-id="last-update">--</span></div>
+          <div class="host-badge" data-id="host-badge"></div>
         </div>
-        <div class="timestamp">Last Update: <span data-id="last-update">--</span></div>
-        <div class="host-badge" data-id="host-badge"></div>
+        ${reload}
       </div>
-      ${reload}
     </header>
 
     <div data-id="fault-banner" class="fault-banner hidden" role="alert">
@@ -473,13 +496,11 @@ function template(opts) {
       <button type="button" class="touch-btn touch-stop" data-id="touch-stop"><span class="touch-label">Stop</span></button>
     </div>
     <div class="touch-group touch-rate-group">
-      <button type="button" class="touch-btn touch-step" data-id="touch-rate-down" aria-label="Decrease target rate">&minus;</button>
-      <button type="button" class="touch-btn touch-value" data-id="touch-rate" aria-label="Enter target rate">
+      <button type="button" class="touch-btn touch-value" data-id="touch-rate" aria-label="Change target rate">
         <span class="touch-caption">Target</span>
         <span class="touch-number" data-id="touch-rate-value">--</span>
         <span class="touch-caption" data-id="touch-rate-unit">L/Hr</span>
       </button>
-      <button type="button" class="touch-btn touch-step" data-id="touch-rate-up" aria-label="Increase target rate">+</button>
     </div>
     <div class="touch-group">
       <button type="button" class="touch-btn touch-reset" data-id="touch-reset"><span class="touch-label">Reset Fault</span></button>
@@ -567,9 +588,13 @@ function template(opts) {
         <button type="button" class="icon-btn cal-help-btn hidden" data-id="keypad-help" aria-label="What is the calibration factor?">?</button>
         <div class="keypad-title" data-id="keypad-title"></div>
       </div>
-      <div class="keypad-display">
-        <span class="keypad-entry" data-id="keypad-entry"></span>
-        <span class="keypad-unit" data-id="keypad-unit"></span>
+      <div class="keypad-entry-row">
+        <button type="button" class="key key-fn keypad-step hidden" data-id="keypad-step-down" aria-label="Step down">&minus;</button>
+        <div class="keypad-display">
+          <span class="keypad-entry" data-id="keypad-entry"></span>
+          <span class="keypad-unit" data-id="keypad-unit"></span>
+        </div>
+        <button type="button" class="key key-fn keypad-step hidden" data-id="keypad-step-up" aria-label="Step up">+</button>
       </div>
       <div class="keypad-range" data-id="keypad-range"></div>
       <div class="keypad-error" data-id="keypad-error" role="alert"></div>
@@ -842,8 +867,6 @@ class Hmi {
     on("touch-start", (b) => this.sendCommand("set_pump_state", "start", b));
     // Stop acts immediately and is never disabled.
     on("touch-stop", (b) => this.sendCommand("set_pump_state", "stop", b));
-    on("touch-rate-up", (b) => this.sendCommand("nudge_rate", "+1", b));
-    on("touch-rate-down", (b) => this.sendCommand("nudge_rate", "-1", b));
     on("touch-reset", (b) => this.sendCommand("reset_fault", null, b));
     on("touch-rate", (b) => this.openRateKeypad(b));
     on("touch-cal", (b) => (this.data.calibration ? this.calwizOpen() : this.openCalKeypad(b)));
@@ -880,6 +903,8 @@ class Hmi {
       btn.addEventListener("click", () => this.keypadPress(btn.getAttribute("data-key")));
     });
     on("keypad-ok", () => this.keypadSubmit());
+    on("keypad-step-down", () => this.keypadStepPress(-1));
+    on("keypad-step-up", () => this.keypadStepPress(1));
     on("keypad-cancel", () => this.keypadClose());
     on("confirm-ok", () => {
       const fn = this.confirmOk;
@@ -1026,6 +1051,9 @@ class Hmi {
     this.keypadPlaceholder = opts.value != null ? Number(opts.value).toFixed(dp) : "";
     this.setText("keypad-error", "");
     this.keypadRefresh();
+    const stepped = opts.step > 0;
+    this.toggle(this.$("keypad-step-down"), stepped);
+    this.toggle(this.$("keypad-step-up"), stepped);
     this.show(this.$("keypad"));
   }
 
@@ -1040,6 +1068,14 @@ class Hmi {
 
   keypadPress(key) {
     this.keypadText = keypadInput(this.keypadText, key);
+    this.setText("keypad-error", "");
+    this.keypadRefresh();
+  }
+
+  keypadStepPress(direction) {
+    const o = this.keypadOpts;
+    if (!o || !(o.step > 0)) return;
+    this.keypadText = keypadStep(this.keypadText || this.keypadPlaceholder, direction, o);
     this.setText("keypad-error", "");
     this.keypadRefresh();
   }
@@ -1099,6 +1135,7 @@ class Hmi {
       value: current,
       min: pump.min_rate,
       max: pump.max_rate,
+      step: rateStep(pump.max_rate),
       decimals: 2,
       unit: this.units.rate,
       onSubmit: (value) => {
@@ -1519,8 +1556,6 @@ class Hmi {
     this.setText("touch-rate-unit", this.units.rate);
     const rateBtn = this.$("touch-rate");
     setProp(rateBtn, "disabled", !rateKnown);
-    setProp(this.$("touch-rate-up"), "disabled", !pump);
-    setProp(this.$("touch-rate-down"), "disabled", !pump);
     this.renderCalTile(touch, pump);
   }
 
@@ -3258,6 +3293,10 @@ class Hmi {
     setClassName(e, "progress-fill" + (pct < 5 ? " low" : pct < 25 ? " medium" : ""));
   }
 
+  setTitle(title) {
+    this.setText("header-title", title || DEFAULT_TITLE);
+  }
+
   show(e) {
     setClass(e, "hidden", false);
     if (this.dcsShown && e && e.classList.contains("modal-overlay")) this.placeDcsNotice();
@@ -3298,7 +3337,8 @@ class Hmi {
  *                                // meta {target: "pressure" | "tank"}: a
  *                                // Sensor tab write for that sensor app
  *   hostLabel?: string,          // header badge, e.g. "Local panel"
- *   title?: string,              // header title (default "SIA Remote Command")
+ *   title?: string,              // header title (default DEFAULT_TITLE);
+ *                                // setTitle(title) changes it later
  *   logos?: {remoteCommand?, doover?}  // data URIs
  *   commandTimeoutMs?: number | () => number
  *                                // no-answer backstop (default 30 s)
@@ -3325,6 +3365,7 @@ export function createHmi(root, opts) {
     notify: (message, level) => hmi.showToast(message, level),
     setVsdPanel: (access) => hmi.setVsdPanel(access),
     setDisplay: (display) => hmi.setDisplay(display),
+    setTitle: (title) => hmi.setTitle(title),
     setAlarmAccess: (access) => hmi.setAlarmAccess(access),
     setSensorAccess: (access) => hmi.setSensorAccess(access),
     setDcsNotices: (enabled) => hmi.setDcsNotices(enabled),

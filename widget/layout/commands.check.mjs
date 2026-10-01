@@ -34,8 +34,8 @@ const ACTORS = {
 const EXPECTED = [
   ["set_pump_state", "stop"],
   ["set_pump_state", "start"],
-  ["nudge_rate", "+1"],
-  ["nudge_rate", "-1"],
+  // The popover's + from 12.5 steps 4.608 (5% of 92.16) to 17.11.
+  ["set_target_rate", 17.11],
   ["set_target_rate", 14],
   ["last_calibration_factor", 1.05],
   ["reset_fault", {}],
@@ -108,17 +108,25 @@ for (const host of ["local", "cloud"]) {
 
       await act(page, 1, [() => click(page, "touch-stop")]);
       await act(page, 2, [() => click(page, "touch-start")]);
-      await act(page, 3, [() => click(page, "touch-rate-up")]);
-      await act(page, 4, [() => click(page, "touch-rate-down")]);
-      // 12.5 -> 14 is under the 20% confirmation threshold: sent directly.
-      await act(page, 5, [() => keypad(page, "touch-rate", ["1", "4"])]);
+      // The rate only changes through its popover: + then - then + steps,
+      // OK, and 12.5 -> 17.11 is over the 20% threshold so it confirms.
+      await act(page, 3, [
+        () => click(page, "touch-rate"),
+        () => click(page, "keypad-step-up"),
+        () => click(page, "keypad-step-down"),
+        () => click(page, "keypad-step-up"),
+        () => click(page, "keypad-ok"),
+        () => click(page, "confirm-ok"),
+      ]);
+      // 17.11 -> 14 is under the 20% confirmation threshold: sent directly.
+      await act(page, 4, [() => keypad(page, "touch-rate", ["1", "4"])]);
       // Calibration factor changes always confirm first.
-      await act(page, 6, [
+      await act(page, 5, [
         () => keypad(page, "touch-cal", ["1", ".", "0", "5"]),
         () => click(page, "confirm-ok"),
       ]);
-      await act(page, 7, [() => click(page, "touch-reset")]);
-      await act(page, 8, [() => click(page, "reset-vsd-btn")]);
+      await act(page, 6, [() => click(page, "touch-reset")]);
+      await act(page, 7, [() => click(page, "reset-vsd-btn")]);
 
       const log = await posted(page);
       assert.equal(log.length, EXPECTED.length, JSON.stringify(log));
