@@ -75,6 +75,32 @@ test("[perf] a real change writes only the nodes that change", () => {
   assert.equal(m.root.querySelector('[data-id="skid-pressure"] .value').textContent, "350.3");
 });
 
+// --- tank level sensor fault -------------------------------------------------------------
+
+const NO_READING = { tank_level_mm: null, tank_level_percent: null };
+const FAULT_TANK = { ...NO_READING, sensor_fault: "under_range", raw_ma: 3.73 };
+
+test("[perf] a sensor-fault tile identical but for the timestamp writes nothing", () => {
+  const m = mountLive();
+  m.render(live({ tank: FAULT_TANK }));
+  const done = watch(m);
+  m.render(live({ tank: { ...FAULT_TANK }, timestamp: "2026-09-28T01:02:03.900Z" }));
+  assert.deepEqual(done(), []);
+});
+
+test("[perf] the loop current moving rewrites only the fault reason; empty tile likewise", () => {
+  const m = mountLive();
+  m.render(live({ tank: FAULT_TANK }));
+  let done = watch(m);
+  m.render(live({ tank: { ...FAULT_TANK, raw_ma: 3.61 }, timestamp: "2026-09-28T01:02:03.500Z" }));
+  assert.deepEqual([...new Set(done())], ["tank-fault-reason:childList"]);
+  // An empty tile (no reading) re-rendered for another change writes nothing on it.
+  m.render(live({ tank: NO_READING }));
+  done = watch(m);
+  m.render(live({ tank: { ...NO_READING }, skid: { skid_pressure: 351 }, timestamp: "2026-09-28T01:02:03.700Z" }));
+  assert.deepEqual([...new Set(done())], ["skid-pressure:childList"]);
+});
+
 // --- banner lists ----------------------------------------------------------------------
 
 test("[perf] banner list keeps its items while the reasons are unchanged", () => {

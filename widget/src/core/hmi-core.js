@@ -159,6 +159,18 @@ const CLOSE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false
 // Two circular arrows: reload the screen.
 const REFRESH_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v5h-5"/><path d="M3 20v-5h5"/><path d="M20.1 9A8.5 8.5 0 0 0 5.6 6.3L3 9"/><path d="M3.9 15a8.5 8.5 0 0 0 14.5 2.7L21 15"/></svg>`;
 
+// Tank level sensor fault (the tank app's sensor_fault): a badge on the Tank
+// tile's heading and the reason under the (empty) level.
+export const TANK_FAULT_LABEL = "SENSOR FAULT";
+const TANK_FAULT_REASONS = { under_range: "Signal below range", over_range: "Signal above range" };
+
+/** "Signal below range (3.73 mA)": the fault's reason, with the loop current when known. */
+export function tankFaultReason(fault, rawMa) {
+  const reason = TANK_FAULT_REASONS[fault] || "Sensor signal fault";
+  const ma = rawMa == null || rawMa === "" ? NaN : Number(rawMa);
+  return Number.isFinite(ma) ? `${reason} (${ma.toFixed(2)} mA)` : reason;
+}
+
 // The kiosk's Refresh button asks this first (in-page, like every confirm).
 export const RELOAD_CONFIRM_TEXT = "Reload the screen? Live data returns in a few seconds.";
 
@@ -418,6 +430,7 @@ function template(opts) {
       <div class="secondary-controls-row status-row" data-id="status-row">
         <section class="control-section tank-section hidden" data-id="tank-section">
           <h2 class="section-head"><span>Tank</span>
+            <span class="state-value fault tank-fault hidden" data-id="tank-fault" role="alert">${TANK_FAULT_LABEL}</span>
             <button type="button" class="icon-btn section-gear hidden" data-id="tank-gear"
               aria-label="Tank level alarms" title="Tank level alarms">${GEAR_ICON}</button>
           </h2>
@@ -429,6 +442,7 @@ function template(opts) {
               <div class="value-display" data-id="tank-level-percent"><span class="value">--</span><span class="unit">%</span></div>
               <div class="progress-bar"><div class="progress-fill" data-id="tank-progress"></div></div></div>
           </div>
+          <div class="tank-fault-reason hidden" data-id="tank-fault-reason"></div>
         </section>
         <section class="control-section vsd-section hidden" data-id="vsd-section">
           <h2 class="vsd-head"><span>VSD</span>
@@ -1451,6 +1465,15 @@ class Hmi {
       return;
     }
     this.show(section);
+    // Shown whenever a tank app is configured: a missing reading (no sensor,
+    // nothing published yet, a sensor fault) is "--" and an empty bar, never
+    // the last value.
+    const fault = t.sensor_fault || null;
+    setClass(section, "sensor-fault", !!fault);
+    this.toggle(this.$("tank-fault"), !!fault);
+    const reason = this.$("tank-fault-reason");
+    if (fault) setNodeText(reason, tankFaultReason(fault, t.raw_ma));
+    this.toggle(reason, !!fault);
     // Primary reading (large): mm by default, else the configured reading.
     const primary = t.level_primary;
     if (primary) {
@@ -1460,9 +1483,7 @@ class Hmi {
         primary.unit,
       );
     } else {
-      const u = this.$in("tank-level-mm", ".unit");
-      if (u && u.textContent !== "mm") u.textContent = "mm";
-      if (t.tank_level_mm != null) this.setValue("tank-level-mm", Math.round(t.tank_level_mm));
+      this.setValue("tank-level-mm", t.tank_level_mm != null ? Math.round(t.tank_level_mm) : "--", "mm");
     }
     // Secondary reading (small, below): only when configured and published.
     const secondary = t.level_secondary;
@@ -1477,6 +1498,9 @@ class Hmi {
       const pct = Math.round(t.tank_level_percent);
       this.setValue("tank-level-percent", pct);
       this.setBar("tank-progress", pct);
+    } else {
+      this.setValue("tank-level-percent", "--");
+      this.setBar("tank-progress", 0);
     }
   }
 
@@ -3254,7 +3278,8 @@ class Hmi {
   setBar(id, pct) {
     const e = this.$(id);
     if (!e) return;
-    e.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    const width = `${Math.max(0, Math.min(100, pct))}%`;
+    if (e.style.width !== width) e.style.width = width;
     setClassName(e, "progress-fill" + (pct < 5 ? " low" : pct < 25 ? " medium" : ""));
   }
 

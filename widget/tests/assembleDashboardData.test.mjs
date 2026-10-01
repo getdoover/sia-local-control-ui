@@ -417,9 +417,11 @@ test("tank and skid cards from their apps", () => {
   assert.deepEqual(data.skid, { skid_flow: 11.2, skid_pressure: 350.2 });
 });
 
-test("tank / skid hidden when their apps are unset or silent", () => {
+test("tank / skid hidden when their apps are unset", () => {
+  const unset = build();
+  assert.ok(!("tank" in unset));
+  assert.ok(!("skid" in unset));
   const data = build({ config: { tank_level_app: "tank_1" } });
-  assert.ok(!("tank" in data));
   assert.ok(!("skid" in data));
 });
 
@@ -428,6 +430,11 @@ test("a configured but silent pressure / flow app keeps its skid reading as null
   // its gear) must stay so an operator can calibrate it.
   const data = build({ config: { pressure_sensor_app: "p_1", flow_sensor_app: "f_1" }, extra: { p_1: {}, f_1: { value: 1.5 } } });
   assert.deepEqual(data.skid, { skid_flow: 1.5, skid_pressure: null });
+});
+
+test("a configured but silent tank app keeps its tile, readings null", () => {
+  const data = build({ config: { tank_level_app: "tank_1" } });
+  assert.deepEqual(data.tank, { tank_level_mm: null, tank_level_percent: null });
 });
 
 // --- live tag claim ----------------------------------------------------------------------
@@ -442,6 +449,7 @@ test("live tag claim covers the controller and peripheral tags the cards read", 
     `${CTRL}.Fault`,
     `${CTRL}.VsdConfigured`,
     "tank_1.level_reading",
+    "tank_1.sensor_fault",
     "p_1.value",
   ]) {
     assert.ok(ids.includes(id), id);

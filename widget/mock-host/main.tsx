@@ -10,7 +10,11 @@
  *   &warning=1               add a warning banner (warning=2: two at once)
  *   &solar=1                 configure a solar controller
  *   &tank=L,mm               tank primary,secondary reading (unset = defaults)
- *   &width=480               cloud card width (px)
+ *   &tankfault=1             tank level sensor under range (3.73 mA): the tank
+ *                            app's sensor_fault "under_range", no level
+ *                            (tankfault=old: an older tank app, level tags
+ *                            null and no sensor_fault)
+ *   &width=480              cloud card width (px)
  *   &click=touch-start       click a control after load (e.g. to show a denial)
  *   &commission=Local only   vsd_commissioning (Hidden / Local only / Local and cloud)
  *   &vsdapp=<key>            vsd_motor_app (default techtop_motor_controller_1
@@ -71,6 +75,7 @@ const opts: MockOptions = {
   solar: q.get("solar") === "1",
   tankPrimary: q.get("tank")?.split(",")[0] || undefined,
   tankSecondary: q.get("tank")?.split(",")[1] || undefined,
+  tankFault: q.get("tankfault") === "old" ? "old" : q.get("tankfault") === "1" ? "fault" : undefined,
   commissioning: q.get("commission") ?? undefined,
   vsdMotorApp: q.get("vsdapp") ?? (q.get("commission") ? TECHTOP : undefined),
   legacyMotorApp: q.get("legacy") === "1",
