@@ -113,9 +113,13 @@ function pressureReading(v: { range_low: number; range_high: number; offset: num
   return round4(((PRESSURE_MA - 4) / 16) * (v.range_high - v.range_low) + v.range_low + v.offset);
 }
 
-/** The level app's level (m) from its loop current, zero / span and density. */
+/**
+ * The level app's level (m) from its loop current, zero / span and density
+ * (common_app._level_reading: the density scales only the column above the
+ * zero, which may be negative).
+ */
 function tankReading(v: { zero_m: number; span_m: number; fluid_density: number }): number {
-  return round4((v.zero_m + ((TANK_MA - 4) / 16) * (v.span_m - v.zero_m)) * (1000 / v.fluid_density));
+  return round4(v.zero_m + ((TANK_MA - 4) / 16) * (v.span_m - v.zero_m) * (1000 / v.fluid_density));
 }
 
 /** One sensor app's tags for the Operator Sensor Calibration state. */
@@ -456,8 +460,8 @@ export function createMockClient(opts: MockOptions) {
         if (Math.abs(p.offset) > p.range_high - p.range_low) throw rpcError("INVALID", "offset larger than the range");
       } else {
         const t = next as typeof TANK_DEFAULTS;
-        if (!(t.zero_m >= 0 && t.zero_m < t.span_m && t.span_m <= 100)) {
-          throw rpcError("INVALID", "need 0 <= zero_m < span_m <= 100");
+        if (!(t.zero_m >= -100 && t.zero_m < t.span_m && t.span_m > 0 && t.span_m <= 100)) {
+          throw rpcError("INVALID", "need -100 <= zero_m < span_m, 0 < span_m <= 100");
         }
         if (!(t.fluid_density >= 500 && t.fluid_density <= 2500)) throw rpcError("INVALID", "fluid_density must be 500 to 2500");
       }

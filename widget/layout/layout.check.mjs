@@ -1366,8 +1366,9 @@ for (const [w, h] of SIZES) {
           assert.equal(s.note, null, "no lock line with Operator Sensor Calibration on");
           if (shoot) await page.screenshot({ path: path.join(SENSOR_SHOTS, `${file}-${w}x${h}.png`) });
 
-          // Each cell's keypad sits above the popover, inside the gap; the
-          // pressure keypad has the ± key and still fits.
+          // Each cell's keypad sits above the popover, inside the gap; a
+          // signed value's keypad (every pressure value, the tank zero) has
+          // the ± key and still fits.
           for (const id of cells) {
             await page.click(`.sia-hmi [data-sensor="${id}"]`);
             await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
@@ -1384,7 +1385,7 @@ for (const [w, h] of SIZES) {
             });
             assert.ok(k.onTop, `keypad above the popover (${id})`);
             assertInside(k, w, h, gap, `keypad (${id})`);
-            if (gear === "pressure-gear") {
+            if (gear === "pressure-gear" || id === "zero_m") {
               assert.ok(k.neg && k.neg.w >= 44 && k.neg.h >= 44, `± key missing or small (${id}): ${JSON.stringify(k)}`);
             } else {
               assert.equal(k.neg, null, `± key on an unsigned value (${id})`);
@@ -1429,6 +1430,34 @@ for (const [w, h] of SIZES) {
         const reset = await page.evaluate(() => window.__rpcLog.at(-1));
         assert.equal(reset.method, "reset_calibration");
         assert.equal(reset.app_key, "4_20ma_sensor_2");
+        await page.click('.sia-hmi [data-id="alarm-panel-close"]');
+
+        // A negative tank zero end to end: 0 -> -0.15 m (the level at 4 mA
+        // below the tank datum), sent to the LEVEL app's key.
+        await openSensorTab(page, "tank-gear");
+        await page.click('.sia-hmi [data-sensor="zero_m"]');
+        await page.click('.sia-hmi [data-key="clear"]');
+        for (const key of ["neg", "0", ".", "1", "5"]) await page.click(`.sia-hmi [data-key="${key}"]`);
+        await page.click('.sia-hmi [data-id="keypad-ok"]');
+        const tcb = await page.evaluate(() => {
+          const r = document.querySelector(".sia-hmi .confirm-box").getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, text: document.querySelector('.sia-hmi [data-id="confirm-message"]').textContent };
+        });
+        assertInside(tcb, w, h, gap, "tank confirmation");
+        assert.equal(tcb.text, "Change Zero (4 mA) from 0.000 m → -0.150 m?");
+        await page.click('.sia-hmi [data-id="confirm-ok"]');
+        await page.waitForFunction(
+          () => document.querySelector('.sia-hmi [data-sensor="zero_m"] [data-sensor-value]')?.textContent === "-0.150 m",
+        );
+        const tsent = await page.evaluate(() => window.__rpcLog.at(-1));
+        assert.equal(tsent.method, "zero_m");
+        assert.equal(tsent.request, -0.15);
+        assert.equal(tsent.app_key, "analog_level_sensor_1");
+        // 10.8 mA on -0.15 to 2 m: -0.15 + 6.8 / 16 * 2.15 = 0.764 m.
+        assert.equal(await page.textContent('.sia-hmi [data-id="sensor-reading"]'), "0.764 m");
+        const tafter = await page.evaluate(measureSensorPane);
+        assertSensorPane(tafter, w, h, gap, "Tank Level Sensor", ["zero_m", "span_m", "fluid_density"]);
+        if (shoot) await page.screenshot({ path: path.join(SENSOR_SHOTS, `sensor-tank-negative-zero-${w}x${h}.png`) });
       } finally {
         await page.close();
       }

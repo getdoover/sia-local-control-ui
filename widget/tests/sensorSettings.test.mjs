@@ -211,6 +211,12 @@ test("display: pressure in its unit, tank metres with 3 decimals, density whole 
   assert.equal(formatSensorValue("span_m", 2, S), "2.000 m");
   assert.equal(formatSensorValue("fluid_density", 1025, S), "1025 kg/m³");
   assert.equal(formatSensorValue("zero_m", null, S), "—");
+  // A negative tank zero (the minimum level below the tank datum).
+  assert.equal(formatSensorValue("zero_m", -0.15, S), "-0.150 m");
+  assert.equal(formatSensorValue("zero_m", -0.1234, S), "-0.1234 m");
+  assert.equal(formatSensorValue("zero_m", -0, S), "0.000 m");
+  assert.equal(sensorDecimals("zero_m", -0.15, S), 3);
+  assert.equal(formatSensorReading("tank", { tank: { reading: -0.15 } }), "-0.150 m");
   assert.equal(formatLoopCurrent(9.6032), "9.60 mA");
   assert.equal(formatLoopCurrent(null), "—");
   assert.equal(formatSensorReading("tank", { tank: { reading: 0.85 } }), "0.850 m");
@@ -218,14 +224,24 @@ test("display: pressure in its unit, tank metres with 3 decimals, density whole 
   assert.equal(formatSensorReading("pressure", {}), "—");
 });
 
-test("ranges: pressure signed within 1e6; tank 0 to 100 m; density 500 to 2500 whole", () => {
+test("ranges: pressure signed within 1e6; tank zero signed -100 m up, span 0 to 100 m; density 500 to 2500 whole", () => {
   assert.deepEqual(sensorRange("offset", S), { min: -1e6, max: 1e6, unit: "psi", decimals: 2, signed: true, whole: false });
+  assert.deepEqual(sensorRange("zero_m", S), { min: -100, max: 100, unit: "m", decimals: 3, signed: true, whole: false });
   assert.deepEqual(sensorRange("span_m", S), { min: 0, max: 100, unit: "m", decimals: 3, signed: false, whole: false });
+  assert.equal(SENSOR_FIELDS.zero_m.signed, true);
+  assert.equal(SENSOR_FIELDS.span_m.signed, false);
+  assert.equal(SENSOR_FIELDS.fluid_density.signed, false);
   assert.deepEqual(sensorRange("fluid_density", S), { min: 500, max: 2500, unit: "kg/m³", decimals: 0, signed: false, whole: true });
   assert.equal(sensorRange("nope", S), null);
   assert.match(sensorRangeText("offset", S), /Up to ±1000\.00 psi/);
   assert.match(sensorRangeText("range_low", S), /Below range high \(1000\.00 psi\)/);
   assert.match(sensorRangeText("span_m", S), /Above zero \(0\.100 m\) up to 100 m/);
+  assert.equal(sensorRangeText("zero_m", S), "-100 m up to below span (2.000 m); ± for negative");
+  assert.equal(sensorRangeText("zero_m", { tank: {} }), "-100 to 100 m; ± for negative");
+  // Below a negative zero the span still has to be above 0 m.
+  const neg = { tank: { ...S.tank, zero_m: -0.15 } };
+  assert.equal(sensorRangeText("span_m", neg), "Above 0 m up to 100 m");
+  assert.equal(sensorRangeText("span_m", { tank: {} }), "0 to 100 m");
   assert.equal(sensorRangeText("fluid_density", S), "Range 500 to 2500 kg/m³, whole numbers");
 });
 
@@ -246,13 +262,22 @@ test("validation: pressure as the app enforces it", () => {
   assert.equal(validateSensorValue("range_low", 5000, { pressure: { units: "psi" } }), "");
 });
 
-test("validation: tank zero below span, 0 to 100 m; density 500 to 2500, whole", () => {
+test("validation: tank zero -100 m up to below span, span above 0 and the zero up to 100 m; density 500 to 2500, whole", () => {
   assert.equal(validateSensorValue("zero_m", 0, S), "");
   assert.equal(validateSensorValue("zero_m", 2, S), "Zero must be below span (2.000 m)");
-  assert.equal(validateSensorValue("zero_m", -0.1, S), "Out of range (0 to 100 m)");
+  assert.equal(validateSensorValue("zero_m", -0.1, S), "");
+  assert.equal(validateSensorValue("zero_m", -0.15, S), "");
+  assert.equal(validateSensorValue("zero_m", -100, S), "");
+  assert.equal(validateSensorValue("zero_m", -100.5, S), "Out of range (-100 to 100 m)");
+  assert.equal(validateSensorValue("zero_m", -0.12345, S), "Up to 4 decimal places");
   assert.equal(validateSensorValue("span_m", 0.1, S), "Span must be above zero (0.100 m)");
   assert.equal(validateSensorValue("span_m", 100.5, S), "Out of range (0 to 100 m)");
   assert.equal(validateSensorValue("span_m", 3.25, S), "");
+  // Over a negative zero: the span may sit just above 0 m, never at or below it.
+  const neg = { tank: { ...S.tank, zero_m: -0.15 } };
+  assert.equal(validateSensorValue("span_m", 0.05, neg), "");
+  assert.equal(validateSensorValue("span_m", 0, neg), "Span must be above 0 m");
+  assert.equal(validateSensorValue("span_m", -0.1, neg), "Out of range (0 to 100 m)");
   assert.equal(validateSensorValue("fluid_density", 499, S), "Out of range (500 to 2500 kg/m³)");
   assert.equal(validateSensorValue("fluid_density", 2501, S), "Out of range (500 to 2500 kg/m³)");
   assert.equal(validateSensorValue("fluid_density", 1025.5, S), "Whole kg/m³ only (no decimals)");
@@ -280,6 +305,8 @@ test("commands: access, the sensor's own commands, numbers in the app's range", 
   assert.equal(checkSensorCommand(true, "pressure", "range_low", -14.7), null);
   assert.equal(checkSensorCommand(true, "pressure", "reset_calibration", null), null);
   assert.equal(checkSensorCommand(true, "tank", "fluid_density", 1025), null);
+  assert.equal(checkSensorCommand(true, "tank", "zero_m", -0.15), null);
+  assert.equal(checkSensorCommand(true, "tank", "zero_m", -100), null);
   const ro = checkSensorCommand(false, "pressure", "offset", 1);
   assert.deepEqual(ro, { ok: false, code: "READ_ONLY", message: SENSOR_WRITE_BLOCKED_TEXT });
   // Another sensor's (or the controller's) command: refused.
@@ -289,7 +316,8 @@ test("commands: access, the sensor's own commands, numbers in the app's range", 
   for (const [target, cmd, v] of [
     ["pressure", "offset", "x"],
     ["pressure", "range_high", 2e6],
-    ["tank", "zero_m", -1],
+    ["tank", "zero_m", -101],
+    ["tank", "span_m", -0.1],
     ["tank", "span_m", 101],
     ["tank", "fluid_density", 400],
     ["tank", "fluid_density", null],
@@ -524,10 +552,14 @@ test("edit: keypad (signed for pressure), rules on the keypad, confirm old -> ne
   assert.equal(cellValue(m, "range_low"), "-14.70 psi");
 });
 
-test("edit: tank values have no ± key; density is whole kg/m3", async () => {
+test("edit: tank span and density have no ± key; density is whole kg/m3", async () => {
   const m = mount();
   m.click("tank-gear");
   m.click("alarm-tab-sensor");
+  m.click("sensor-cell-span_m");
+  assert.ok(!shown(m, "keypad-neg"), "no ± on the span");
+  assert.ok(!m.byId("keypad-keys").classList.contains("signed"));
+  m.click("keypad-cancel");
   m.click("sensor-cell-fluid_density");
   assert.ok(!shown(m, "keypad-neg"));
   assert.ok(!m.byId("keypad-keys").classList.contains("signed"));
@@ -551,6 +583,66 @@ test("edit: tank values have no ± key; density is whole kg/m3", async () => {
     { cmd: "fluid_density", value: 1025, target: "tank" },
     { cmd: "zero_m", value: 0.125, target: "tank" },
   ]);
+});
+
+test("edit: a negative tank zero (level at 4 mA) with the ± key", async () => {
+  const m = mount();
+  m.click("tank-gear");
+  m.click("alarm-tab-sensor");
+  m.click("sensor-cell-zero_m");
+  assert.ok(shown(m, "keypad"));
+  assert.ok(shown(m, "keypad-neg"), "± key on the zero");
+  assert.ok(m.byId("keypad-keys").classList.contains("signed"));
+  assert.equal(m.byId("keypad-title").textContent, "Zero (4 mA)");
+  assert.equal(m.byId("keypad-range").textContent, "-100 m up to below span (2.000 m); ± for negative");
+  typeKeys(m, ["neg", "1", "0", "1"]);
+  m.click("keypad-ok");
+  assert.equal(m.byId("keypad-error").textContent, "Out of range (-100 to 100)");
+  typeKeys(m, ["0", ".", "1", "5", "neg"]);
+  m.click("keypad-ok");
+  assert.ok(!shown(m, "keypad"));
+  assert.equal(m.byId("confirm-message").textContent, "Change Zero (4 mA) from 0.000 m → -0.150 m?");
+  m.click("confirm-ok");
+  await flush();
+  assert.deepEqual(m.state.sent, [{ cmd: "zero_m", value: -0.15, target: "tank" }]);
+  assert.match(cell(m, "zero_m").textContent, /Saved · -0\.150 m/);
+  assert.equal(toast(m), "Zero (4 mA) set to -0.150 m");
+  // The readback tag (and the level below the datum) in place.
+  m.render(withSensor("tank", { zero_m: -0.15, reading: -0.15 }));
+  assert.equal(cellValue(m, "zero_m"), "-0.150 m");
+  assert.equal(m.byId("sensor-reading").textContent, "-0.150 m");
+  // Reopened, the keypad shows the negative value in effect.
+  m.click("sensor-cell-zero_m");
+  assert.equal(m.byId("keypad-entry").textContent, "-0.150");
+  m.click("keypad-cancel");
+  // The span over a negative zero: above 0 m, still no ± key.
+  m.click("sensor-cell-span_m");
+  assert.ok(!shown(m, "keypad-neg"));
+  assert.equal(m.byId("keypad-range").textContent, "Above 0 m up to 100 m");
+  typeKeys(m, ["0"]);
+  m.click("keypad-ok");
+  assert.equal(m.byId("keypad-error").textContent, "Span must be above 0 m");
+  m.click("keypad-cancel");
+});
+
+test("an older level app refuses a negative zero: its reason on the cell and the toast, value unchanged", async () => {
+  // The app before negative zeros: RPCError INVALID from CalibrationValue.check.
+  const reason = "the zero must be 0 to below 100 m, got -0.15";
+  assert.equal(explainRpcError("INVALID", reason, "tank level sensor app").message, `Refused: ${reason}`);
+  const m = mount();
+  m.state.ackReply = { ok: false, code: "INVALID", message: `Refused: ${reason}` };
+  m.click("tank-gear");
+  m.click("alarm-tab-sensor");
+  m.click("sensor-cell-zero_m");
+  typeKeys(m, ["neg", "0", ".", "1", "5"]);
+  m.click("keypad-ok");
+  m.click("confirm-ok");
+  await flush();
+  assert.deepEqual(m.state.sent, [{ cmd: "zero_m", value: -0.15, target: "tank" }]);
+  assert.ok(cell(m, "zero_m").classList.contains("error"));
+  assert.equal(cell(m, "zero_m").querySelector("[data-sensor-note]").textContent, `Refused: ${reason}`);
+  assert.equal(toast(m), `Refused: ${reason}`);
+  assert.equal(cellValue(m, "zero_m"), "0.000 m", "the value in effect is unchanged");
 });
 
 test("locked: Operator Sensor Calibration off on the app, the reading still shows, a tap says why", async () => {
@@ -766,6 +858,14 @@ test("Radar tank: the Sensor tab's hints, keypad and confirmation say zero is th
   for (const c of m.byId("sensor-pane").querySelectorAll(".alarm-caption")) {
     assert.doesNotMatch(c.textContent, /mA|kPa|psi|kg/, c.textContent);
   }
+  // The zero (the minimum level, here at 20 mA) is the one that may be
+  // negative; the span (the level at 4 mA on a Radar) has no ± key.
+  m.click("sensor-cell-zero_m");
+  assert.ok(shown(m, "keypad-neg"), "± on the Radar zero (20 mA)");
+  m.click("keypad-cancel");
+  m.click("sensor-cell-span_m");
+  assert.ok(!shown(m, "keypad-neg"), "no ± on the Radar span (4 mA)");
+  m.click("keypad-cancel");
   m.click("sensor-cell-zero_m");
   assert.equal(m.byId("keypad-title").textContent, "Zero (20 mA)");
   typeKeys(m, ["0", ".", "5"]);

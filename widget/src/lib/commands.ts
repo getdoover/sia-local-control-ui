@@ -117,7 +117,7 @@ const SENSOR_VALUE_RANGES: Readonly<Record<string, readonly [number, number]>> =
   range_low: [-1e6, 1e6],
   range_high: [-1e6, 1e6],
   offset: [-1e6, 1e6],
-  zero_m: [0, 100],
+  zero_m: [-100, 100],
   span_m: [0, 100],
   fluid_density: [500, 2500],
 };

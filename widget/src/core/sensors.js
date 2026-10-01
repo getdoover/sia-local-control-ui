@@ -16,10 +16,20 @@
  *   HMI's pressure unit like the Skid tile)
  *             range_high     reading at 20 mA             |v| <= 1e6, above range_low
  *             offset         added after scaling          |offset| <= range_high - range_low
- *   tank      zero_m         minimum level (m)            0 <= zero_m < span_m <= 100
+ *   tank      zero_m         minimum level (m)            -100 <= zero_m < span_m
  *   (getdoover/analog-level-sensor, always metres)
- *             span_m         maximum level (m)
+ *             span_m         maximum level (m)            0 < span_m <= 100, above zero_m
  *             fluid_density  kg/m3                        500 to 2500
+ *
+ * The tank zero may be negative (the ± key): the minimum level is below the
+ * tank datum when the sensor's minimum-level end sits below it, e.g. a
+ * submersible transmitter whose 4 mA point is 0.15 m below the tank floor
+ * (zero -0.15 m). The span (maximum level) stays above 0 m. In either
+ * orientation it is the zero, the minimum-level end, that may be negative:
+ * the 4 mA end normally, the 20 mA end on a Radar (see below). An older level
+ * app (before negative zeros) refuses a negative zero with RPCError INVALID;
+ * the HMI shows its reason on the cell and in the toast and the value in
+ * effect is unchanged.
  *
  * Where each value applies on the input: the pressure app is a fixed 4-20 mA
  * loop, range_low at 4 mA and range_high at 20 mA. The level app's input
@@ -51,7 +61,8 @@ export const SENSOR_RESET_COMMAND = "reset_calibration";
 /** Largest magnitude the pressure sensor app accepts for any of its values. */
 export const PRESSURE_VALUE_LIMIT = 1e6;
 
-export const TANK_LIMITS = { metres: [0, 100], density: [500, 2500] };
+/** The level app's limits: zero [-100, 100) below the span, span (0, 100]. */
+export const TANK_LIMITS = { zero: [-100, 100], span: [0, 100], density: [500, 2500] };
 
 /**
  * The Sensor tabs: title, who answers (for the operator messages), the live
@@ -81,7 +92,7 @@ export const SENSOR_FIELDS = {
   range_low: { group: "pressure", name: "Range low", signed: true },
   range_high: { group: "pressure", name: "Range high", signed: true },
   offset: { group: "pressure", name: "Offset", signed: true },
-  zero_m: { group: "tank", name: "Zero", signed: false },
+  zero_m: { group: "tank", name: "Zero", signed: true },
   span_m: { group: "tank", name: "Span", signed: false },
   fluid_density: { group: "tank", name: "Fluid density", signed: false },
 };
@@ -187,8 +198,8 @@ export function sensorRange(field, settings) {
     const [min, max] = TANK_LIMITS.density;
     return { min, max, unit: "kg/m³", decimals: 0, signed: false, whole: true };
   }
-  const [min, max] = TANK_LIMITS.metres;
-  return { min, max, unit: "m", decimals: 3, signed: false, whole: false };
+  const [min, max] = field === "zero_m" ? TANK_LIMITS.zero : TANK_LIMITS.span;
+  return { min, max, unit: "m", decimals: 3, signed: f.signed, whole: false };
 }
 
 /** The value in effect from the payload (null when not published). */
@@ -256,11 +267,17 @@ export function sensorRangeText(field, settings) {
     }
     case "zero_m": {
       const span = g ? num(g.span_m) : null;
-      return span !== null ? `${r.min} m up to below span (${fmt(span)})` : `${r.min} to ${r.max} m`;
+      return span !== null
+        ? `${r.min} m up to below span (${fmt(span)}); ± for negative`
+        : `${r.min} to ${r.max} m; ± for negative`;
     }
     case "span_m": {
+      // Above the zero and above 0 m: a negative zero leaves 0 m the floor.
       const zero = g ? num(g.zero_m) : null;
-      return zero !== null ? `Above zero (${fmt(zero)}) up to ${r.max} m` : `${r.min} to ${r.max} m`;
+      if (zero === null) return `${r.min} to ${r.max} m`;
+      return zero >= r.min
+        ? `Above zero (${fmt(zero)}) up to ${r.max} m`
+        : `Above ${r.min} m up to ${r.max} m`;
     }
     default:
       return `Range ${r.min} to ${r.max} ${r.unit}, whole numbers`;
