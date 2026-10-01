@@ -426,6 +426,17 @@ test("skid card shows only the readings that have a source", () => {
   assert.ok(!isHidden(m.byId("skid-flow-card")));
 });
 
+test("skid pressure card stays, reading --, while its configured sensor has no value", () => {
+  const m = mountHmi();
+  m.render({ ...LEGACY_PAYLOADS.running, skid: { skid_pressure: null } });
+  assert.ok(!isHidden(m.byId("skid-section")));
+  assert.ok(!isHidden(m.byId("skid-pressure-card")));
+  assert.ok(isHidden(m.byId("skid-flow-card")));
+  assert.equal(m.root.querySelector('[data-id="skid-pressure"] .value').textContent, "--");
+  m.render({ ...LEGACY_PAYLOADS.running, skid: { skid_pressure: 350.2 } });
+  assert.equal(m.root.querySelector('[data-id="skid-pressure"] .value').textContent, "350.2");
+});
+
 test("status row: Tank, then VSD to its right, then Solar", () => {
   const m = mountHmi();
   const row = m.byId("status-row");

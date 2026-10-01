@@ -1340,11 +1340,15 @@ class Hmi {
     }
     this.show(section);
     setClass(row, "no-skid", false);
-    // Only the readings whose app is configured (and publishing) are shown.
-    this.toggle(this.$("skid-flow-card"), s.skid_flow != null);
-    this.toggle(this.$("skid-pressure-card"), s.skid_pressure != null);
-    if (s.skid_flow != null) this.setValue("skid-flow", this.fmt(s.skid_flow, 1), this.units.rate);
-    if (s.skid_pressure != null) this.setValue("skid-pressure", this.fmt(s.skid_pressure, 1), this.units.pressure);
+    // Only the readings whose app is configured are shown. A configured app
+    // with no value (null: sensor disconnected or out of range) keeps its card,
+    // reading "--", so the gear stays reachable to calibrate the sensor.
+    const has = (key) => key in s;
+    const text = (v, dp) => (v == null ? "--" : this.fmt(v, dp));
+    this.toggle(this.$("skid-flow-card"), has("skid_flow"));
+    this.toggle(this.$("skid-pressure-card"), has("skid_pressure"));
+    if (has("skid_flow")) this.setValue("skid-flow", text(s.skid_flow, 1), this.units.rate);
+    if (has("skid_pressure")) this.setValue("skid-pressure", text(s.skid_pressure, 1), this.units.pressure);
   }
 
   renderSolar(s) {
@@ -2180,7 +2184,7 @@ class Hmi {
     if (group === "tank") return !!this.data.tank;
     // Flow: the payload has the group only with a controller flow meter.
     if (group === "flow") return !!(this.data.pumps && this.data.pumps.length);
-    return !!(this.data.skid && this.data.skid.skid_pressure != null);
+    return !!(this.data.skid && "skid_pressure" in this.data.skid);
   }
 
   sensorAvailable(group) {

@@ -400,6 +400,13 @@ test("tank / skid hidden when their apps are unset or silent", () => {
   assert.ok(!("skid" in data));
 });
 
+test("a configured but silent pressure / flow app keeps its skid reading as null", () => {
+  // A disconnected or out-of-range sensor publishes no value; the tile (and
+  // its gear) must stay so an operator can calibrate it.
+  const data = build({ config: { pressure_sensor_app: "p_1", flow_sensor_app: "f_1" }, extra: { p_1: {}, f_1: { value: 1.5 } } });
+  assert.deepEqual(data.skid, { skid_flow: 1.5, skid_pressure: null });
+});
+
 // --- live tag claim ----------------------------------------------------------------------
 
 test("live tag claim covers the controller and peripheral tags the cards read", () => {

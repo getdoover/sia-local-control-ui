@@ -583,7 +583,10 @@ export interface DashboardData {
     /** Only when configured AND its tag has a value. */
     level_secondary?: TankLevelReading;
   };
-  skid?: { skid_flow?: number; skid_pressure?: number };
+  /** A reading is present when its app is configured; null while that app
+   *  has no value (sensor disconnected or out of range), so the tile and its
+   *  gear stay on screen for an operator to calibrate it. */
+  skid?: { skid_flow?: number | null; skid_pressure?: number | null };
 }
 
 export interface AssembleInputs {
@@ -879,14 +882,8 @@ export function assembleDashboardData(inputs: AssembleInputs): DashboardData {
   }
 
   const skid: NonNullable<DashboardData["skid"]> = {};
-  if (cfg.flowSensorApp) {
-    const f = optNum(get("value", cfg.flowSensorApp));
-    if (f !== null) skid.skid_flow = f;
-  }
-  if (cfg.pressureSensorApp) {
-    const p = optNum(get("value", cfg.pressureSensorApp));
-    if (p !== null) skid.skid_pressure = p;
-  }
+  if (cfg.flowSensorApp) skid.skid_flow = optNum(get("value", cfg.flowSensorApp));
+  if (cfg.pressureSensorApp) skid.skid_pressure = optNum(get("value", cfg.pressureSensorApp));
   if (Object.keys(skid).length) data.skid = skid;
 
   if (primaryKey !== null) {

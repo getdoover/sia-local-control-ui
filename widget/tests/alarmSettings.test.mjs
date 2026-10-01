@@ -338,6 +338,15 @@ function mount(access = LOCAL, data = payload()) {
   return m;
 }
 
+test("the pressure gear stays while the configured sensor has no reading", () => {
+  // A disconnected sensor is exactly the one an operator needs to calibrate.
+  const m = mount(LOCAL, payload({ skid: { skid_pressure: null } }));
+  assert.ok(!isHidden(m.byId("skid-section")));
+  assert.ok(!isHidden(m.byId("pressure-gear")));
+  m.click("pressure-gear");
+  assert.ok(!isHidden(m.byId("alarm-panel")));
+});
+
 const toast = (m) => (isHidden(m.byId("command-toast")) ? "" : m.byId("command-toast").textContent);
 const row = (m, field) => m.byId(`alarm-row-${field}`);
 const cell = (m, field) => m.byId(`alarm-cell-${field}`);
