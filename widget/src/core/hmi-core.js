@@ -33,7 +33,9 @@
 import {
   CAL_TEST_DURATION_S,
   computeCalibration,
+  followTestRunEnd,
   formatMl,
+  RUN_STOP_NOTICES,
   SITE_GLASS_MAX_ML,
   testRateRange,
   validateFinalMl,
@@ -571,6 +573,17 @@ function template(opts) {
   </div>
 </div>
 
+<div data-id="run-notice" class="modal-overlay hidden" role="alertdialog" aria-modal="true" aria-label="Calibration stopped">
+  <div class="confirm-box run-notice-box" data-id="run-notice-box">
+    <h2 class="cal-help-title run-notice-title" data-id="run-notice-title">Calibration stopped</h2>
+    <p class="run-notice-lead" data-id="run-notice-lead"></p>
+    <p class="run-notice-note" data-id="run-notice-note"></p>
+    <div class="confirm-actions">
+      <button type="button" class="key key-ok" data-id="run-notice-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <div data-id="command-toast" class="command-toast hidden" role="status"></div>
 
 <!-- Warms the font fallback for the keypad's backspace glyph (hmi-core.css). -->
@@ -676,6 +689,11 @@ class Hmi {
     // Invariant: set only while the calwiz popover is on screen; a session
     // without it is stale and is dropped (calwizDropStale).
     this.cal = null;
+    // "Calibration stopped": the test run's state last seen
+    // (calibration.js followTestRunEnd; null until the first calibration
+    // payload), and the source whose notice is on screen (null when closed).
+    this.runEndKey = null;
+    this.runNotice = null;
     this.resizeObserver = null;
     // The last payload fully rendered and the connection it was drawn with
     // (update's fast path); null until then, and after a null payload.
@@ -757,6 +775,7 @@ class Hmi {
     on("calwiz-help", () => this.show(calHelp));
     on("keypad-help", () => this.show(calHelp));
     on("cal-help-close", () => this.hide(calHelp));
+    on("run-notice-ok", () => this.runNoticeClose());
     const calBody = this.$("calwiz-body");
     if (calBody) {
       calBody.addEventListener("click", (e) => {
@@ -817,6 +836,11 @@ class Hmi {
     this.bindScroller("vsd-params");
     this.onKey = (e) => {
       if (e.key !== "Escape") return;
+      // The notice is above everything else.
+      if (this.runNotice) {
+        this.runNoticeClose();
+        return;
+      }
       if (this.keypadIsOpen() || this.confirmOk) return;
       // The wizard on screen takes Escape (and keeps it on page 5, while the
       // pump runs); a stale session never blocks the VSD panel.
@@ -1101,7 +1125,7 @@ class Hmi {
     el.style.top = "";
     const win = this.root.ownerDocument.defaultView;
     if (!win) return;
-    const pop = ["alarm-panel", "vsd-panel", "calwiz"].find((id) => {
+    const pop = ["run-notice", "alarm-panel", "vsd-panel", "calwiz"].find((id) => {
       const o = this.$(id);
       return o && !o.classList.contains("hidden");
     });
@@ -1170,6 +1194,8 @@ class Hmi {
     this.renderAlarmGears();
     if (this.alarmOpen) this.renderAlarmValues();
     this.renderTouch(data.touch, (data.pumps || [])[0]);
+    // Before the wizard: a run the DCS stopped closes it for the notice.
+    this.renderRunNotice();
     this.renderCalwizLive();
     this.renderVsd(data.vsd);
     if (this.vsdOpen) this.renderVsdReset();
@@ -1853,6 +1879,7 @@ class Hmi {
         c.ended = {
           result: tr.result,
           reason: tr.result === "faulted" ? pump.fault_reason || "the pump tripped" : "",
+          endedBy: tr.ended_by || null,
           elapsedS: tr.elapsed_s,
         };
         this.calStore(null);
@@ -1952,9 +1979,12 @@ class Hmi {
         break;
       case "ended": {
         const e = c.ended || {};
+        const stoppedBy = this.runNoticeSources().includes(e.endedBy) ? RUN_STOP_NOTICES[e.endedBy] : null;
         const what = e.result === "faulted"
           ? `The test stopped because the pump faulted: ${escapeHtml(e.reason)}.`
-          : "The test was cancelled and the pump stopped.";
+          : stoppedBy
+            ? escapeHtml(stoppedBy.lead)
+            : "The test was cancelled and the pump stopped.";
         html =
           `<p class="calwiz-text calwiz-lead calwiz-ended" data-id="calwiz-ended">${what}</p>` +
           `<p class="calwiz-note">No calibration factor was changed. Go back to read the site glass and run the test again.</p>`;
@@ -2035,6 +2065,47 @@ class Hmi {
         note.classList.toggle("calwiz-warn", disabled);
       }
     }
+  }
+
+  // -- "Calibration stopped" ----------------------------------------------------
+  // A test run the DCS (or, on the panel, Doover) cancelled: said once, in a
+  // popover the operator closes with OK, whether or not the wizard is open;
+  // an open wizard closes for it (the notice is its cancelled page, with the
+  // reason). calibration.js followTestRunEnd says when: on the change into
+  // that ending, never on a repeat of the same tags, and not for an ending
+  // already in the tags when the page loads. A new run takes it away.
+  renderRunNotice() {
+    const cal = this.data.calibration;
+    const tr = cal ? cal.test_run : null;
+    const { key, notice } = followTestRunEnd(this.runEndKey, tr, this.runNoticeSources());
+    this.runEndKey = key;
+    if (!this.touch || !tr || tr.active) {
+      this.runNoticeClose();
+      return;
+    }
+    if (notice) this.runNoticeShow(notice);
+  }
+
+  // A run stopped from Doover is news on the panel. In the cloud it was
+  // stopped from this screen or one like it, so only the DCS is named there.
+  runNoticeSources() {
+    return this.opts.layout === "kiosk" ? ["dcs", "cloud"] : ["dcs"];
+  }
+
+  runNoticeShow(source) {
+    const text = RUN_STOP_NOTICES[source];
+    if (this.cal) this.calwizClose(true);
+    this.runNotice = source;
+    this.setText("run-notice-title", text.title);
+    this.setText("run-notice-lead", text.lead);
+    this.setText("run-notice-note", text.note);
+    this.show(this.$("run-notice"));
+  }
+
+  runNoticeClose() {
+    if (!this.runNotice) return;
+    this.runNotice = null;
+    this.hide(this.$("run-notice"));
   }
 
   renderVsd(vsd) {

@@ -307,8 +307,31 @@ test("calibration: Manual (HMI) in Touch carries the test run", () => {
   });
   assert.deepEqual(data.calibration, {
     method: "Manual (HMI)",
-    test_run: { active: true, remaining_s: 41.5, rate: 12.5, duration_s: 60, elapsed_s: 18.5, result: null },
+    test_run: {
+      active: true, remaining_s: 41.5, rate: 12.5, duration_s: 60, elapsed_s: 18.5, result: null, ended_by: null,
+    },
   });
+});
+
+test("calibration: who ended the run (TestRunEndedBy), each value the controller publishes", () => {
+  for (const by of ["hmi", "dcs", "cloud", "deadline", "fault", "restart"]) {
+    const data = build({
+      config: TOUCH,
+      tags: legacyControllerTags({ CalibrationMethod: "Manual (HMI)", TestRunResult: "cancelled", TestRunEndedBy: by }),
+    });
+    assert.equal(data.calibration.test_run.result, "cancelled");
+    assert.equal(data.calibration.test_run.ended_by, by);
+  }
+});
+
+test("calibration: an unknown or unpublished TestRunEndedBy reads null (an older controller)", () => {
+  for (const by of ["DCS", "modbus", "", 3, null, undefined]) {
+    const data = build({
+      config: TOUCH,
+      tags: legacyControllerTags({ CalibrationMethod: "Manual (HMI)", TestRunResult: "cancelled", TestRunEndedBy: by }),
+    });
+    assert.equal(data.calibration.test_run.ended_by, null, String(by));
+  }
 });
 
 test("calibration: an unpublished test run reads inactive, an odd result null", () => {
@@ -317,7 +340,7 @@ test("calibration: an unpublished test run reads inactive, an odd result null", 
     tags: legacyControllerTags({ CalibrationMethod: "Manual (HMI)", TestRunResult: "banana" }),
   });
   assert.deepEqual(data.calibration.test_run, {
-    active: false, remaining_s: null, rate: null, duration_s: null, elapsed_s: null, result: null,
+    active: false, remaining_s: null, rate: null, duration_s: null, elapsed_s: null, result: null, ended_by: null,
   });
 });
 
@@ -329,7 +352,7 @@ test("calibration: never in Read Only, even with Manual (HMI)", () => {
 test("calibration: the cloud streams the method and test run tags", () => {
   const ids = liveTagIds(resolveConfig("sia_local_control_ui_1", deployment({})));
   for (const tag of ["CalibrationMethod", "TestRunActive", "TestRunRemaining_s", "TestRunRate",
-    "TestRunDuration_s", "TestRunElapsed_s", "TestRunResult"]) {
+    "TestRunDuration_s", "TestRunElapsed_s", "TestRunResult", "TestRunEndedBy"]) {
     assert.ok(ids.includes(`${CTRL}.${tag}`), tag);
   }
 });

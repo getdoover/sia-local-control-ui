@@ -358,7 +358,16 @@ export interface TestRunData {
   duration_s: number | null;
   elapsed_s: number | null;
   result: "completed" | "cancelled" | "faulted" | null;
+  /**
+   * Who ended the last run (the controller's TestRunEndedBy): "hmi" / "dcs" /
+   * "cloud" when a command from that source cancelled it, "deadline",
+   * "fault" or "restart"; null while running, before any run, from an older
+   * controller, or for a stop no command asked for.
+   */
+  ended_by: TestRunEndedBy | null;
 }
+
+export type TestRunEndedBy = "hmi" | "dcs" | "cloud" | "deadline" | "fault" | "restart";
 
 /**
  * The 1min Calibration Sequence: only in Touch, and only when the controller
@@ -647,12 +656,14 @@ export function batteryWarnings(
 }
 
 const TEST_RUN_RESULTS = ["completed", "cancelled", "faulted"] as const;
+const TEST_RUN_ENDED_BY = ["hmi", "dcs", "cloud", "deadline", "fault", "restart"] as const;
 
 /** The wizard's payload, or undefined unless the method is Manual (HMI). */
 export function collectCalibration(get: TagReader, key: string): CalibrationData | undefined {
   const method = asString(get("CalibrationMethod", key));
   if (method !== CALIBRATION_METHOD_MANUAL) return undefined;
   const result = asString(get("TestRunResult", key));
+  const endedBy = asString(get("TestRunEndedBy", key));
   return {
     method,
     test_run: {
@@ -663,6 +674,9 @@ export function collectCalibration(get: TagReader, key: string): CalibrationData
       elapsed_s: optNum(get("TestRunElapsed_s", key)),
       result: (TEST_RUN_RESULTS as readonly string[]).includes(result ?? "")
         ? (result as TestRunData["result"])
+        : null,
+      ended_by: (TEST_RUN_ENDED_BY as readonly string[]).includes(endedBy ?? "")
+        ? (endedBy as TestRunEndedBy)
         : null,
     },
   };
@@ -832,6 +846,7 @@ export function liveTagIds(cfg: HmiConfig): string[] {
     "TestRunDuration_s",
     "TestRunElapsed_s",
     "TestRunResult",
+    "TestRunEndedBy",
     // Alarm settings readback: thresholds, then each alarm's delay.
     "SetpointTankL",
     "SetpointTankLL",

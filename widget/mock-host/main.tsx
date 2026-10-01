@@ -20,6 +20,12 @@
  *                            (cal=none / cal=auto publish "None" / "Auto")
  *   &calrun=42               a timed test already running, 42 s left
  *   &calspeed=20             run the mock test clock 20x faster
+ *   &testrun=dcs             the DCS stops each test run 3 s in (TestRunResult
+ *                            "cancelled", TestRunEndedBy "dcs"): the run
+ *                            going at load (implies cal=manual and calrun=45
+ *                            unless given) and each one started from the
+ *                            wizard. testrun=cloud / hmi: stopped from
+ *                            Doover / at the panel instead.
  *   &inset=2                 kiosk_inset_mm (cover plate)
  *   &popinset=10             popover_inset_mm
  *   &pxmm=5.8                kiosk_px_per_mm
@@ -38,6 +44,7 @@ import SiaHmiWidget from "../src/SiaHmiWidget";
 import { createMockClient, TECHTOP, type MockOptions } from "./mockClient";
 
 const q = new URLSearchParams(window.location.search);
+const testRunStoppedBy = (["dcs", "cloud", "hmi"] as const).find((s) => s === q.get("testrun"));
 const opts: MockOptions = {
   host: q.get("host") === "cloud" ? "cloud" : "local",
   mode: (q.get("mode") as MockOptions["mode"]) ?? "Touch",
@@ -53,9 +60,10 @@ const opts: MockOptions = {
   vsdMotorApp: q.get("vsdapp") ?? (q.get("commission") ? TECHTOP : undefined),
   legacyMotorApp: q.get("legacy") === "1",
   calibrationMethod: ({ manual: "Manual (HMI)", none: "None", auto: "Auto" } as Record<string, string>)[
-    q.get("cal") ?? ""
+    q.get("cal") ?? (testRunStoppedBy ? "manual" : "")
   ],
-  testRunRemaining: q.get("calrun") != null ? Number(q.get("calrun")) : undefined,
+  testRunRemaining: q.get("calrun") != null ? Number(q.get("calrun")) : testRunStoppedBy ? 45 : undefined,
+  testRunStoppedBy,
   testRunSpeed: q.get("calspeed") != null ? Number(q.get("calspeed")) : undefined,
   kioskInsetMm: q.get("inset") != null ? Number(q.get("inset")) : undefined,
   popoverInsetMm: q.get("popinset") != null ? Number(q.get("popinset")) : undefined,

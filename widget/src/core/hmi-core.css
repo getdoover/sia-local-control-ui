@@ -1383,6 +1383,29 @@
 .sia-hmi .cal-help-list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
 .sia-hmi .cal-help-list strong { color: var(--hmi-green); }
 
+/* "Calibration stopped": a test run the DCS (or Doover) cancelled. The
+   confirmation's box and full-width key, the help popover's heading; it is
+   last in the markup, so it opens above any other popover. */
+.sia-hmi .run-notice-box {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(520px, 100%);
+    max-height: 100%;
+    overflow: hidden;
+}
+.sia-hmi .run-notice-title {
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--hmi-edge);
+}
+.sia-hmi .run-notice-lead {
+    font-size: clamp(1.15rem, 3.4cqh, 1.4rem);
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--hmi-amber);
+}
+.sia-hmi .run-notice-note { font-size: 1.1rem; font-weight: 600; line-height: 1.35; color: var(--hmi-text); }
+
 .sia-hmi .calwiz-body {
     flex: 1 1 auto;
     min-height: 0;
