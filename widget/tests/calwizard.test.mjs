@@ -68,9 +68,9 @@ async function toRunning(m, opts) {
   m.render(calPayload({ active: true, remaining_s: 60, rate: 12.5, duration_s: 60 }, { state: "pumping", running: true, flow_rate: 12.1 }));
 }
 
-async function toResults(m, { final = "250", elapsed = 60 } = {}) {
+async function toResults(m, { final = "250", elapsed = 60, nominal = undefined } = {}) {
   await toRunning(m);
-  m.render(calPayload({ active: false, remaining_s: 0, rate: 12.5, duration_s: 60, elapsed_s: elapsed, result: "completed" }));
+  m.render(calPayload({ active: false, remaining_s: 0, rate: 12.5, duration_s: 60, elapsed_s: elapsed, nominal_rate: nominal, result: "completed" }));
   m.click("calwiz-field-final");
   enter(m, final);
   next(m); // 6 -> 7
@@ -523,6 +523,28 @@ test("results: uses the controller's actual run time", async () => {
   await toResults(m, { elapsed: 60.4 });
   assert.match(text(m, "calwiz-measured"), /11\.92/);
   assert.equal(text(m, "calwiz-new-factor"), "1.05");
+});
+
+test("results: a boosted run is compared against its average commanded rate and says so", async () => {
+  const m = mountHmi();
+  m.render(calPayload());
+  // 200 mL in 60 s = 12.0 L/Hr measured; the VSD start boost made the run's
+  // average commanded rate 13.5 against the 12.5 test rate.
+  await toResults(m, { nominal: 13.5 });
+  assert.match(text(m, "calwiz-target"), /13\.50/);
+  assert.equal(text(m, "calwiz-new-factor"), "1.13");
+  assert.match(text(m, "calwiz-boost"), /start boost/);
+  assert.match(text(m, "calwiz-boost"), /12\.50/);
+});
+
+test("results: no boost note when the nominal rate is the test rate or missing", async () => {
+  for (const nominal of [12.5, undefined]) {
+    const m = mountHmi();
+    m.render(calPayload());
+    await toResults(m, { nominal });
+    assert.equal(m.byId("calwiz-boost"), null);
+    assert.equal(text(m, "calwiz-new-factor"), "1.04");
+  }
 });
 
 test("results: a clamped factor says so", async () => {

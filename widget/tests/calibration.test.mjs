@@ -204,6 +204,25 @@ test("test rate within MinRate..MaxRate (as shown, to 2 dp)", () => {
   assert.ok(validateTestRate(10, null, 92.16));
 });
 
+test("a VSD start boost: the delivered volume is compared against the nominal rate", () => {
+  // 200 mL in 60 s = 12.0 L/Hr; average commanded 13.5 (test rate 12.5).
+  const r = calc({ nominalRate: 13.5 });
+  assert.equal(r.ok, true);
+  assert.equal(r.targetRate, 13.5);
+  assert.equal(r.testRate, 12.5);
+  assert.equal(r.boosted, true);
+  assert.equal(r.newFactor, 1.13);
+});
+
+test("no nominal rate, or one equal to the test rate: unchanged, not boosted", () => {
+  for (const nominalRate of [undefined, null, 0, 12.5]) {
+    const r = calc({ nominalRate });
+    assert.equal(r.targetRate, 12.5);
+    assert.equal(r.boosted, false);
+    assert.equal(r.newFactor, 1.04);
+  }
+});
+
 test("computeCalibration refuses impossible inputs", () => {
   assert.equal(calc({ finalMl: 500 }).ok, false);
   assert.equal(calc({ startMl: -1 }).ok, false);
