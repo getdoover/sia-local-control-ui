@@ -1691,6 +1691,7 @@ class Hmi {
       ended: null,
       elapsedS: null,
       testRate: null,
+      nominalRate: null,
       result: null,
       saved: null,
       error: "",
@@ -1727,6 +1728,7 @@ class Hmi {
       ended: null,
       elapsedS: null,
       testRate: null,
+      nominalRate: null,
       result: null,
       saved: null,
       error: "",
@@ -1868,6 +1870,7 @@ class Hmi {
       finalMl: c.finalMl,
       elapsedS: c.elapsedS,
       targetRate: c.testRate != null ? c.testRate : c.rate,
+      nominalRate: c.nominalRate,
       oldFactor: c.oldFactor,
       rateUnits: this.units.rate,
     });
@@ -2050,6 +2053,8 @@ class Hmi {
       if (tr.result === "completed") {
         c.elapsedS = tr.elapsed_s;
         c.testRate = run.rate != null ? run.rate : tr.rate != null ? tr.rate : c.rate;
+        // The run's average commanded rate, including any VSD start boost.
+        c.nominalRate = tr.nominal_rate != null ? tr.nominal_rate : null;
         this.calwizGo(6);
       } else {
         const pump = this.calPump() || {};
@@ -2180,13 +2185,16 @@ class Hmi {
         const clampNote = r.clamped
           ? `<p class="calwiz-note calwiz-warn" data-id="calwiz-clamped">Calculated ${this.fmt(r.rawFactor, 2)} is outside 0.3 to 1.7, so it is limited to ${this.fmt(r.newFactor, 2)}. Check the readings and the pump.</p>`
           : "";
+        const boostNote = r.boosted
+          ? `<p class="calwiz-note" data-id="calwiz-boost">Includes the VSD start boost: the first seconds ran faster than the test rate of ${this.fmt(r.testRate, 2)} ${u}.</p>`
+          : "";
         html =
           `<div class="calwiz-rows calwiz-results">` +
           row("Delivered volume", formatMl(r.deliveredMl), "mL", "calwiz-delivered") +
           row("Measured flow rate", this.fmt(r.measuredRate, 2), u, "calwiz-measured") +
           row("Target flow rate", this.fmt(r.targetRate, 2), u, "calwiz-target") +
           row("Calibration factor", `${this.fmt(r.oldFactor, 2)} \u2192 <strong data-id="calwiz-new-factor">${this.fmt(r.newFactor, 2)}</strong>`, "", "calwiz-factor") +
-          `</div>` + clampNote;
+          `</div>` + boostNote + clampNote;
         break;
       }
       default:

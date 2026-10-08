@@ -384,6 +384,12 @@ export interface TestRunData {
   rate: number | null;
   duration_s: number | null;
   elapsed_s: number | null;
+  /**
+   * The last completed run's average commanded rate (TestRunNominalRate):
+   * the test rate, raised by the VSD start boost when the run was boosted.
+   * Null while running or from a controller that predates it.
+   */
+  nominal_rate: number | null;
   result: "completed" | "cancelled" | "faulted" | null;
   /**
    * Who ended the last run (the controller's TestRunEndedBy): "hmi" / "dcs" /
@@ -852,6 +858,7 @@ export function collectCalibration(get: TagReader, key: string): CalibrationData
       rate: optNum(get("TestRunRate", key)),
       duration_s: optNum(get("TestRunDuration_s", key)),
       elapsed_s: optNum(get("TestRunElapsed_s", key)),
+      nominal_rate: optNum(get("TestRunNominalRate", key)),
       result: (TEST_RUN_RESULTS as readonly string[]).includes(result ?? "")
         ? (result as TestRunData["result"])
         : null,
@@ -1041,6 +1048,7 @@ export function liveTagIds(cfg: HmiConfig): string[] {
     "TestRunRate",
     "TestRunDuration_s",
     "TestRunElapsed_s",
+    "TestRunNominalRate",
     "TestRunResult",
     "TestRunEndedBy",
     // Alarm settings readback: thresholds, then each alarm's delay.

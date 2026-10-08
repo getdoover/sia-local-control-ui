@@ -151,12 +151,19 @@ export function formatMl(value) {
 /**
  * The results page.
  *
- * in: {startMl, finalMl, elapsedS, targetRate, oldFactor, rateUnits}
- * out: {ok: true, deliveredMl, measuredRate, targetRate, oldFactor,
- *       rawFactor, newFactor, clamped: null | "low" | "high"}
+ * in: {startMl, finalMl, elapsedS, targetRate, nominalRate?, oldFactor, rateUnits}
+ * out: {ok: true, deliveredMl, measuredRate, targetRate, testRate, boosted,
+ *       oldFactor, rawFactor, newFactor, clamped: null | "low" | "high"}
  *      or {ok: false, error}
+ *
+ * nominalRate is the controller's TestRunNominalRate: the run's average
+ * commanded rate. With the VSD start boost, the first seconds of a low-rate
+ * test run faster than the test rate, so the delivered volume is compared
+ * against it instead (targetRate in the result); without it (an older
+ * controller, or no boost) the test rate is used, as before. boosted is true
+ * when the two differ by more than 0.5 %.
  */
-export function computeCalibration({ startMl, finalMl, elapsedS, targetRate, oldFactor, rateUnits }) {
+export function computeCalibration({ startMl, finalMl, elapsedS, targetRate, nominalRate, oldFactor, rateUnits }) {
   const startErr = validateStartMl(startMl);
   if (startErr) return { ok: false, error: startErr };
   const finalErr = validateFinalMl(finalMl, startMl);
@@ -171,7 +178,9 @@ export function computeCalibration({ startMl, finalMl, elapsedS, targetRate, old
   const factor = finite(oldFactor) && oldFactor >= 0.01 ? oldFactor : 1.0;
   const deliveredMl = finalMl - startMl;
   const measuredRate = mlOverSecondsToRate(deliveredMl, elapsedS, rateUnits);
-  const rawFactor = (factor * targetRate) / measuredRate;
+  const basis = finite(nominalRate) && nominalRate > 0 ? nominalRate : targetRate;
+  const boosted = Math.abs(basis - targetRate) > targetRate * 0.005;
+  const rawFactor = (factor * basis) / measuredRate;
   const rounded = round(rawFactor, 2);
   let newFactor = rounded;
   let clamped = null;
@@ -186,7 +195,9 @@ export function computeCalibration({ startMl, finalMl, elapsedS, targetRate, old
     ok: true,
     deliveredMl,
     measuredRate,
-    targetRate,
+    targetRate: basis,
+    testRate: targetRate,
+    boosted,
     oldFactor: factor,
     rawFactor,
     newFactor,
