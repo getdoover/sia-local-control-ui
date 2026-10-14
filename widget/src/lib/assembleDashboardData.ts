@@ -199,6 +199,8 @@ export interface HmiConfig {
    * Off by default: no payload key and no live tags claimed.
    */
   dcsConnected: boolean;
+  /** `settings_password`: 4 to 16 letters / digits asked before settings changes (lib/settingsPassword.ts); null = none. */
+  settingsPassword: string | null;
 }
 
 /**
@@ -230,6 +232,12 @@ function asBool(value: unknown): boolean {
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/** A 4 to 16 letter / digit password, or null (blank, or one the on-screen keyboard could not type). */
+function passwordString(value: unknown): string | null {
+  const s = asString(value);
+  return s !== null && /^[A-Za-z0-9]{4,16}$/.test(s) ? s : null;
 }
 
 /** Finite number, or null. Numeric strings count (tags are loosely typed). */
@@ -315,6 +323,7 @@ export function resolveConfig(
     popoverInsetMm: clampNum(c.popover_inset_mm, 0, 0, 40),
     kioskPxPerMm: positiveNum(c.kiosk_px_per_mm, DEFAULT_KIOSK_PX_PER_MM),
     dcsConnected: asBool(c.dcs_connected),
+    settingsPassword: passwordString(c.settings_password),
   };
 }
 

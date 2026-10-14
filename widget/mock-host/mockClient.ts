@@ -82,6 +82,8 @@ export interface MockOptions {
   dcs?: "on" | "off" | "old";
   /** A DCS command to send DCS_COMMAND_AT_MS after load (parseDcsCommand). */
   dcsCommand?: string;
+  /** settings_password (unset = none). */
+  settingsPassword?: string;
 }
 
 /**
@@ -322,6 +324,7 @@ export function createMockClient(opts: MockOptions) {
             ...(opts.alarmAccess ? { alarm_settings_access: opts.alarmAccess } : {}),
             ...(opts.sensorAccess ? { sensor_settings_access: opts.sensorAccess } : {}),
             ...(opts.dcs === "on" || opts.dcs === "old" ? { dcs_connected: true } : {}),
+            ...(opts.settingsPassword ? { settings_password: opts.settingsPassword } : {}),
           },
           [PRESSURE_APP]: {
             min_range: PRESSURE_DEFAULTS.range_low,

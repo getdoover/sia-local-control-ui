@@ -8,6 +8,7 @@ buttons keep working from their saved values in every mode.
 """
 
 import json
+import re
 import types
 from pathlib import Path
 
@@ -121,6 +122,7 @@ def test_config_keys_unchanged_from_the_deployed_schema():
         "sensor_settings_access",
         "dcs_connected",
         "header_title",
+        "settings_password",
     }
     assert deployed - keys == set()
 
@@ -161,6 +163,23 @@ def test_kuwait_config_loads_with_no_sensor_tab():
     """An existing config has no sensor_settings_access: Sensor tab Hidden."""
     cfg = _load(_kuwait())
     assert cfg.sensor_settings_access.value == "Hidden"
+
+
+def test_kuwait_config_loads_with_no_settings_password():
+    """An existing config has no settings_password: settings open as before."""
+    cfg = _load(_kuwait())
+    assert cfg.settings_password.value == ""
+
+
+def test_settings_password_is_4_to_16_letters_and_digits_or_blank():
+    """The panel's on-screen keyboard has letters and digits only, so the
+    editor refuses anything else (a password nobody could type would lock
+    the settings for good)."""
+    pattern = re.compile(_schema()["properties"]["settings_password"]["pattern"])
+    for ok in ("", "abcd", "Pump2024", "0000", "A" * 16):
+        assert pattern.search(ok), ok
+    for bad in ("abc", "A" * 17, "pump-1", "pump 1", " pump", "pümp"):
+        assert not pattern.search(bad), bad
 
 
 def test_kuwait_config_loads_with_no_dcs_popups():

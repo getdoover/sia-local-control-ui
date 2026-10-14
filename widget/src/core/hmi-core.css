@@ -744,6 +744,22 @@
 .sia-hmi .key-zero { grid-column: span 4; }
 /* A signed keypad (sensor ranges) has the \00b1 key left of 0. */
 .sia-hmi .keypad-keys.signed .key-zero { grid-column: span 3; }
+/* Settings password: an on-screen keyboard, ten keys across (the last
+   row's Shift and Backspace one and a half each). Keys shrink with the room
+   (cqh) on short screens, never below 44 px. */
+.sia-hmi .keypad.pwd { width: min(760px, 98cqw); }
+.sia-hmi .pwd-keys { display: flex; flex-direction: column; gap: 6px; }
+.sia-hmi .pwd-row { display: flex; justify-content: center; gap: 6px; }
+.sia-hmi .pwd .key {
+    flex: 0 0 calc((100% - 54px) / 10);
+    min-width: 0;
+    min-height: 44px;
+    height: clamp(44px, 10.5cqh, 56px);
+}
+.sia-hmi .pwd .key-wide { flex-basis: calc((100% - 54px) / 10 * 1.5 + 3px); }
+.sia-hmi .pwd .key-fn.on { background: var(--hmi-blue); color: white; }
+.sia-hmi .pwd .keypad-actions .key { flex: 1; }
+.sia-hmi .pwd .keypad-display { min-height: 44px; justify-content: center; }
 
 .sia-hmi .keypad-actions,
 .sia-hmi .confirm-actions {
@@ -1328,6 +1344,8 @@
     .sia-hmi .keypad { flex-direction: row; width: min(640px, 98vw); }
     .sia-hmi .keypad-info { flex: 1; justify-content: space-between; }
     .sia-hmi .keypad-keys { flex: 1.2; }
+    /* The password keyboard stays one column, a little tighter. */
+    .sia-hmi .keypad.pwd { flex-direction: column; width: min(760px, 98cqw); gap: 6px; padding: 10px; }
 }
 
 /* Panel labels and recessed, tabular instrument readouts. */

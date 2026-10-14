@@ -99,6 +99,7 @@ key it reads exists here). Runtime keys derive from the display names.
 | `rpc_timeout_s` | `20` | both | How long a command waits for the controller |
 | `vsd_motor_app` | unset | widget | Techtop motor controller install the VSD commissioning panel calls (e.g. `techtop_motor_controller_1`); unset = no gear |
 | `vsd_commissioning` | `Hidden` | widget | `Hidden` / `Local only` / `Local and cloud`: whether the gear shows and where drive parameters may be changed (see below) |
+| `settings_password` | blank | widget | 4 to 16 letters / digits (case-sensitive) the local panel asks for before a settings change; blank = none (see below) |
 
 The two battery keys keep the (odd) names already deployed on the Kuwait skids.
 
@@ -115,6 +116,25 @@ readings show `--` and the bar is empty. When the tank app publishes `sensor_fau
 badge in its heading and the reason under the readings, e.g. `Signal below range
 (3.73 mA)` from `raw_level_reading`; no level is shown while it is set. The gear (alarms,
 Sensor tab) stays reachable throughout.
+
+## Settings password (`settings_password`)
+
+With a password set, the **local panel** asks for it on an on-screen keyboard (digits,
+qwerty letters, one-shot Shift, Backspace; the entry shows as dots) before any settings
+change: target rate, calibration factor and the calibration wizard, alarm thresholds and
+delays, Sensor tab values and reset, and VSD parameters. 4 to 16 letters and digits,
+case-sensitive; the keyboard has no symbols, so the config editor refuses them. After one
+correct entry every setting stays unlocked until 5 minutes pass with no taps on the screen.
+A wrong password says so and sends nothing. Start, Stop, Reset Fault and Reset VSD never
+ask, and nor does the cloud card (its users are signed in to Doover). The access settings
+above (`alarm_settings_access` etc.) still decide whether a change is allowed at all; the
+password is asked only after they allow it.
+
+It is a deterrent at the panel, not access control: the password is stored in the
+install's config, where anyone who can see that config can read it. The legacy dashboard
+(frozen) does not ask. The keyboard fits every panel size with keys of at least 44 px
+(`layout/layout.check.mjs`; `PWD_SHOTS=dir` saves `password-<w>x<h>[-inset].png`); the
+mock host takes `password=Pump42`.
 
 ## VSD commissioning panel
 

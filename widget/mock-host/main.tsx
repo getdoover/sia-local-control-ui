@@ -32,6 +32,7 @@
  *                            Doover / at the panel instead.
  *   &inset=2                 kiosk_inset_mm (cover plate)
  *   &popinset=10             popover_inset_mm
+ *   &password=Pump42         settings_password (the keyboard before a settings change)
  *   &pxmm=5.8                kiosk_px_per_mm
  *   &alarms=Local only       alarm_settings_access (gears on Tank / Skid, and
  *                            Pump Control with flowmeter=1)
@@ -95,6 +96,7 @@ const opts: MockOptions = {
   sensorAccess: q.get("sensors") ?? undefined,
   sensorCal: (q.get("sensorcal") as MockOptions["sensorCal"]) ?? undefined,
   dcs: (["on", "off", "old"] as const).find((v) => v === q.get("dcs")),
+  settingsPassword: q.get("password") ?? undefined,
   dcsCommand: q.get("dcscmd") ?? undefined,
 };
 const client = createMockClient(opts);

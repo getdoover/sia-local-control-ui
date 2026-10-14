@@ -125,6 +125,15 @@ export function keypadInput(text, key) {
   return text + key;
 }
 
+// Settings password entry (on-screen keyboard): letters and digits, at most
+// PASSWORD_MAX_CHARS; "shift" is handled by the keyboard, not here.
+export function passwordInput(text, key) {
+  text = text || "";
+  if (key === "back") return text.slice(0, -1);
+  if (!/^[A-Za-z0-9]$/.test(key) || text.length >= PASSWORD_MAX_CHARS) return text;
+  return text + key;
+}
+
 export function validateKeypadEntry(text, min, max) {
   if (!text || /^-?\.?$/.test(text) || !/^-?[0-9]*\.?[0-9]*$/.test(text)) {
     return { ok: false, error: "Enter a number" };
@@ -189,6 +198,26 @@ export function tankFaultReason(fault, rawMa) {
   const reason = TANK_FAULT_REASONS[fault] || "Sensor signal fault";
   const ma = rawMa == null || rawMa === "" ? NaN : Number(rawMa);
   return Number.isFinite(ma) ? `${reason} (${ma.toFixed(2)} mA)` : reason;
+}
+
+// Settings password (config `settings_password`, local panel only): asked
+// before any settings change, then unlocked until this long with no taps.
+export const PASSWORD_UNLOCK_MS = 5 * 60_000;
+export const PASSWORD_MAX_CHARS = 16;
+export const PASSWORD_TITLE = "Enter password to change settings";
+export const PASSWORD_WRONG_TEXT = "Wrong password";
+// The on-screen keyboard's rows (lower case; Shift gives the next letter in
+// upper case). The last row also has Shift and Backspace either side.
+const PASSWORD_ROWS = ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm"];
+
+function passwordKeys() {
+  const key = (k) => `<button type="button" class="key" data-pwd-key="${k}">${k}</button>`;
+  const rows = PASSWORD_ROWS.map((r) => [...r].map(key).join(""));
+  rows[3] =
+    `<button type="button" class="key key-fn key-wide" data-pwd-key="shift" data-id="pwd-shift" aria-label="Shift">&#8679;</button>` +
+    rows[3] +
+    `<button type="button" class="key key-fn key-wide" data-pwd-key="back" aria-label="Backspace">&#9003;</button>`;
+  return rows.map((r) => `<div class="pwd-row">${r}</div>`).join("");
 }
 
 // The kiosk's Refresh button asks this first (in-page, like every confirm).
@@ -636,6 +665,19 @@ function template(opts) {
   </div>
 </div>
 
+<div data-id="pwd" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="keypad pwd">
+    <div class="keypad-title">${PASSWORD_TITLE}</div>
+    <div class="keypad-display"><span class="keypad-entry" data-id="pwd-entry"></span></div>
+    <div class="keypad-error" data-id="pwd-error" role="alert"></div>
+    <div class="pwd-keys" data-id="pwd-keys">${passwordKeys()}</div>
+    <div class="keypad-actions">
+      <button type="button" class="key key-cancel" data-id="pwd-cancel">Cancel</button>
+      <button type="button" class="key key-ok" data-id="pwd-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <div data-id="confirm" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="confirm-box">
     <p class="confirm-message" data-id="confirm-message"></p>
@@ -771,6 +813,15 @@ class Hmi {
     this.keypadPlaceholder = "";
     this.confirmOk = null;
     this.confirmOwner = null;
+    // Settings password (setSettingsPassword): null = none; unlocked until
+    // pwdUntil. While asking: the change to run once it is right (pwdRetry,
+    // with its owner), the entry so far and the one-shot Shift.
+    this.pwd = null;
+    this.pwdUntil = 0;
+    this.pwdRetry = null;
+    this.pwdOwner = null;
+    this.pwdText = "";
+    this.pwdShift = false;
     this.pendingSince = new Map();
     this.destroyed = false;
     // VSD commissioning panel (gear on the VSD tile).
@@ -975,6 +1026,18 @@ class Hmi {
       });
     }
     this.bindScroller("vsd-params");
+    // Any tap while unlocked keeps the settings unlocked (a long calibration
+    // run or a row of alarm edits never asks twice).
+    this.root.addEventListener("click", () => this.pwdTouch(), true);
+    const pwdKeys = this.$("pwd-keys");
+    if (pwdKeys) {
+      pwdKeys.addEventListener("click", (e) => {
+        const k = e.target && e.target.closest ? e.target.closest("[data-pwd-key]") : null;
+        if (k) this.pwdPress(k.getAttribute("data-pwd-key"));
+      });
+    }
+    on("pwd-ok", () => this.pwdSubmit());
+    on("pwd-cancel", () => this.pwdClose());
     this.onKey = (e) => {
       if (e.key !== "Escape") return;
       // The notice is above everything else.
@@ -982,7 +1045,7 @@ class Hmi {
         this.runNoticeClose();
         return;
       }
-      if (this.keypadIsOpen() || this.confirmOk) return;
+      if (this.keypadIsOpen() || this.pwdIsOpen() || this.confirmOk) return;
       // The wizard on screen takes Escape (and keeps it on page 5, while the
       // pump runs); a stale session never blocks the VSD panel.
       if (this.cal && this.calwizShown()) this.calwizClose();
@@ -1118,6 +1181,86 @@ class Hmi {
     entry.classList.toggle("placeholder", !this.keypadText);
   }
 
+  // -- settings password ------------------------------------------------------
+  // With a password set (local panel only), every settings change starts
+  // with pwdGate: locked, it asks for the password on the on-screen keyboard
+  // and, when right, runs the change again (so its own checks run on the
+  // current state). Start, Stop and the fault resets never pass through here.
+
+  setSettingsPassword(password) {
+    const next = typeof password === "string" && /^[A-Za-z0-9]{4,16}$/.test(password) ? password : null;
+    if (next !== this.pwd) this.pwdUntil = 0;
+    this.pwd = next;
+  }
+
+  pwdUnlocked() {
+    return !this.pwd || Date.now() < this.pwdUntil;
+  }
+
+  pwdTouch() {
+    if (this.pwd && this.pwdUnlocked()) this.pwdUntil = Date.now() + PASSWORD_UNLOCK_MS;
+  }
+
+  /** True when the change may go ahead now; else asks, then runs `retry`. */
+  pwdGate(owner, retry) {
+    if (this.pwdUnlocked()) return true;
+    this.pwdRetry = retry;
+    this.pwdOwner = owner;
+    this.pwdText = "";
+    this.pwdShift = false;
+    this.setText("pwd-error", "");
+    this.pwdRefresh();
+    this.show(this.$("pwd"));
+    return false;
+  }
+
+  pwdIsOpen() {
+    return !!this.pwdRetry;
+  }
+
+  pwdClose() {
+    this.pwdRetry = null;
+    this.pwdOwner = null;
+    this.pwdText = "";
+    this.hide(this.$("pwd"));
+  }
+
+  pwdPress(key) {
+    if (key === "shift") {
+      this.pwdShift = !this.pwdShift;
+    } else {
+      const ch = this.pwdShift && /^[a-z]$/.test(key) ? key.toUpperCase() : key;
+      this.pwdText = passwordInput(this.pwdText, ch);
+      if (key !== "back") this.pwdShift = false;
+      this.setText("pwd-error", "");
+    }
+    this.pwdRefresh();
+  }
+
+  pwdRefresh() {
+    setNodeText(this.$("pwd-entry"), "\u2022".repeat(this.pwdText.length));
+    setClass(this.$("pwd-shift"), "on", this.pwdShift);
+    for (const k of this.$$("[data-pwd-key]")) {
+      const v = k.getAttribute("data-pwd-key");
+      if (/^[a-z]$/.test(v)) setNodeText(k, this.pwdShift ? v.toUpperCase() : v);
+    }
+  }
+
+  pwdSubmit() {
+    if (!this.pwdRetry) return;
+    if (this.pwdText !== this.pwd) {
+      this.pwdText = "";
+      this.pwdShift = false;
+      this.pwdRefresh();
+      this.setText("pwd-error", PASSWORD_WRONG_TEXT);
+      return;
+    }
+    const retry = this.pwdRetry;
+    this.pwdUntil = Date.now() + PASSWORD_UNLOCK_MS;
+    this.pwdClose();
+    retry();
+  }
+
   // -- confirmation (in-page; no alert()/confirm() on a kiosk) --------------
   confirmAsk(message, onOk, owner = "touch") {
     this.confirmOk = onOk;
@@ -1143,6 +1286,7 @@ class Hmi {
   openRateKeypad(btn) {
     const pump = (this.data.pumps || [])[0];
     if (!this.touch || !pump || pump.min_rate == null || pump.max_rate == null) return;
+    if (!this.pwdGate("touch", () => this.openRateKeypad(btn))) return;
     const current = pump.target_rate;
     this.keypadOpen({
       title: "Target rate",
@@ -1167,6 +1311,7 @@ class Hmi {
   openCalKeypad(btn) {
     const t = this.data.touch;
     if (!this.touch || !t) return;
+    if (!this.pwdGate("touch", () => this.openCalKeypad(btn))) return;
     this.keypadOpen({
       title: "Calibration factor",
       calHelp: true,
@@ -1558,6 +1703,7 @@ class Hmi {
       // Only the touch controls' own keypad / confirmation: a VSD panel edit
       // is governed by VSD Commissioning, not HMI Control Mode.
       if (this.keypadIsOpen() && !["vsd", "alarm", "sensor"].includes(this.keypadOpts.owner)) this.keypadClose();
+      if (this.pwdOwner === "touch") this.pwdClose();
       if (this.confirmOwner === "touch") this.confirmClose();
       return;
     }
@@ -1675,6 +1821,7 @@ class Hmi {
       this.showToast(blocked, "error");
       return;
     }
+    if (!this.pwdGate("touch", () => this.calwizOpen())) return;
     const tr = this.calTestRun();
     if (tr && tr.active) {
       this.calwizReattach(tr);
@@ -2597,6 +2744,7 @@ class Hmi {
     this.alarmOpen = null;
     this.alarmTabsKey = "";
     if (this.keypadIsOpen() && ["alarm", "sensor"].includes(this.keypadOpts.owner)) this.keypadClose();
+    if (["alarm", "sensor"].includes(this.pwdOwner)) this.pwdClose();
     if (["alarm", "sensor"].includes(this.confirmOwner)) this.confirmClose();
     this.hide(this.$("alarm-panel"));
   }
@@ -2628,6 +2776,7 @@ class Hmi {
       // went) takes them with it.
       const gone = tab === "alarms" ? "sensor" : "alarm";
       if (this.keypadIsOpen() && this.keypadOpts.owner === gone) this.keypadClose();
+      if (this.pwdOwner === gone) this.pwdClose();
       if (this.confirmOwner === gone) this.confirmClose();
       if (tab === "alarms") this.buildAlarmRows();
       else this.buildSensorPane();
@@ -2755,6 +2904,7 @@ class Hmi {
       this.showToast(ALARM_DELAY_MISSING_TEXT, "error");
       return;
     }
+    if (!this.pwdGate("alarm", () => this.alarmEdit(field, cell))) return;
     const settings = () => this.data.alarm_settings;
     const r = alarmRange(field, settings());
     const dp = alarmDecimals(field, settings());
@@ -2919,6 +3069,7 @@ class Hmi {
       this.showToast(`Still waiting for the ${SENSOR_GROUPS[group].who} to answer`);
       return;
     }
+    if (!this.pwdGate("sensor", () => this.sensorEdit(field, cell))) return;
     const settings = () => this.data.sensor_settings;
     const r = sensorRange(field, settings());
     const current = sensorValue(field, settings());
@@ -2986,6 +3137,7 @@ class Hmi {
       this.showToast(`Still waiting for the ${g.who} to answer`);
       return;
     }
+    if (!this.pwdGate("sensor", () => this.sensorReset())) return;
     const names = g.fields.map((f) => SENSOR_FIELDS[f].name.toLowerCase());
     const list = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
     this.confirmAsk(
@@ -3069,6 +3221,7 @@ class Hmi {
     this.vsdOpen = false;
     this.vsdGen++; // stops the poll loop and drops answers still in flight
     if (this.keypadIsOpen() && this.keypadOpts.owner === "vsd") this.keypadClose();
+    if (this.pwdOwner === "vsd") this.pwdClose();
     if (this.confirmOwner === "vsd") this.confirmClose();
     this.hide(this.$("vsd-panel"));
   }
@@ -3220,6 +3373,7 @@ class Hmi {
       return;
     }
     if (row && row.classList.contains("pending")) return;
+    if (!this.pwdGate("vsd", () => this.vsdEditParameter(id, row))) return;
     const dp = stepDp(p.step);
     this.keypadOpen({
       owner: "vsd",
@@ -3402,6 +3556,7 @@ export function createHmi(root, opts) {
     setAlarmAccess: (access) => hmi.setAlarmAccess(access),
     setSensorAccess: (access) => hmi.setSensorAccess(access),
     setDcsNotices: (enabled) => hmi.setDcsNotices(enabled),
+    setSettingsPassword: (password) => hmi.setSettingsPassword(password),
     destroy: () => hmi.destroy(),
     /** For tests: the underlying instance. */
     _hmi: hmi,

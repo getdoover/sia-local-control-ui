@@ -41,6 +41,8 @@ export interface HmiHandle {
   setSensorAccess(access: { enabled: boolean; canWrite: boolean; writeBlockedReason: string }): void;
   /** DCS command card (payload `dcs_command`): lib/dcsNotices.ts dcsNoticesEnabled; kiosk layout only. */
   setDcsNotices(enabled: boolean): void;
+  /** Settings password (lib/settingsPassword.ts settingsPasswordFor); null = none. */
+  setSettingsPassword(password: string | null): void;
   destroy(): void;
 }
 

@@ -2302,3 +2302,58 @@ test("DCS card: never in the cloud, never with dcs_connected off, nothing from a
     }
   }
 });
+
+// Settings password keyboard (settings_password, mock password=Pump42): at
+// every size, with and without the cover-plate insets, the whole keyboard is
+// on screen with no scroll, every key at least 44 px and the 10 keys of the
+// top row on one line; typing it right opens the rate keypad. Screenshots:
+// PWD_SHOTS=<dir> (password-<w>x<h>[-inset].png)
+for (const [w, h] of SIZES) {
+  for (const inset of [false, true]) {
+    test(`${w}x${h}${inset ? " inset" : ""}: settings password keyboard fits, keys >= 44 px`, async () => {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      try {
+        const q = `host=local&mode=Touch&scenario=running&password=Pump42${inset ? "&inset=2&popinset=10" : ""}`;
+        await page.goto(`${base}?${q}`);
+        await page.waitForSelector('.sia-hmi [data-id="loading-overlay"].hidden', { state: "attached" });
+        await page.click('.sia-hmi [data-id="touch-rate"]');
+        await page.waitForSelector('.sia-hmi [data-id="pwd"]', { state: "visible" });
+        const k = await page.evaluate(() => {
+          const r = (el) => el.getBoundingClientRect();
+          const box = r(document.querySelector(".sia-hmi .keypad.pwd"));
+          const keys = [...document.querySelectorAll('.sia-hmi [data-id="pwd"] button')].map((b) => {
+            const x = r(b);
+            return { k: b.getAttribute("data-pwd-key") || b.getAttribute("data-id"), w: x.width, h: x.height, top: x.top };
+          });
+          const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 10);
+          return {
+            box: { top: box.top, bottom: box.bottom, left: box.left, right: box.right },
+            keys,
+            onTop: !!hit?.closest(".pwd"),
+            doc: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+          };
+        });
+        if (process.env.PWD_SHOTS) {
+          fs.mkdirSync(process.env.PWD_SHOTS, { recursive: true });
+          await page.screenshot({ path: path.join(process.env.PWD_SHOTS, `password-${w}x${h}${inset ? "-inset" : ""}.png`) });
+        }
+        const ctx = JSON.stringify(k);
+        assert.ok(k.onTop, `keyboard not on top: ${ctx}`);
+        assert.ok(k.box.top >= 0 && k.box.bottom <= h && k.box.left >= 0 && k.box.right <= w, `keyboard off screen: ${ctx}`);
+        assert.ok(k.doc[0] <= w && k.doc[1] <= h, `keyboard scrolls: ${ctx}`);
+        for (const b of k.keys) assert.ok(b.w >= 44 && b.h >= 44, `${b.k} ${b.w}x${b.h} < 44px`);
+        const top = k.keys.filter((b) => /^[0-9]$/.test(b.k));
+        assert.equal(new Set(top.map((b) => Math.round(b.top))).size, 1, `digit row wraps: ${ctx}`);
+        // Type it (Shift for the P) and the rate keypad opens.
+        for (const key of ["shift", "p", "u", "m", "p", "4", "2"]) {
+          await page.click(`.sia-hmi [data-pwd-key="${key}"]`);
+        }
+        await page.click('.sia-hmi [data-id="pwd-ok"]');
+        await page.waitForSelector('.sia-hmi [data-id="keypad"]', { state: "visible" });
+        assert.equal(await page.isVisible('.sia-hmi [data-id="pwd"]'), false);
+      } finally {
+        await page.close();
+      }
+    });
+  }
+}

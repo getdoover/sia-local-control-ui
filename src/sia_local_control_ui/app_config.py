@@ -520,6 +520,29 @@ class SiaLocalControlUiConfig(config.Schema):
         ),
     )
 
+    # --- Settings password (widget, local panel only) -------------------------
+    # A password asked for on an on-screen keyboard before any on-screen
+    # settings change: target rate, calibration factor and the calibration
+    # wizard, alarm thresholds and delays, sensor values, VSD parameters.
+    # Start, Stop and the fault resets are never behind it. One correct entry
+    # unlocks until five minutes with no taps. Letters and digits only (the
+    # keyboard has no symbols), case-sensitive. The cloud UI never asks (its
+    # users are signed in). Blank = no password, so existing installs are
+    # unchanged. A deterrent at the panel, not access control: it is stored
+    # in this config, which anyone who can see the install's config can read.
+    settings_password = config.String(
+        "Settings Password",
+        default="",
+        pattern=r"^([A-Za-z0-9]{4,16})?$",
+        description=(
+            "Password the local panel asks for before changing settings "
+            "(target rate, calibration, alarm levels and delays, sensor "
+            "values, VSD parameters): 4 to 16 letters and digits, "
+            "case-sensitive. Start, Stop and fault resets never need it; the "
+            "cloud UI never asks. Blank: no password."
+        ),
+    )
+
     # --- DCS command pop-ups (widget only) ------------------------------------
     # Many skids have no DCS, so off by default: nothing new on screen and no
     # new tags claimed. On, the LOCAL panel (never the cloud) shows a short,

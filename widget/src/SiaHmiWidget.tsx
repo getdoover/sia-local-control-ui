@@ -35,6 +35,7 @@ import { createRenderScheduler, type RenderScheduler } from "./lib/renderCadence
 import { createVsdPanelApi, vsdPanelAccess } from "./lib/vsdPanel.ts";
 import { pollLocalDashboard, type LocalReader, type LocalSnapshot } from "./lib/localDashboard.ts";
 import { alarmSettingsAccess } from "./lib/alarmSettings.ts";
+import { settingsPasswordFor } from "./lib/settingsPassword.ts";
 import { dcsNoticesEnabled } from "./lib/dcsNotices.ts";
 import {
   isSensorGroup,
@@ -202,6 +203,8 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.dcsConnected, host.kind],
   );
 
+  const settingsPassword = settingsPasswordFor(cfg.settingsPassword, host.kind);
+
   const data = useMemo(() => {
     if (tagValues === undefined) return null;
     const live = overlayLiveValues(
@@ -231,8 +234,8 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     [cfg.kioskInsetMm, cfg.popoverInsetMm, cfg.kioskPxPerMm],
   );
 
-  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess, dcsNotices });
-  latest.current = { cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess, dcsNotices };
+  const latest = useRef({ cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess, dcsNotices, settingsPassword });
+  latest.current = { cfg, actor, agentId, client, vsdAccess, display, alarmAccess, sensorAccess, dcsNotices, settingsPassword };
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hmiRef = useRef<HmiHandle | null>(null);
@@ -312,6 +315,7 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
     hmiRef.current.setAlarmAccess(latest.current.alarmAccess);
     hmiRef.current.setSensorAccess(latest.current.sensorAccess);
     hmiRef.current.setDcsNotices(latest.current.dcsNotices);
+    hmiRef.current.setSettingsPassword(latest.current.settingsPassword);
     return () => {
       hmiRef.current?.destroy();
       hmiRef.current = null;
@@ -360,6 +364,10 @@ function SiaHmiInner({ uiElement }: { uiElement?: UiRemoteComponent }) {
   useEffect(() => {
     hmiRef.current?.setDcsNotices(dcsNotices);
   }, [dcsNotices]);
+
+  useEffect(() => {
+    hmiRef.current?.setSettingsPassword(settingsPassword);
+  }, [settingsPassword]);
 
   return <div ref={rootRef} />;
 }
