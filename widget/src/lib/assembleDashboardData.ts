@@ -462,11 +462,21 @@ export function controllerHasFlowMeter(controllerConfig: unknown): boolean {
 }
 
 /**
+ * Whether the controller runs flow L / LL (app_config.py has_flow_alarms): a
+ * flow meter, or its tank-level flow check (tank_flow_enabled with a tank_app).
+ */
+export function controllerHasFlowAlarms(controllerConfig: unknown): boolean {
+  const cc = asRecord(controllerConfig);
+  const tankFlow = cc.tank_flow_enabled === true && asString(cc.tank_app) !== null;
+  return controllerHasFlowMeter(cc) || tankFlow;
+}
+
+/**
  * Alarm thresholds and delays from the primary controller's Setpoint* and
  * Delay* tags, with the controller config facts the editor needs: its
  * pressure unit (the PressureUnits tag, else its pressure_units config),
  * whether tank LL may be off (tank_ll_validation_enabled with a tank_app: it
- * may not) and whether it has a flow meter (the flow group). A tag an older
+ * may not) and whether it runs flow alarms (the flow group). A tag an older
  * controller does not publish reads null ("—"), not zero.
  */
 export function collectAlarmSettings(
@@ -496,7 +506,7 @@ export function collectAlarmSettings(
       units: asString(get("PressureUnits", key)) ?? asString(cc.pressure_units) ?? DEFAULT_PRESSURE_UNITS,
     };
   }
-  if (controllerHasFlowMeter(cc)) {
+  if (controllerHasFlowAlarms(cc)) {
     out.flow = {
       low: tag("SetpointFlowL"),
       low_low: tag("SetpointFlowLL"),

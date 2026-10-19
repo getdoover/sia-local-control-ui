@@ -19,6 +19,7 @@ import {
 import { alarmSettingsAccess, ALARM_LOCAL_ONLY_TEXT } from "../src/lib/alarmSettings.ts";
 import {
   assembleDashboardData,
+  controllerHasFlowAlarms,
   controllerHasFlowMeter,
   createFeatureMemory,
   liveTagIds,
@@ -122,6 +123,15 @@ test("payload: flow group only when the controller has a dedicated flow meter", 
   assert.deepEqual(assemble({}, TAGS, FLOW_METER).alarm_settings, { flow: FLOW });
   // Older controller: the group is there, values unknown.
   assert.deepEqual(assemble({}, {}, FLOW_METER).alarm_settings.flow, { low: null, low_low: null, low_delay: null, low_low_delay: null });
+});
+
+test("flow group with the controller's tank-level flow check", () => {
+  const tankFlow = { tank_flow_enabled: true, tank_app: "tank_level_1" };
+  assert.deepEqual(assemble({}, TAGS, tankFlow).alarm_settings, { flow: FLOW });
+  assert.equal(controllerHasFlowAlarms(tankFlow), true);
+  assert.equal(controllerHasFlowAlarms({ ...tankFlow, tank_app: null }), false, "needs a tank app");
+  assert.equal(controllerHasFlowAlarms({ tank_app: "tank_level_1" }), false, "off by default");
+  assert.equal(controllerHasFlowAlarms(FLOW_METER), true);
 });
 
 test("flow meter: the controller's has_flow_meter (source, pin, K-factor)", () => {
